@@ -1,0 +1,141 @@
+@page "/admin/users"
+@attribute [Authorize(Roles = "admin")]
+@inject AppDbContext Db
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>Kullanıcılar</PageTitle>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Kullanıcı Yönetimi</h1>
+    <button class="btn btn-primary" @onclick="() => _showNew = !_showNew">➕ Yeni Kullanıcı</button>
+</div>
+
+@if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-error">@_error</div> }
+@if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
+
+@if (_showNew)
+{
+    <div class="card" style="max-width:560px;margin-bottom:20px">
+        <div class="section-title">Yeni Kullanıcı</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group">
+                <label class="form-label">Kullanıcı Adı *</label>
+                <input class="form-control" @bind="_newUser.Username" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Ad Soyad *</label>
+                <input class="form-control" @bind="_newUser.FullName" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Departman *</label>
+                <input class="form-control" @bind="_newUser.Department" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Rol *</label>
+                <select class="form-control" @bind="_newUser.Role">
+                    @foreach (var r in AuthService.AllRoles)
+                    {
+                        <option value="@r">@AuthService.RoleLabels.GetValueOrDefault(r, r)</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Şifre *</label>
+            <input type="password" class="form-control" @bind="_newPassword" />
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-success btn-sm" @onclick="CreateUser">Kaydet</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _showNew = false">İptal</button>
+        </div>
+    </div>
+}
+
+<div class="card" style="padding:0">
+    <table class="table">
+        <thead>
+            <tr><th>Kullanıcı Adı</th><th>Ad Soyad</th><th>Departman</th><th>Rol</th><th>Durum</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var u in _users)
+            {
+                <tr>
+                    <td>@u.Username</td>
+                    <td>@u.FullName</td>
+                    <td>@u.Department</td>
+                    <td><span class="tag">@AuthService.RoleLabels.GetValueOrDefault(u.Role, u.Role)</span></td>
+                    <td>
+                        <span class="badge @(u.IsActive ? "badge-green" : "badge-red")">
+                            @(u.IsActive ? "Aktif" : "Pasif")
+                        </span>
+                    </td>
+                    <td style="display:flex;gap:6px">
+                        <button class="btn btn-outline btn-sm" @onclick="() => ToggleActive(u)">
+                            @(u.IsActive ? "Pasifleştir" : "Aktifleştir")
+                        </button>
+                        <button class="btn btn-danger btn-sm" @onclick="() => DeleteUser(u.Id)">Sil</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<RiskManagement.Models.User> _users = [];
+    private bool _showNew;
+    private string _error = "", _success = "";
+    private string _newPassword = "";
+    private NewUserModel _newUser = new();
+
+    protected override void OnInitialized() =>
+        _users = [.. Db.Users.OrderBy(u => u.FullName)];
+
+    private void CreateUser()
+    {
+        if (string.IsNullOrWhiteSpace(_newUser.Username) || string.IsNullOrWhiteSpace(_newPassword))
+        { _error = "Kullanıcı adı ve şifre zorunludur."; return; }
+
+        if (Db.Users.Any(u => u.Username == _newUser.Username))
+        { _error = "Bu kullanıcı adı zaten kullanılıyor."; return; }
+
+        Db.Users.Add(new RiskManagement.Models.User
+        {
+            Username = _newUser.Username,
+            FullName = _newUser.FullName,
+            Department = _newUser.Department,
+            Role = _newUser.Role,
+            PasswordHash = Auth.HashPassword(_newPassword),
+        });
+        Db.SaveChanges();
+        _success = "Kullanıcı oluşturuldu.";
+        _showNew = false; _newUser = new(); _newPassword = "";
+        _users = [.. Db.Users.OrderBy(u => u.FullName)];
+    }
+
+    private void ToggleActive(RiskManagement.Models.User u)
+    {
+        u.IsActive = !u.IsActive;
+        Db.SaveChanges();
+        _success = $"{u.FullName} {(u.IsActive ? "aktifleştirildi" : "pasifleştirildi")}.";
+    }
+
+    private void DeleteUser(int id)
+    {
+        var u = Db.Users.Find(id);
+        if (u == null) return;
+        Db.Users.Remove(u);
+        Db.SaveChanges();
+        _users.RemoveAll(x => x.Id == id);
+        _success = "Kullanıcı silindi.";
+    }
+
+    private class NewUserModel
+    {
+        public string Username { get; set; } = "";
+        public string FullName { get; set; } = "";
+        public string Department { get; set; } = "";
+        public string Role { get; set; } = "user";
+    }
+}

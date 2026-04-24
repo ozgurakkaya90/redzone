@@ -1,0 +1,119 @@
+@page "/risk"
+@attribute [Authorize]
+@inject RiskService RiskSvc
+@inject ConfigService CfgSvc
+@inject NavigationManager Nav
+
+<PageTitle>Risk Envanteri</PageTitle>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Risk Envanteri</h1>
+    <a href="/risk/new" class="btn btn-primary">➕ Risk Öner</a>
+</div>
+
+<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <select class="form-control" style="width:180px" @bind="_filterCat">
+            <option value="">Tüm Kategoriler</option>
+            @foreach (var c in _categories)
+            {
+                <option value="@c">@c</option>
+            }
+        </select>
+        <select class="form-control" style="width:180px" @bind="_filterStatus">
+            <option value="">Tüm Durumlar</option>
+            @foreach (var (v, l) in _statusOptions)
+            {
+                <option value="@v">@l</option>
+            }
+        </select>
+        <input class="form-control" style="flex:1;min-width:200px" placeholder="Ara…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+</div>
+
+<div class="card" style="padding:0">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Kod</th>
+                <th>Başlık</th>
+                <th>Kategori</th>
+                <th>Durum</th>
+                <th>Risk Skoru</th>
+                <th>Öneren</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var r in Filtered)
+            {
+                var initial = r.Evaluations.FirstOrDefault(e => e.EvalType == "initial");
+                <tr>
+                    <td><code>@r.Code</code></td>
+                    <td>@r.Title</td>
+                    <td><span class="tag">@r.Category</span></td>
+                    <td><span class="badge @StatusBadge(r.Status)">@StatusLabel(r.Status)</span></td>
+                    <td>
+                        @if (initial != null)
+                        {
+                            <span style="font-weight:600;color:@ConfigService.RiskLevelColor(initial.RiskLevel)">
+                                @initial.Score
+                            </span>
+                        }
+                    </td>
+                    <td>@(r.ProposedBy?.FullName ?? r.ProposerName ?? "—")</td>
+                    <td>
+                        <a href="/risk/@r.Id" class="btn btn-outline btn-sm">Detay</a>
+                    </td>
+                </tr>
+            }
+            @if (!Filtered.Any())
+            {
+                <tr><td colspan="7" class="empty-state">Kayıt bulunamadı.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<RiskManagement.Models.Risk> _risks = [];
+    private string[] _categories = [];
+    private string _filterCat = "", _filterStatus = "", _search = "";
+
+    private static readonly (string v, string l)[] _statusOptions =
+    [
+        ("proposed","Öneri"), ("under_review","İncelemede"), ("approved","İlk Değerlendirme"),
+        ("strategy_set","Strateji"), ("controlled","Kontrollü"),
+        ("residual_evaluated","Kalan Risk"), ("action_planned","Aksiyon"), ("rejected","Reddedildi")
+    ];
+
+    protected override void OnInitialized()
+    {
+        _risks = RiskSvc.GetAll();
+        _categories = CfgSvc.GetList("risk_categories");
+    }
+
+    private IEnumerable<RiskManagement.Models.Risk> Filtered => _risks
+        .Where(r => string.IsNullOrEmpty(_filterCat) || r.Category == _filterCat)
+        .Where(r => string.IsNullOrEmpty(_filterStatus) || r.Status == _filterStatus)
+        .Where(r => string.IsNullOrEmpty(_search) ||
+                    r.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    r.Code.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "proposed" => "Öneri", "under_review" => "İncelemede",
+        "approved" => "İlk Değerlendirme", "strategy_set" => "Strateji",
+        "controlled" => "Kontrollü", "residual_evaluated" => "Kalan Risk",
+        "action_planned" => "Aksiyon", "rejected" => "Reddedildi", _ => s
+    };
+
+    private static string StatusBadge(string s) => s switch
+    {
+        "proposed" => "badge-blue", "under_review" => "badge-yellow",
+        "approved" or "strategy_set" => "badge-orange",
+        "controlled" or "residual_evaluated" or "action_planned" => "badge-green",
+        "rejected" => "badge-red", _ => ""
+    };
+}

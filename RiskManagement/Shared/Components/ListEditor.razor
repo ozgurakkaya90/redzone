@@ -1,0 +1,50 @@
+<div class="card" style="margin-bottom:16px">
+    <div class="section-title">@Title</div>
+    <div style="display:flex;flex-direction:column;gap:4px;margin-bottom:10px">
+        @for (var i = 0; i < Items.Count; i++)
+        {
+            var idx = i;
+            <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e5e7eb;border-radius:6px;padding:6px 10px">
+                <span style="flex:1;font-size:13px">@Items[idx]</span>
+                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:11px"
+                        @onclick="() => Move(idx,-1)" disabled="@(idx==0)">↑</button>
+                <button class="btn btn-outline btn-sm" style="padding:2px 6px;font-size:11px"
+                        @onclick="() => Move(idx,1)" disabled="@(idx==Items.Count-1)">↓</button>
+                <button class="btn btn-danger btn-sm" style="padding:2px 6px;font-size:11px"
+                        @onclick="() => Remove(idx)">✕</button>
+            </div>
+        }
+    </div>
+    <div style="display:flex;gap:8px">
+        <input class="form-control" placeholder="Yeni ekle…" @bind="_input"
+               @onkeydown="HandleKey" />
+        <button class="btn btn-outline btn-sm" @onclick="Add">Ekle</button>
+        <button class="btn btn-primary btn-sm" @onclick="() => OnSave.InvokeAsync(Items)">Kaydet</button>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter, EditorRequired] public List<string> Items { get; set; } = [];
+    [Parameter] public EventCallback<List<string>> OnSave { get; set; }
+
+    private string _input = "";
+
+    private void Add()
+    {
+        var v = _input.Trim();
+        if (string.IsNullOrEmpty(v) || Items.Contains(v)) return;
+        Items.Add(v); _input = "";
+    }
+
+    private void Remove(int i) => Items.RemoveAt(i);
+
+    private void Move(int i, int dir)
+    {
+        var j = i + dir;
+        if (j < 0 || j >= Items.Count) return;
+        (Items[i], Items[j]) = (Items[j], Items[i]);
+    }
+
+    private void HandleKey(KeyboardEventArgs e) { if (e.Key == "Enter") Add(); }
+}

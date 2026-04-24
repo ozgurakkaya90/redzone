@@ -1,0 +1,92 @@
+@inject ConfigService CfgSvc
+@using System.Text.Json
+
+<div style="background:#f8fafc;padding:16px;border-radius:8px">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+        <div class="form-group">
+            <label class="form-label">Olasılık (P)</label>
+            <select class="form-control" @bind="_p">
+                <option value="0">Seçiniz…</option>
+                @foreach (var opt in _probability)
+                {
+                    <option value="@opt.Value">@opt.Label</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Maruziyet (E)</label>
+            <select class="form-control" @bind="_e">
+                <option value="0">Seçiniz…</option>
+                @foreach (var opt in _exposure)
+                {
+                    <option value="@opt.Value">@opt.Label</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Sonuç (C)</label>
+            <select class="form-control" @bind="_c">
+                <option value="0">Seçiniz…</option>
+                @foreach (var opt in _consequence)
+                {
+                    <option value="@opt.Value">@opt.Label</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (_p > 0 && _e > 0 && _c > 0)
+    {
+        var score = _p * _e * _c;
+        var level = ConfigService.CalculateRiskLevel(score);
+        <div style="background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:16px">
+            <div>
+                <div style="font-size:12px;color:#6b7280">Risk Skoru</div>
+                <div style="font-size:28px;font-weight:700;color:@ConfigService.RiskLevelColor(level)">@score.ToString("0.##")</div>
+            </div>
+            <div>
+                <div style="font-size:12px;color:#6b7280">Seviye</div>
+                <div style="font-weight:600;color:@ConfigService.RiskLevelColor(level)">@level</div>
+            </div>
+        </div>
+    }
+
+    <div class="form-group">
+        <label class="form-label">Notlar</label>
+        <textarea class="form-control" rows="2" @bind="_notes"></textarea>
+    </div>
+
+    <button class="btn btn-success btn-sm" @onclick="Submit" disabled="@(Loading || _p == 0 || _e == 0 || _c == 0)">
+        Kaydet
+    </button>
+</div>
+
+@code {
+    [Parameter] public string EvalType { get; set; } = "initial";
+    [Parameter] public EventCallback<EvalResult> OnSubmit { get; set; }
+    [Parameter] public bool Loading { get; set; }
+
+    private double _p, _e, _c;
+    private string _notes = "";
+    private FkOption[] _probability = [], _exposure = [], _consequence = [];
+
+    protected override void OnInitialized()
+    {
+        _probability  = CfgSvc.Get<FkOption[]>("fk_probability") ?? [];
+        _exposure     = CfgSvc.Get<FkOption[]>("fk_exposure")    ?? [];
+        _consequence  = CfgSvc.Get<FkOption[]>("fk_consequence") ?? [];
+    }
+
+    private async Task Submit()
+    {
+        await OnSubmit.InvokeAsync(new EvalResult(EvalType, _p, _e, _c, _notes));
+    }
+
+    private record FkOption
+    {
+        [System.Text.Json.Serialization.JsonPropertyName("value")]
+        public double Value { get; init; }
+        [System.Text.Json.Serialization.JsonPropertyName("label")]
+        public string Label { get; init; } = "";
+    }
+}

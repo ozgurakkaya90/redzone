@@ -1,0 +1,32 @@
+@using RiskManagement.Models
+
+<div>
+    <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px">@Label</div>
+    <div style="padding:12px 16px;border-radius:8px;background:@Bg;border:2px solid @Color;display:inline-block;min-width:120px;text-align:center">
+        <div style="font-size:32px;font-weight:700;color:@Color">@Eval.Score.ToString("0.##")</div>
+        <div style="font-size:13px;font-weight:600;color:@Color">@Eval.RiskLevel</div>
+    </div>
+    <div class="text-muted" style="margin-top:6px;font-size:12px">
+        P=@Eval.Probability × E=@Eval.Exposure × C=@Eval.Consequence<br />
+        @Eval.EvaluatedBy?.FullName — @Eval.EvaluatedAt.ToLocalTime().ToString("dd.MM.yyyy")
+    </div>
+    @if (!string.IsNullOrEmpty(Eval.Notes))
+    {
+        <div class="text-muted" style="margin-top:4px;font-style:italic">"@Eval.Notes"</div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Evaluation Eval { get; set; } = null!;
+    [Parameter] public string Label { get; set; } = "";
+
+    private string Color => ConfigService.RiskLevelColor(Eval.RiskLevel);
+    private string Bg => Eval.RiskLevel switch
+    {
+        "Çok Yüksek Risk" => "#fee2e2",
+        "Yüksek Risk"     => "#fee2e2",
+        "Önemli Risk"     => "#ffedd5",
+        "Orta Risk"       => "#fefce8",
+        _                 => "#f0fdf4",
+    };
+}

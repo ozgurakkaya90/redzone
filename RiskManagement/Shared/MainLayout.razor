@@ -1,0 +1,98 @@
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+
+<div class="app-shell">
+    <aside class="sidebar">
+        <div class="sidebar-logo">
+            <span class="logo-sub">Risk · Etik · Denetim</span>
+        </div>
+
+        <nav class="sidebar-nav">
+            <NavLink href="/dashboard" class="nav-item" Match="NavLinkMatch.All">🏠 Ana Panel</NavLink>
+
+            @if (IsActive("risk"))
+            {
+                <div class="nav-section">Risk Yönetimi</div>
+                <NavLink href="/risk/dashboard" class="nav-item">📊 Risk Paneli</NavLink>
+                <NavLink href="/risk" class="nav-item">🗂 Risk Envanteri</NavLink>
+                <NavLink href="/risk/matrix" class="nav-item">🛡️ Kontrol Matrisi</NavLink>
+                <NavLink href="/risk/new" class="nav-item">➕ Risk Öner</NavLink>
+            }
+
+            @if (IsActive("audit"))
+            {
+                <div class="nav-section">İç Denetim</div>
+                <NavLink href="/audit" class="nav-item">🔍 Denetim Paneli</NavLink>
+                <NavLink href="/audit/internal" class="nav-item">📁 İç Denetimler</NavLink>
+                @if (HasRole("auditor", "audit_manager", "admin"))
+                {
+                    <NavLink href="/audit/internal/new" class="nav-item">➕ Yeni Denetim</NavLink>
+                }
+                <NavLink href="/audit/findings" class="nav-item">📋 Bulgular</NavLink>
+                @if (HasRole("auditor", "admin"))
+                {
+                    <NavLink href="/audit/findings/new" class="nav-item">➕ Bulgu Gir</NavLink>
+                }
+            }
+
+            @if (IsActive("ethics"))
+            {
+                <div class="nav-section">Etik Yönetimi</div>
+                @if (HasRole("audit_manager", "ethics_board", "admin"))
+                {
+                    <NavLink href="/ethics" class="nav-item">⚖️ Etik Paneli</NavLink>
+                    <NavLink href="/ethics/reports" class="nav-item">🔒 Etik Bildirimler</NavLink>
+                }
+                @if (HasRole("auditor", "audit_manager", "admin"))
+                {
+                    <NavLink href="/ethics/reports/new" class="nav-item">➕ Etik Bildirim Oluştur</NavLink>
+                }
+            }
+
+            @if (HasRole("admin"))
+            {
+                <div class="nav-section">Yönetim</div>
+                <NavLink href="/admin/users" class="nav-item">👥 Kullanıcılar</NavLink>
+                <NavLink href="/admin/permissions" class="nav-item">🔐 Yetki Yönetimi</NavLink>
+                <NavLink href="/admin/ldap" class="nav-item">🏢 Active Directory</NavLink>
+                <NavLink href="/admin/config" class="nav-item">⚙️ Sistem Yapılandırması</NavLink>
+            }
+        </nav>
+
+        <div class="sidebar-footer">
+            <strong>@FullName</strong>
+            <div>@Department</div>
+            <div class="role-badge">@RoleLabel</div>
+            <a href="/logout" class="btn btn-outline btn-sm" style="margin-top:10px;width:100%;display:block;text-align:center;">Çıkış</a>
+        </div>
+    </aside>
+
+    <div class="main-content">
+        <div class="page-body">
+            @Body
+        </div>
+    </div>
+</div>
+
+@code {
+    private string FullName => HttpCtx.HttpContext?.User.FindFirst("full_name")?.Value ?? "";
+    private string Department => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Email)?.Value
+        ?? HttpCtx.HttpContext?.User.FindFirst("department")?.Value ?? "";
+    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+
+    private static readonly Dictionary<string, string> RoleLabels = new()
+    {
+        ["admin"] = "Yönetici", ["committee"] = "Risk Komitesi",
+        ["risk_owner"] = "Risk Sahibi", ["user"] = "Kullanıcı",
+        ["auditor"] = "Denetçi", ["audit_manager"] = "Denetim Müdürü",
+        ["finding_owner"] = "Bulgu Sahibi", ["ethics_board"] = "Etik Kurul",
+    };
+    private string RoleLabel => RoleLabels.GetValueOrDefault(Role, Role);
+
+    private bool HasRole(params string[] roles) => roles.Contains(Role);
+
+    // Tüm modüller aktif (ModuleContext Python versiyonundaki gibi konfigüre edilebilir)
+    private static bool IsActive(string _) => true;
+}

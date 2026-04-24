@@ -1,0 +1,181 @@
+@page "/audit/findings/{Id:int}"
+@attribute [Authorize]
+@inject AuditService AuditSvc
+@inject ConfigService CfgSvc
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+
+<PageTitle>Bulgu Detayı</PageTitle>
+
+@if (_finding == null) { <div class="spinner">Yükleniyor…</div> }
+else
+{
+    <div style="max-width:860px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
+            <div>
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">
+                    <code>@_finding.Code</code>
+                    <span class="badge @StatusBadge(_finding.Status)">@StatusLabel(_finding.Status)</span>
+                    @if (_finding.Severity != null) { <span class="badge @SevBadge(_finding.Severity)">@_finding.Severity</span> }
+                </div>
+                <h2>@_finding.Title</h2>
+                <div class="text-muted">Denetçi: @_finding.Auditor?.FullName • @_finding.CreatedAt.ToString("dd.MM.yyyy")</div>
+            </div>
+            <a href="/audit/findings" class="btn btn-outline btn-sm">← Bulgular</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-error">@_error</div> }
+        @if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
+
+        <div class="card">
+            <div class="section-title">Bulgu Bilgileri</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div><div class="form-label">Kategori</div><span class="tag">@(_finding.Category ?? "—")</span></div>
+                <div><div class="form-label">Denetim Dönemi</div><span>@(_finding.AuditPeriod ?? "—")</span></div>
+                <div><div class="form-label">Sorumlu</div><span>@(_finding.Owner?.FullName ?? "—")</span></div>
+                <div><div class="form-label">Vade</div>
+                    <span style="color:@(IsOverdue?"#dc2626":"inherit")">
+                        @(_finding.DueDate?.ToString("dd.MM.yyyy") ?? "—")
+                        @if (IsOverdue) { <span> ⚠️ Gecikmiş</span> }
+                    </span>
+                </div>
+            </div>
+            @if (!string.IsNullOrEmpty(_finding.Description))
+            {
+                <div style="margin-top:12px">
+                    <div class="form-label">Açıklama</div>
+                    <p style="font-size:14px;white-space:pre-wrap">@_finding.Description</p>
+                </div>
+            }
+        </div>
+
+        <!-- Kapanış Başvurusu -->
+        @if (_finding.Status == "open" && HasRole("finding_owner","auditor","admin"))
+        {
+            <div class="card">
+                <div class="section-title">Kapanış Başvurusu</div>
+                <div class="form-group">
+                    <label class="form-label">Kapanış Gerekçesi *</label>
+                    <textarea class="form-control" rows="3" @bind="_closureDesc"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kanıt / Ek Bilgi</label>
+                    <textarea class="form-control" rows="2" @bind="_closureEvidence"></textarea>
+                </div>
+                <button class="btn btn-primary btn-sm" @onclick="SubmitClosure" disabled="@_loading">
+                    Kapanış Başvurusu Yap
+                </button>
+            </div>
+        }
+
+        <!-- Kapanış İnceleme -->
+        @if (_finding.Status == "closure_requested" && HasRole("audit_manager","admin"))
+        {
+            var pending = _finding.ClosureRequests.FirstOrDefault(r => r.Status == "pending");
+            @if (pending != null)
+            {
+                <div class="card">
+                    <div class="section-title">Kapanış Başvurusu İnceleme</div>
+                    <p style="font-size:13px">@pending.Description</p>
+                    @if (!string.IsNullOrEmpty(pending.Evidence))
+                    {
+                        <p style="font-size:13px;color:#6b7280">Kanıt: @pending.Evidence</p>
+                    }
+                    <div class="form-group" style="margin-top:12px">
+                        <label class="form-label">İnceleme Notu</label>
+                        <textarea class="form-control" rows="2" @bind="_reviewNote"></textarea>
+                    </div>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-success btn-sm" @onclick='() => ReviewClosure(pending.Id, "approved")'>Onayla</button>
+                        <button class="btn btn-danger btn-sm" @onclick='() => ReviewClosure(pending.Id, "rejected")'>Reddet</button>
+                    </div>
+                </div>
+            }
+        }
+
+        <!-- Kapanış Geçmişi -->
+        @if (_finding.ClosureRequests.Any())
+        {
+            <div class="card">
+                <div class="section-title">Başvuru Geçmişi</div>
+                @foreach (var req in _finding.ClosureRequests.OrderByDescending(r => r.RequestedAt))
+                {
+                    <div style="padding:10px 0;border-bottom:1px solid #f3f4f6">
+                        <div style="display:flex;justify-content:space-between">
+                            <span style="font-size:13px">@req.Description</span>
+                            <span class="badge @ReqBadge(req.Status)">@ReqLabel(req.Status)</span>
+                        </div>
+                        <div class="text-muted">@req.RequestedBy?.FullName • @req.RequestedAt.ToString("dd.MM.yyyy")</div>
+                        @if (!string.IsNullOrEmpty(req.ReviewNotes))
+                        {
+                            <div style="font-size:12px;color:#6b7280;margin-top:4px">Not: @req.ReviewNotes</div>
+                        }
+                    </div>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private AuditFinding? _finding;
+    private bool _loading;
+    private string _error = "", _success = "";
+    private string _closureDesc = "", _closureEvidence = "", _reviewNote = "";
+
+    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private bool HasRole(params string[] roles) => roles.Contains(Role);
+    private bool IsOverdue => _finding?.Status != "closed" && _finding?.DueDate.HasValue == true
+        && _finding.DueDate < DateOnly.FromDateTime(DateTime.Now);
+
+    protected override void OnInitialized() => Load();
+
+    private void Load()
+    {
+        _finding = AuditSvc.GetFinding(Id);
+        if (_finding == null) Nav.NavigateTo("/audit/findings");
+    }
+
+    private void SubmitClosure()
+    {
+        if (string.IsNullOrWhiteSpace(_closureDesc)) { _error = "Gerekçe zorunludur."; return; }
+        _loading = true;
+        AuditSvc.SubmitClosureRequest(Id, _closureDesc, _closureEvidence, UserId);
+        _success = "Kapanış başvurusu yapıldı."; _closureDesc = ""; _closureEvidence = "";
+        Load(); _loading = false;
+    }
+
+    private void ReviewClosure(int reqId, string decision)
+    {
+        _loading = true;
+        AuditSvc.ReviewClosureRequest(Id, reqId, decision, _reviewNote, UserId);
+        _success = decision == "approved" ? "Bulgu kapatıldı." : "Başvuru reddedildi.";
+        _reviewNote = ""; Load(); _loading = false;
+    }
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "open" => "Açık", "closure_requested" => "Kapanış Bekleyen", "closed" => "Kapalı", _ => s
+    };
+    private static string StatusBadge(string s) => s switch
+    {
+        "open" => "badge-yellow", "closure_requested" => "badge-orange", "closed" => "badge-green", _ => ""
+    };
+    private static string SevBadge(string? s) => s switch
+    {
+        "Kritik" => "badge-red", "Yüksek" => "badge-orange", "Orta" => "badge-yellow", _ => "badge-blue"
+    };
+    private static string ReqLabel(string s) => s switch
+    {
+        "pending" => "Bekliyor", "approved" => "Onaylandı", "rejected" => "Reddedildi", _ => s
+    };
+    private static string ReqBadge(string s) => s switch
+    {
+        "pending" => "badge-yellow", "approved" => "badge-green", "rejected" => "badge-red", _ => ""
+    };
+}

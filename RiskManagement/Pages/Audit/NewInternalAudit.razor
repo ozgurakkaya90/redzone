@@ -1,0 +1,87 @@
+@page "/audit/internal/new"
+@attribute [Authorize(Roles = "auditor,audit_manager,admin")]
+@inject AuditService AuditSvc
+@inject ConfigService CfgSvc
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using System.Text.Json
+@using System.Text.Json.Serialization
+
+<PageTitle>Yeni İç Denetim</PageTitle>
+
+<div class="page-header"><h1>Yeni İç Denetim</h1></div>
+<div style="max-width:680px">
+    <div class="card">
+        @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-error" style="margin-bottom:16px">@_error</div> }
+
+        <div class="form-group">
+            <label class="form-label">Denetim Başlığı *</label>
+            <input class="form-control" @bind="_title" maxlength="200" placeholder="örn. 2026 Yılı Mali İşlemler Denetimi" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Denetim Türü *</label>
+            <select class="form-control" @bind="_auditType">
+                <option value="">— Seçiniz —</option>
+                @foreach (var t in _auditTypes)
+                {
+                    <option value="@t.Value">@t.Label</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Kapsam</label>
+            <textarea class="form-control" rows="3" @bind="_scope" placeholder="Denetimin kapsamını açıklayın."></textarea>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Denetim Dönemi *</label>
+            <input class="form-control" @bind="_period" placeholder="örn. 2026 Q1" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group">
+                <label class="form-label">Başlangıç Tarihi</label>
+                <input type="date" class="form-control" @bind="_startDate" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Bitiş Tarihi</label>
+                <input type="date" class="form-control" @bind="_endDate" />
+            </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:8px">
+            <button class="btn btn-primary" @onclick="Submit" disabled="@_loading">
+                @(_loading ? "Kaydediliyor…" : "Denetimi Oluştur")
+            </button>
+            <a href="/audit/internal" class="btn btn-outline">İptal</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _title = "", _auditType = "", _scope = "", _period = "";
+    private DateTime? _startDate, _endDate;
+    private AuditTypeOption[] _auditTypes = [];
+    private bool _loading;
+    private string _error = "";
+
+    protected override void OnInitialized()
+    {
+        _auditTypes = CfgSvc.Get<AuditTypeOption[]>("audit_types") ?? [];
+    }
+
+    private void Submit()
+    {
+        if (string.IsNullOrWhiteSpace(_title)) { _error = "Başlık zorunludur."; return; }
+        if (string.IsNullOrWhiteSpace(_period)) { _error = "Dönem zorunludur."; return; }
+        _loading = true;
+        var userId = int.TryParse(
+            HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+        var start = _startDate.HasValue ? DateOnly.FromDateTime(_startDate.Value) : (DateOnly?)null;
+        var end   = _endDate.HasValue   ? DateOnly.FromDateTime(_endDate.Value)   : (DateOnly?)null;
+        var audit = AuditSvc.CreateAudit(_title, _auditType, _scope, _period, start, end, userId);
+        Nav.NavigateTo($"/audit/internal/{audit.Id}");
+    }
+
+    private record AuditTypeOption(
+        [property: JsonPropertyName("value")] string Value,
+        [property: JsonPropertyName("label")] string Label);
+}

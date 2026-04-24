@@ -1,0 +1,120 @@
+@page "/admin/config"
+@attribute [Authorize(Roles = "admin")]
+@inject ConfigService CfgSvc
+@inject AppDbContext Db
+@using System.Text.Json
+
+<PageTitle>Sistem Yapılandırması</PageTitle>
+
+<div class="page-header"><h1>Sistem Yapılandırması</h1></div>
+
+@if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
+
+<!-- Sekmeler -->
+<div style="display:flex;gap:4px;border-bottom:2px solid #e5e7eb;margin-bottom:24px;flex-wrap:wrap">
+    @foreach (var (key, label) in _tabs)
+    {
+        <button style="padding:8px 16px;font-size:13px;font-weight:@(_tab==key?"700":"400");border:none;background:none;border-bottom:@(_tab==key?"3px solid #E1251B":"3px solid transparent");cursor:pointer;color:@(_tab==key?"#E1251B":"#374151")"
+                @onclick="() => _tab = key">@label</button>
+    }
+</div>
+
+@if (_tab == "theme")
+{
+    <div class="card">
+        <div class="section-title">Görsel Ayarlar</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group">
+                <label class="form-label">Birincil Renk</label>
+                <div style="display:flex;gap:10px;align-items:center">
+                    <input type="color" @bind="_primaryColor" style="width:48px;height:36px;border:none;cursor:pointer;border-radius:6px" />
+                    <input class="form-control" @bind="_primaryColor" style="width:120px;font-family:monospace" />
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">İkincil Renk</label>
+                <div style="display:flex;gap:10px;align-items:center">
+                    <input type="color" @bind="_secondaryColor" style="width:48px;height:36px;border:none;cursor:pointer;border-radius:6px" />
+                    <input class="form-control" @bind="_secondaryColor" style="width:120px;font-family:monospace" />
+                </div>
+            </div>
+        </div>
+        <button class="btn btn-primary btn-sm" @onclick="SaveTheme">Kaydet</button>
+    </div>
+}
+
+@if (_tab == "risk")
+{
+    <ListEditor Title="Risk Kategorileri"    Items="_riskCategories"   OnSave="SaveRiskCategories" />
+    <ListEditor Title="Sorumlu Birimler"     Items="_responsibleUnits" OnSave="SaveResponsibleUnits" />
+    <ListEditor Title="Risk Stratejileri"    Items="_riskStrategies"   OnSave="SaveRiskStrategies" />
+}
+
+@if (_tab == "controls")
+{
+    <ListEditor Title="Kontrol Türleri"    Items="_controlTypes"         OnSave="SaveControlTypes" />
+    <ListEditor Title="Kontrol Etkinliği"  Items="_controlEffectiveness" OnSave="SaveControlEffectiveness" />
+    <ListEditor Title="Kontrol Sıklıkları" Items="_controlFrequencies"   OnSave="SaveControlFrequencies" />
+}
+
+@if (_tab == "audit")
+{
+    <ListEditor Title="Bulgu Kategorileri"      Items="_auditCategories" OnSave="SaveAuditCategories" />
+    <ListEditor Title="Bulgu Şiddet Seviyeleri" Items="_auditSeverities" OnSave="SaveAuditSeverities" />
+}
+
+@if (_tab == "ethics")
+{
+    <ListEditor Title="Etik Bildirim Kategorileri" Items="_ethicsCategories" OnSave="SaveEthicsCategories" />
+}
+
+@code {
+    private string _tab = "theme";
+    private string _success = "";
+
+    private static readonly (string key, string label)[] _tabs =
+    [
+        ("theme","🎨 Görsel Ayarlar"), ("risk","🛡️ Risk Modülü"),
+        ("controls","🔒 Kontroller"), ("audit","🔍 Denetim Modülü"), ("ethics","⚖️ Etik Modülü")
+    ];
+
+    private string _primaryColor = "#E1251B", _secondaryColor = "#16a34a";
+    private List<string> _riskCategories = [], _responsibleUnits = [], _riskStrategies = [];
+    private List<string> _controlTypes = [], _controlEffectiveness = [], _controlFrequencies = [];
+    private List<string> _auditCategories = [], _auditSeverities = [], _ethicsCategories = [];
+
+    protected override void OnInitialized()
+    {
+        var theme = CfgSvc.Get<JsonElement>("site_theme");
+        _primaryColor   = theme.TryGetProperty("primary_color",   out var p) ? p.GetString()! : "#E1251B";
+        _secondaryColor = theme.TryGetProperty("secondary_color", out var s) ? s.GetString()! : "#16a34a";
+
+        _riskCategories      = [.. CfgSvc.GetList("risk_categories")];
+        _responsibleUnits    = [.. CfgSvc.GetList("responsible_units")];
+        _riskStrategies      = [.. CfgSvc.GetList("risk_strategies")];
+        _controlTypes        = [.. CfgSvc.GetList("control_types")];
+        _controlEffectiveness= [.. CfgSvc.GetList("control_effectiveness")];
+        _controlFrequencies  = [.. CfgSvc.GetList("control_frequencies")];
+        _auditCategories     = [.. CfgSvc.GetList("audit_categories")];
+        _auditSeverities     = [.. CfgSvc.GetList("audit_severities")];
+        _ethicsCategories    = [.. CfgSvc.GetList("ethics_categories")];
+    }
+
+    private void Save(string key, List<string> value) { CfgSvc.Set(key, value); _success = "Kaydedildi."; }
+
+    private Task SaveRiskCategories(List<string> v)    { Save("risk_categories",   v); return Task.CompletedTask; }
+    private Task SaveResponsibleUnits(List<string> v)  { Save("responsible_units", v); return Task.CompletedTask; }
+    private Task SaveRiskStrategies(List<string> v)    { Save("risk_strategies",   v); return Task.CompletedTask; }
+    private Task SaveControlTypes(List<string> v)        { Save("control_types",         v); return Task.CompletedTask; }
+    private Task SaveControlEffectiveness(List<string> v){ Save("control_effectiveness", v); return Task.CompletedTask; }
+    private Task SaveControlFrequencies(List<string> v)  { Save("control_frequencies",   v); return Task.CompletedTask; }
+    private Task SaveAuditCategories(List<string> v)   { Save("audit_categories",  v); return Task.CompletedTask; }
+    private Task SaveAuditSeverities(List<string> v)   { Save("audit_severities",  v); return Task.CompletedTask; }
+    private Task SaveEthicsCategories(List<string> v)  { Save("ethics_categories", v); return Task.CompletedTask; }
+
+    private void SaveTheme()
+    {
+        CfgSvc.Set("site_theme", new { primary_color=_primaryColor, secondary_color=_secondaryColor });
+        _success = "Tema kaydedildi.";
+    }
+}

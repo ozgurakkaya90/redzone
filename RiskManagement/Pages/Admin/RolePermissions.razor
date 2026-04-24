@@ -1,0 +1,73 @@
+@page "/admin/permissions"
+@attribute [Authorize(Roles = "admin")]
+@inject AppDbContext Db
+@using RiskManagement.Services
+
+<PageTitle>Yetki Yönetimi</PageTitle>
+
+<div class="page-header"><h1>Rol Yetki Yönetimi</h1></div>
+
+@if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
+
+<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
+    @foreach (var role in AuthService.AllRoles.Where(r => r != "admin"))
+    {
+        <button class="btn @(_selectedRole == role ? "btn-primary" : "btn-outline") btn-sm"
+                @onclick="() => SelectRole(role)">
+            @AuthService.RoleLabels.GetValueOrDefault(role, role)
+        </button>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(_selectedRole))
+{
+    <div class="card">
+        <div class="section-title">
+            @AuthService.RoleLabels.GetValueOrDefault(_selectedRole, _selectedRole) — Yetkiler
+        </div>
+        @foreach (var (perm, label) in AuthService.Permissions)
+        {
+            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f3f4f6">
+                <input type="checkbox" id="@perm" checked="@_currentPerms.Contains(perm)"
+                       @onchange="e => Toggle(perm, (bool)(e.Value ?? false))"
+                       style="width:16px;height:16px;cursor:pointer" />
+                <label for="@perm" style="cursor:pointer">
+                    <strong>@perm</strong> <span style="color:#6b7280">— @label</span>
+                </label>
+            </div>
+        }
+        <div style="margin-top:12px">
+            <button class="btn btn-primary btn-sm" @onclick="Save">Kaydet</button>
+        </div>
+    </div>
+}
+
+@code {
+    private string _selectedRole = "";
+    private HashSet<string> _currentPerms = [];
+    private string _success = "";
+
+    private void SelectRole(string role)
+    {
+        _selectedRole = role;
+        _currentPerms = [.. Db.RolePermissions
+            .Where(rp => rp.Role == role)
+            .Select(rp => rp.Permission)];
+    }
+
+    private void Toggle(string perm, bool checked_)
+    {
+        if (checked_) _currentPerms.Add(perm);
+        else _currentPerms.Remove(perm);
+    }
+
+    private void Save()
+    {
+        var existing = Db.RolePermissions.Where(rp => rp.Role == _selectedRole).ToList();
+        Db.RolePermissions.RemoveRange(existing);
+        foreach (var perm in _currentPerms)
+            Db.RolePermissions.Add(new RiskManagement.Models.RolePermission { Role = _selectedRole, Permission = perm });
+        Db.SaveChanges();
+        _success = "Yetkiler kaydedildi.";
+    }
+}

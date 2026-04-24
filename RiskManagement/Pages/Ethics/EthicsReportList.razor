@@ -1,0 +1,53 @@
+@page "/ethics/reports"
+@attribute [Authorize(Roles = "audit_manager,ethics_board,admin")]
+@inject EthicsService EthicsSvc
+
+<PageTitle>Etik Bildirimler</PageTitle>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Etik Bildirimler</h1>
+    <a href="/ethics/reports/new" class="btn btn-primary">➕ Yeni Bildirim</a>
+</div>
+
+<div class="card" style="padding:0">
+    <table class="table">
+        <thead>
+            <tr><th>Kod</th><th>Konu</th><th>Kategori</th><th>Durum</th><th>Tarih</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var r in _reports)
+            {
+                <tr>
+                    <td><code>@r.Code</code></td>
+                    <td>@r.Subject</td>
+                    <td><span class="tag">@(r.ReportCategory ?? "—")</span></td>
+                    <td><span class="badge @StatusBadge(r.Status)">@StatusLabel(r.Status)</span></td>
+                    <td>@r.SubmittedAt.ToString("dd.MM.yyyy")</td>
+                    <td><a href="/ethics/reports/@r.Id" class="btn btn-outline btn-sm">Detay</a></td>
+                </tr>
+            }
+            @if (!_reports.Any())
+            {
+                <tr><td colspan="6" class="empty-state">Kayıt bulunamadı.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<RiskManagement.Models.EthicsReport> _reports = [];
+    protected override void OnInitialized() => _reports = EthicsSvc.GetAll();
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "pending" => "Bekliyor", "irrelevant" => "İlgisiz",
+        "ethics_board_notified" => "Kurul Bildirimi", "disciplinary_referred" => "Disiplin",
+        "no_violation" => "İhlal Yok", _ => s
+    };
+    private static string StatusBadge(string s) => s switch
+    {
+        "pending" => "badge-yellow", "irrelevant" => "badge-gray",
+        "ethics_board_notified" => "badge-orange",
+        "disciplinary_referred" => "badge-red", "no_violation" => "badge-green", _ => ""
+    };
+}

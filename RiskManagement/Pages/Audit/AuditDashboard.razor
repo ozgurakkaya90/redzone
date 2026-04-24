@@ -1,0 +1,63 @@
+@page "/audit"
+@attribute [Authorize]
+@inject AuditService AuditSvc
+@inject ConfigService CfgSvc
+
+<PageTitle>Denetim Paneli</PageTitle>
+
+<div class="page-header"><h1>Denetim Paneli</h1></div>
+
+@if (_stats != null)
+{
+    <div class="dashboard-grid">
+        <div class="stat-card" style="border-left:4px solid #E1251B">
+            <div class="stat-label">Açık Bulgular</div>
+            <div class="stat-value">@_stats.Open</div>
+            <div class="stat-sub"><span class="badge badge-red">@_stats.Overdue gecikmiş</span></div>
+        </div>
+        <div class="stat-card" style="border-left:4px solid #f59e0b">
+            <div class="stat-label">Kapanış Bekleyen</div>
+            <div class="stat-value">@_stats.ClosureRequested</div>
+        </div>
+        <div class="stat-card" style="border-left:4px solid #16a34a">
+            <div class="stat-label">Kapalı Bulgular</div>
+            <div class="stat-value">@_stats.Closed</div>
+            <div class="stat-sub">Toplam @_stats.Total</div>
+        </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+        <div class="card">
+            <div class="section-title">Şiddete Göre Dağılım</div>
+            @foreach (var (sev, count) in _stats.BySeverity.OrderByDescending(x => x.Value))
+            {
+                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6">
+                    <span>@sev</span><span class="badge">@count</span>
+                </div>
+            }
+        </div>
+        <div class="card">
+            <div class="section-title">Kategoriye Göre Dağılım</div>
+            @foreach (var (cat, count) in _stats.ByCategory.OrderByDescending(x => x.Value))
+            {
+                <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid #f3f4f6">
+                    <span>@cat</span><span class="badge">@count</span>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div style="display:flex;gap:12px;margin-top:20px">
+        <a href="/audit/internal" class="btn btn-outline">📁 İç Denetimler</a>
+        <a href="/audit/findings" class="btn btn-outline">📋 Tüm Bulgular</a>
+    </div>
+}
+
+@code {
+    private AuditDashboardStats? _stats;
+
+    protected override void OnInitialized()
+    {
+        _stats = AuditSvc.GetDashboard(CfgSvc.GetList("audit_severities"));
+    }
+}

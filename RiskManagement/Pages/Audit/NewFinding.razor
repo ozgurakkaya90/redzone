@@ -1,0 +1,80 @@
+@page "/audit/findings/new"
+@attribute [Authorize(Roles = "auditor,admin")]
+@inject AuditService AuditSvc
+@inject ConfigService CfgSvc
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+
+<PageTitle>Yeni Bulgu</PageTitle>
+
+<div class="page-header"><h1>Bulgu Gir</h1></div>
+<div style="max-width:680px">
+    <div class="card">
+        @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-error" style="margin-bottom:16px">@_error</div> }
+
+        <div class="form-group">
+            <label class="form-label">Başlık *</label>
+            <input class="form-control" @bind="_title" maxlength="200" />
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group">
+                <label class="form-label">Kategori</label>
+                <select class="form-control" @bind="_category">
+                    <option value="">— Seçiniz —</option>
+                    @foreach (var c in _categories) { <option value="@c">@c</option> }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Şiddet</label>
+                <select class="form-control" @bind="_severity">
+                    <option value="">— Seçiniz —</option>
+                    @foreach (var s in _severities) { <option value="@s">@s</option> }
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Denetim Dönemi</label>
+            <input class="form-control" @bind="_period" placeholder="örn. 2026 Q1" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Vade Tarihi</label>
+            <input type="date" class="form-control" @bind="_dueDate" />
+        </div>
+        <div class="form-group">
+            <label class="form-label">Açıklama</label>
+            <textarea class="form-control" rows="4" @bind="_description"></textarea>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:8px">
+            <button class="btn btn-primary" @onclick="Submit" disabled="@_loading">
+                @(_loading ? "Kaydediliyor…" : "Kaydet")
+            </button>
+            <a href="/audit/findings" class="btn btn-outline">İptal</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _title = "", _category = "", _severity = "", _period = "", _description = "";
+    private DateTime? _dueDate;
+    private string[] _categories = [], _severities = [];
+    private bool _loading;
+    private string _error = "";
+
+    protected override void OnInitialized()
+    {
+        _categories = CfgSvc.GetList("audit_categories");
+        _severities = CfgSvc.GetList("audit_severities");
+    }
+
+    private void Submit()
+    {
+        if (string.IsNullOrWhiteSpace(_title)) { _error = "Başlık zorunludur."; return; }
+        _loading = true;
+        var userId = int.TryParse(
+            HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+        var due = _dueDate.HasValue ? DateOnly.FromDateTime(_dueDate.Value) : (DateOnly?)null;
+        var f = AuditSvc.CreateFinding(_title, _description, _category, _severity, _period, userId, null, null, due);
+        Nav.NavigateTo($"/audit/findings/{f.Id}");
+    }
+}

@@ -1,0 +1,103 @@
+@page "/audit/findings"
+@attribute [Authorize]
+@inject AuditService AuditSvc
+@inject ConfigService CfgSvc
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+
+<PageTitle>Bulgular</PageTitle>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Denetim Bulguları</h1>
+    @if (HasRole("auditor","admin"))
+    {
+        <a href="/audit/findings/new" class="btn btn-primary">➕ Bulgu Gir</a>
+    }
+</div>
+
+<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <select class="form-control" style="width:160px" @bind="_filterCat">
+            <option value="">Tüm Kategoriler</option>
+            @foreach (var c in _categories) { <option value="@c">@c</option> }
+        </select>
+        <select class="form-control" style="width:140px" @bind="_filterSev">
+            <option value="">Tüm Şiddetler</option>
+            @foreach (var s in _severities) { <option value="@s">@s</option> }
+        </select>
+        <select class="form-control" style="width:160px" @bind="_filterStatus">
+            <option value="">Tüm Durumlar</option>
+            <option value="open">Açık</option>
+            <option value="closure_requested">Kapanış Bekleyen</option>
+            <option value="closed">Kapalı</option>
+        </select>
+    </div>
+</div>
+
+<div class="card" style="padding:0">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Kod</th><th>Başlık</th><th>Kategori</th>
+                <th>Şiddet</th><th>Durum</th><th>Vade</th><th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var f in Filtered)
+            {
+                var overdue = f.Status != "closed" && f.DueDate.HasValue && f.DueDate < DateOnly.FromDateTime(DateTime.Now);
+                <tr>
+                    <td><code>@f.Code</code></td>
+                    <td>@f.Title</td>
+                    <td><span class="tag">@f.Category</span></td>
+                    <td><span class="badge @SevBadge(f.Severity)">@f.Severity</span></td>
+                    <td><span class="badge @StatusBadge(f.Status)">@StatusLabel(f.Status)</span></td>
+                    <td style="color:@(overdue?"#dc2626":"inherit")">
+                        @(f.DueDate?.ToString("dd.MM.yyyy") ?? "—")
+                        @if (overdue) { <span style="font-size:11px"> ⚠️</span> }
+                    </td>
+                    <td><a href="/audit/findings/@f.Id" class="btn btn-outline btn-sm">Detay</a></td>
+                </tr>
+            }
+            @if (!Filtered.Any())
+            {
+                <tr><td colspan="7" class="empty-state">Kayıt bulunamadı.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<RiskManagement.Models.AuditFinding> _findings = [];
+    private string[] _categories = [], _severities = [];
+    private string _filterCat = "", _filterSev = "", _filterStatus = "";
+
+    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private bool HasRole(params string[] roles) => roles.Contains(Role);
+
+    protected override void OnInitialized()
+    {
+        _findings = AuditSvc.GetFindings();
+        _categories = CfgSvc.GetList("audit_categories");
+        _severities = CfgSvc.GetList("audit_severities");
+    }
+
+    private IEnumerable<RiskManagement.Models.AuditFinding> Filtered => _findings
+        .Where(f => string.IsNullOrEmpty(_filterCat) || f.Category == _filterCat)
+        .Where(f => string.IsNullOrEmpty(_filterSev) || f.Severity == _filterSev)
+        .Where(f => string.IsNullOrEmpty(_filterStatus) || f.Status == _filterStatus);
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "open" => "Açık", "closure_requested" => "Kapanış Bekleyen", "closed" => "Kapalı", _ => s
+    };
+    private static string StatusBadge(string s) => s switch
+    {
+        "open" => "badge-yellow", "closure_requested" => "badge-orange", "closed" => "badge-green", _ => ""
+    };
+    private static string SevBadge(string? s) => s switch
+    {
+        "Kritik" => "badge-red", "Yüksek" => "badge-orange",
+        "Orta" => "badge-yellow", "Düşük" => "badge-blue", _ => ""
+    };
+}

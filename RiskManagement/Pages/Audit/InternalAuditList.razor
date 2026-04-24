@@ -1,0 +1,58 @@
+@page "/audit/internal"
+@attribute [Authorize]
+@inject AuditService AuditSvc
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+
+<PageTitle>İç Denetimler</PageTitle>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>İç Denetimler</h1>
+    @if (HasRole("auditor","audit_manager","admin"))
+    {
+        <a href="/audit/internal/new" class="btn btn-primary">➕ Yeni Denetim</a>
+    }
+</div>
+
+<div class="card" style="padding:0">
+    <table class="table">
+        <thead>
+            <tr><th>Kod</th><th>Başlık</th><th>Tür</th><th>Dönem</th><th>Durum</th><th>Bulgu</th><th></th></tr>
+        </thead>
+        <tbody>
+            @foreach (var a in _audits)
+            {
+                <tr>
+                    <td><code>@a.Code</code></td>
+                    <td>@a.Title</td>
+                    <td><span class="tag">@(a.AuditType ?? "—")</span></td>
+                    <td>@a.Period</td>
+                    <td><span class="badge @StatusBadge(a.Status)">@StatusLabel(a.Status)</span></td>
+                    <td>@a.Findings.Count</td>
+                    <td><a href="/audit/internal/@a.Id" class="btn btn-outline btn-sm">Detay</a></td>
+                </tr>
+            }
+            @if (!_audits.Any())
+            {
+                <tr><td colspan="7" class="empty-state">Kayıt bulunamadı.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    private List<RiskManagement.Models.InternalAudit> _audits = [];
+    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private bool HasRole(params string[] roles) => roles.Contains(Role);
+
+    protected override void OnInitialized() => _audits = AuditSvc.GetAudits();
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "planned" => "Planlandı", "in_progress" => "Devam Ediyor", "completed" => "Tamamlandı", _ => s
+    };
+    private static string StatusBadge(string s) => s switch
+    {
+        "planned" => "badge-blue", "in_progress" => "badge-yellow", "completed" => "badge-green", _ => ""
+    };
+}

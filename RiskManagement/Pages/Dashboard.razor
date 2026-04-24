@@ -1,0 +1,128 @@
+@page "/dashboard"
+@attribute [Authorize]
+@inject RiskService RiskSvc
+@inject AuditService AuditSvc
+@inject ConfigService CfgSvc
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+
+<PageTitle>Ana Panel</PageTitle>
+
+<div class="page-header"><h1>Ana Panel</h1></div>
+
+<div class="dashboard-grid">
+    @if (_riskStats != null)
+    {
+        <div class="stat-card" style="border-left:4px solid #E1251B">
+            <div class="stat-label">Toplam Risk</div>
+            <div class="stat-value">@_riskStats.Total</div>
+            <div class="stat-sub">
+                <span class="badge badge-yellow">@_riskStats.UnderReview inceleme</span>
+                <span class="badge badge-orange" style="margin-left:4px">@_riskStats.HighRisk yüksek risk</span>
+            </div>
+        </div>
+    }
+
+    @if (_auditStats != null)
+    {
+        <div class="stat-card" style="border-left:4px solid #2563eb">
+            <div class="stat-label">Denetim Bulguları</div>
+            <div class="stat-value">@_auditStats.Open</div>
+            <div class="stat-sub">
+                <span class="badge badge-red">@_auditStats.Overdue gecikmiş</span>
+                <span class="badge badge-yellow" style="margin-left:4px">@_auditStats.ClosureRequested kapanış bekleyen</span>
+            </div>
+        </div>
+
+        <div class="stat-card" style="border-left:4px solid #16a34a">
+            <div class="stat-label">Kapalı Bulgular</div>
+            <div class="stat-value">@_auditStats.Closed</div>
+            <div class="stat-sub">Toplam @_auditStats.Total bulguda</div>
+        </div>
+    }
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+    <div class="card">
+        <div class="section-title">Risk Durumu Dağılımı</div>
+        @if (_statusCounts != null)
+        {
+            <table class="table">
+                <tbody>
+                    @foreach (var (status, count) in _statusCounts)
+                    {
+                        <tr>
+                            <td>@StatusLabel(status)</td>
+                            <td><span class="badge">@count</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    <div class="card">
+        <div class="section-title">Risk Kategorisi Dağılımı</div>
+        @if (_catCounts != null)
+        {
+            <table class="table">
+                <tbody>
+                    @foreach (var (cat, count) in _catCounts.OrderByDescending(x => x.Value))
+                    {
+                        <tr>
+                            <td>@cat</td>
+                            <td><span class="badge">@count</span></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+</div>
+
+@code {
+    private DashboardRiskStats? _riskStats;
+    private AuditDashboardStats? _auditStats;
+    private Dictionary<string, int>? _statusCounts;
+    private Dictionary<string, int>? _catCounts;
+
+    protected override void OnInitialized()
+    {
+        var risks = RiskSvc.GetAll();
+        _riskStats = new DashboardRiskStats
+        {
+            Total = risks.Count,
+            UnderReview = risks.Count(r => r.Status == "under_review"),
+            HighRisk = risks.Count(r => r.Evaluations.Any(e =>
+                e.EvalType == "initial" && e.Score >= 200)),
+        };
+        _statusCounts = risks.GroupBy(r => r.Status)
+            .ToDictionary(g => g.Key, g => g.Count());
+        _catCounts = risks.Where(r => r.Category != null)
+            .GroupBy(r => r.Category!)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var severities = CfgSvc.GetList("audit_severities");
+        _auditStats = AuditSvc.GetDashboard(severities);
+    }
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "proposed"           => "Öneri",
+        "under_review"       => "İncelemede",
+        "approved"           => "İlk Değerlendirme",
+        "strategy_set"       => "Strateji Belirlendi",
+        "controlled"         => "Kontrollü",
+        "residual_evaluated" => "Kalan Risk",
+        "action_planned"     => "Aksiyon Planı",
+        "rejected"           => "Reddedildi",
+        _ => s
+    };
+
+    private record DashboardRiskStats
+    {
+        public int Total { get; init; }
+        public int UnderReview { get; init; }
+        public int HighRisk { get; init; }
+    }
+}
