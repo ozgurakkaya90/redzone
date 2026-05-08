@@ -1,63 +1,118 @@
 @inject ConfigService CfgSvc
-@using System.Text.Json
+@inject IRiskCalculator RiskCalc
+@using RiskManagement.Models
 
-<div style="background:#f8fafc;padding:16px;border-radius:8px">
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
-        <div class="form-group">
-            <label class="form-label">Olasılık (P)</label>
-            <select class="form-control" @bind="_p">
-                <option value="0">Seçiniz…</option>
-                @foreach (var opt in _probability)
-                {
-                    <option value="@opt.Value">@opt.Label</option>
-                }
-            </select>
+<div>
+    <!-- Olasılık -->
+    <div class="fk-section">
+        <div class="fk-section-title">
+            <span class="fk-section-label">P — Olasılık</span>
+            <span class="fk-section-hint">Bu olayın gerçekleşme ihtimali nedir?</span>
         </div>
-        <div class="form-group">
-            <label class="form-label">Maruziyet (E)</label>
-            <select class="form-control" @bind="_e">
-                <option value="0">Seçiniz…</option>
-                @foreach (var opt in _exposure)
-                {
-                    <option value="@opt.Value">@opt.Label</option>
-                }
-            </select>
-        </div>
-        <div class="form-group">
-            <label class="form-label">Sonuç (C)</label>
-            <select class="form-control" @bind="_c">
-                <option value="0">Seçiniz…</option>
-                @foreach (var opt in _consequence)
-                {
-                    <option value="@opt.Value">@opt.Label</option>
-                }
-            </select>
+        <div class="fk-options">
+            @foreach (var opt in _probability)
+            {
+                var v = opt.Value;
+                var sel = Math.Abs(_p - v) < 0.001 && _p > 0;
+                <button type="button" class="fk-opt @(sel ? "selected" : "")" @onclick="() => _p = v">
+                    <span class="fk-opt-val">@opt.Value.ToString("0.##")</span>
+                    <span class="fk-opt-body">
+                        <span class="fk-opt-label">@opt.Label</span>
+                        @if (!string.IsNullOrEmpty(opt.Hint))
+                        { <span class="fk-opt-hint">@opt.Hint</span> }
+                    </span>
+                    @if (sel) { <span class="fk-opt-check">✓</span> }
+                </button>
+            }
         </div>
     </div>
 
+    <!-- Maruziyet -->
+    <div class="fk-section">
+        <div class="fk-section-title">
+            <span class="fk-section-label">E — Maruziyet</span>
+            <span class="fk-section-hint">Tehlikeye ne sıklıkla maruz kalınıyor?</span>
+        </div>
+        <div class="fk-options">
+            @foreach (var opt in _exposure)
+            {
+                var v = opt.Value;
+                var sel = Math.Abs(_e - v) < 0.001 && _e > 0;
+                <button type="button" class="fk-opt @(sel ? "selected" : "")" @onclick="() => _e = v">
+                    <span class="fk-opt-val">@opt.Value.ToString("0.##")</span>
+                    <span class="fk-opt-body">
+                        <span class="fk-opt-label">@opt.Label</span>
+                        @if (!string.IsNullOrEmpty(opt.Hint))
+                        { <span class="fk-opt-hint">@opt.Hint</span> }
+                    </span>
+                    @if (sel) { <span class="fk-opt-check">✓</span> }
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Sonuç -->
+    <div class="fk-section">
+        <div class="fk-section-title">
+            <span class="fk-section-label">C — Sonuç</span>
+            <span class="fk-section-hint">En kötü durumda ne olabilir?</span>
+        </div>
+        <div class="fk-options">
+            @foreach (var opt in _consequence)
+            {
+                var v = opt.Value;
+                var sel = Math.Abs(_c - v) < 0.001 && _c > 0;
+                <button type="button" class="fk-opt @(sel ? "selected" : "")" @onclick="() => _c = v">
+                    <span class="fk-opt-val">@opt.Value.ToString("0.##")</span>
+                    <span class="fk-opt-body">
+                        <span class="fk-opt-label">@opt.Label</span>
+                        @if (!string.IsNullOrEmpty(opt.Hint))
+                        { <span class="fk-opt-hint">@opt.Hint</span> }
+                    </span>
+                    @if (sel) { <span class="fk-opt-check">✓</span> }
+                </button>
+            }
+        </div>
+    </div>
+
+    <!-- Canlı skor -->
     @if (_p > 0 && _e > 0 && _c > 0)
     {
-        var score = _p * _e * _c;
-        var level = ConfigService.CalculateRiskLevel(score);
-        <div style="background:#fff;border-radius:8px;padding:12px;margin-bottom:12px;display:flex;align-items:center;gap:16px">
+        var score = Math.Round(_p * _e * _c, 2);
+        var level = RiskCalc.CalculateRiskLevel(score);
+        var color = RiskCalc.GetRiskLevelColor(level);
+        <div class="fk-score-bar">
             <div>
-                <div style="font-size:12px;color:#6b7280">Risk Skoru</div>
-                <div style="font-size:28px;font-weight:700;color:@ConfigService.RiskLevelColor(level)">@score.ToString("0.##")</div>
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:2px">Risk Skoru = P × E × C</div>
+                <div style="font-size:13px;color:var(--text-2)">
+                    @_p.ToString("0.##") × @_e.ToString("0.##") × @_c.ToString("0.##") =
+                    <strong style="font-size:24px;color:@color;margin-left:4px">@score.ToString("0.##")</strong>
+                </div>
             </div>
-            <div>
-                <div style="font-size:12px;color:#6b7280">Seviye</div>
-                <div style="font-weight:600;color:@ConfigService.RiskLevelColor(level)">@level</div>
+            <div style="text-align:right">
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">Seviye</div>
+                <span style="display:inline-block;padding:4px 14px;border-radius:20px;background:@(color+"20");color:@color;font-weight:700;font-size:13px;border:1.5px solid @(color+"50")">
+                    @level
+                </span>
             </div>
+        </div>
+    }
+    else
+    {
+        <div style="background:var(--gray-50);border:1px dashed var(--gray-300);border-radius:8px;padding:12px 16px;font-size:13px;color:var(--text-3);margin-bottom:16px">
+            Üç parametreyi de seçtikten sonra risk skoru otomatik hesaplanır.
         </div>
     }
 
     <div class="form-group">
-        <label class="form-label">Notlar</label>
-        <textarea class="form-control" rows="2" @bind="_notes"></textarea>
+        <label class="form-label">@(EvalType == "residual" ? "Kontroller uygulandıktan sonraki durum" : "Değerlendirici Notu")</label>
+        <textarea class="form-control" rows="2" @bind="_notes"
+                  placeholder="@(EvalType == "residual" ? "Mevcut kontroller sonrası kalan risk durumunu açıklayın…" : "Opsiyonel: Değerlendirmeye ilişkin notlarınız…")"></textarea>
     </div>
 
-    <button class="btn btn-success btn-sm" @onclick="Submit" disabled="@(Loading || _p == 0 || _e == 0 || _c == 0)">
-        Kaydet
+    <button class="btn btn-success btn-sm" @onclick="Submit"
+            disabled="@(Loading || _p == 0 || _e == 0 || _c == 0)">
+        @(Loading ? "Kaydediliyor…" : "Değerlendirmeyi Kaydet")
     </button>
 </div>
 
@@ -68,25 +123,15 @@
 
     private double _p, _e, _c;
     private string _notes = "";
-    private FkOption[] _probability = [], _exposure = [], _consequence = [];
+    private ScoredOption[] _probability = [], _exposure = [], _consequence = [];
 
     protected override void OnInitialized()
     {
-        _probability  = CfgSvc.Get<FkOption[]>("fk_probability") ?? [];
-        _exposure     = CfgSvc.Get<FkOption[]>("fk_exposure")    ?? [];
-        _consequence  = CfgSvc.Get<FkOption[]>("fk_consequence") ?? [];
+        _probability = CfgSvc.Get<ScoredOption[]>("fk_probability") ?? [];
+        _exposure    = CfgSvc.Get<ScoredOption[]>("fk_exposure")    ?? [];
+        _consequence = CfgSvc.Get<ScoredOption[]>("fk_consequence") ?? [];
     }
 
     private async Task Submit()
-    {
-        await OnSubmit.InvokeAsync(new EvalResult(EvalType, _p, _e, _c, _notes));
-    }
-
-    private record FkOption
-    {
-        [System.Text.Json.Serialization.JsonPropertyName("value")]
-        public double Value { get; init; }
-        [System.Text.Json.Serialization.JsonPropertyName("label")]
-        public string Label { get; init; } = "";
-    }
+        => await OnSubmit.InvokeAsync(new EvalResult(EvalType, _p, _e, _c, _notes));
 }

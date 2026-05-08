@@ -1,0 +1,8 @@
+**/.DS_Store
+**/._*
+**/bin/
+**/obj/
+**/*.db
+**/*.db-shm
+**/*.db-wal
+deploy/

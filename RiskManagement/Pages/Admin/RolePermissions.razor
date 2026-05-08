@@ -1,73 +1,299 @@
 @page "/admin/permissions"
-@attribute [Authorize(Roles = "admin")]
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
 @inject AppDbContext Db
 @using RiskManagement.Services
 
 <PageTitle>Yetki Yönetimi</PageTitle>
 
-<div class="page-header"><h1>Rol Yetki Yönetimi</h1></div>
+<style>
+    .perm-matrix { border-collapse: collapse; width: 100%; font-size: 13px; }
+    .perm-matrix th { padding: 0; }
+    .perm-matrix td { padding: 0; vertical-align: middle; }
 
-@if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
-
-<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:20px">
-    @foreach (var role in AuthService.AllRoles.Where(r => r != "admin"))
-    {
-        <button class="btn @(_selectedRole == role ? "btn-primary" : "btn-outline") btn-sm"
-                @onclick="() => SelectRole(role)">
-            @AuthService.RoleLabels.GetValueOrDefault(role, role)
-        </button>
+    .role-col-head {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        padding: 12px 8px;
+        font-size: 11px;
+        font-weight: 700;
+        color: var(--text-1);
+        white-space: nowrap;
+        text-align: left;
+        height: 100px;
+        letter-spacing: .3px;
     }
+
+    .group-header-row td {
+        padding: 12px 16px;
+        font-weight: 700;
+        font-size: 12px;
+        letter-spacing: .5px;
+        text-transform: uppercase;
+        border-top: 2px solid;
+    }
+
+    .perm-row:hover { background: rgba(0,0,0,.025); }
+
+    .perm-label-cell {
+        padding: 9px 16px 9px 28px;
+        border-bottom: 1px solid var(--gray-100);
+        min-width: 260px;
+    }
+
+    .level-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 7px;
+        border-radius: 10px;
+        letter-spacing: .3px;
+        text-transform: uppercase;
+        margin-right: 6px;
+        border: 1px solid;
+    }
+
+    .perm-check-cell {
+        text-align: center;
+        border-bottom: 1px solid var(--gray-100);
+        border-left: 1px solid var(--gray-100);
+        width: 56px;
+        min-width: 56px;
+    }
+
+    .toggle-wrap { display: flex; justify-content: center; align-items: center; height: 100%; padding: 6px 0; }
+
+    .toggle-input { display: none; }
+    .toggle-track {
+        width: 34px; height: 18px;
+        background: #d1d5db;
+        border-radius: 9px;
+        cursor: pointer;
+        position: relative;
+        transition: background .2s;
+        flex-shrink: 0;
+    }
+    .toggle-track::after {
+        content: '';
+        position: absolute;
+        top: 2px; left: 2px;
+        width: 14px; height: 14px;
+        background: #fff;
+        border-radius: 50%;
+        transition: left .2s;
+        box-shadow: 0 1px 3px rgba(0,0,0,.3);
+    }
+    .toggle-input:checked + .toggle-track { background: #16a34a; }
+    .toggle-input:checked + .toggle-track::after { left: 18px; }
+
+    .admin-cell {
+        text-align: center;
+        border-bottom: 1px solid var(--gray-100);
+        border-left: 1px solid var(--gray-100);
+        width: 56px;
+        color: #16a34a;
+        font-size: 16px;
+    }
+
+    .sticky-save {
+        position: sticky;
+        bottom: 0;
+        background: var(--surface);
+        border-top: 1px solid var(--border);
+        padding: 14px 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        z-index: 10;
+    }
+</style>
+
+<div class="page-header">
+    <h1 class="page-title">🔐 Yetki Yönetimi</h1>
+    <p class="page-subtitle">Rol bazlı erişim kontrolü — Okuma · Yazma · Düzenleme katmanları</p>
 </div>
 
-@if (!string.IsNullOrEmpty(_selectedRole))
+<!-- Legend -->
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
+    @foreach (var badge in _levelBadges)
+    {
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:5px 12px;background:@badge.Bg;border:1px solid @badge.Border;border-radius:20px;font-weight:600;color:@badge.Color">
+            @badge.Icon @badge.Label
+        </span>
+    }
+    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:5px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;font-weight:600;color:#15803d">
+        ✦ Yönetici — tüm yetkiler sabit
+    </span>
+</div>
+
+@if (_saved)
 {
-    <div class="card">
-        <div class="section-title">
-            @AuthService.RoleLabels.GetValueOrDefault(_selectedRole, _selectedRole) — Yetkiler
-        </div>
-        @foreach (var (perm, label) in AuthService.Permissions)
-        {
-            <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid #f3f4f6">
-                <input type="checkbox" id="@perm" checked="@_currentPerms.Contains(perm)"
-                       @onchange="e => Toggle(perm, (bool)(e.Value ?? false))"
-                       style="width:16px;height:16px;cursor:pointer" />
-                <label for="@perm" style="cursor:pointer">
-                    <strong>@perm</strong> <span style="color:#6b7280">— @label</span>
-                </label>
-            </div>
-        }
-        <div style="margin-top:12px">
-            <button class="btn btn-primary btn-sm" @onclick="Save">Kaydet</button>
-        </div>
+    <div class="alert alert-success" style="margin-bottom:16px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:18px">✅</span> Yetki matrisi başarıyla kaydedildi.
     </div>
 }
 
-@code {
-    private string _selectedRole = "";
-    private HashSet<string> _currentPerms = [];
-    private string _success = "";
+<div class="card" style="padding:0;overflow:hidden;overflow-x:auto">
+    <table class="perm-matrix">
+        <thead>
+            <tr style="border-bottom:2px solid var(--border)">
+                <!-- Permission column header -->
+                <th style="padding:16px 16px;text-align:left;background:var(--gray-50);min-width:260px;border-right:2px solid var(--border)">
+                    <span style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">
+                        İzin / Kaynak
+                    </span>
+                </th>
+                <!-- Role column headers -->
+                @foreach (var role in _roles)
+                {
+                    var isAdmin = role == "admin";
+                    <th style="background:@(isAdmin ? "#f0fdf4" : "var(--gray-50)");border-left:1px solid var(--border);@(isAdmin ? "border-left:2px solid #bbf7d0;" : "")">
+                        <div class="role-col-head" style="@(isAdmin ? "color:#15803d" : "")">
+                            @AuthService.RoleLabels.GetValueOrDefault(role, role)
+                            @if (isAdmin) { <span style="font-size:9px;opacity:.7"> ✦</span> }
+                        </div>
+                    </th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var group in AuthService.PermGroups)
+            {
+                <!-- Group header -->
+                <tr class="group-header-row">
+                    <td colspan="@(_roles.Length + 1)"
+                        style="background:@group.Bg;color:@group.Color;border-color:@group.Color">
+                        @group.Icon &nbsp;@group.Name
+                    </td>
+                </tr>
 
-    private void SelectRole(string role)
+                @foreach (var item in group.Items)
+                {
+                    var badgeInfo = _levelBadges.FirstOrDefault(b => b.Key == item.Level) ?? _levelBadges[0];
+                    <tr class="perm-row">
+                        <!-- Permission label -->
+                        <td class="perm-label-cell">
+                            <div style="display:flex;align-items:center;gap:0">
+                                <span class="level-badge"
+                                      style="background:@badgeInfo.Bg;color:@badgeInfo.Color;border-color:@badgeInfo.Border">
+                                    @badgeInfo.Icon @item.Level
+                                </span>
+                                <span style="color:var(--text-2);font-size:12px">@item.Description</span>
+                            </div>
+                        </td>
+
+                        @foreach (var role in _roles)
+                        {
+                            @if (role == "admin")
+                            {
+                                <td class="admin-cell">✦</td>
+                            }
+                            else
+                            {
+                                var key = item.Key;
+                                var r   = role;
+                                var chk = _matrix.TryGetValue(r, out var set) && set.Contains(key);
+                                <td class="perm-check-cell">
+                                    <label class="toggle-wrap">
+                                        <input class="toggle-input" type="checkbox"
+                                               checked="@chk"
+                                               @onchange="e => OnToggle(r, key, (bool)(e.Value ?? false))" />
+                                        <span class="toggle-track"></span>
+                                    </label>
+                                </td>
+                            }
+                        }
+                    </tr>
+                }
+            }
+        </tbody>
+    </table>
+
+    <!-- Sticky footer -->
+    <div class="sticky-save">
+        <button class="btn btn-primary" @onclick="Save">
+            Değişiklikleri Kaydet
+        </button>
+        <button class="btn btn-outline" @onclick="ResetDefaults">
+            ↺ Varsayılanlara Sıfırla
+        </button>
+        @if (_dirty)
+        {
+            <span style="font-size:12px;color:#92400e;background:#fef3c7;padding:4px 10px;border-radius:6px;border:1px solid #fcd34d;font-weight:600">
+                ● Kaydedilmemiş değişiklik var
+            </span>
+        }
+    </div>
+</div>
+
+@code {
+    private static readonly string[] _roles = AuthService.AllRoles;
+
+    // role → set of granted permission keys
+    private Dictionary<string, HashSet<string>> _matrix = [];
+    private bool _saved;
+    private bool _dirty;
+
+    private record LevelBadge(string Key, string Label, string Icon, string Color, string Bg, string Border);
+    private static readonly LevelBadge[] _levelBadges =
+    [
+        new("Okuma",     "Okuma",     "👁",  "#065f46", "#dcfce7", "#86efac"),
+        new("Yazma",     "Yazma",     "✏️", "#1e40af", "#dbeafe", "#93c5fd"),
+        new("Düzenleme", "Düzenleme", "⚙️", "#92400e", "#fef3c7", "#fcd34d"),
+        new("Onaylama",  "Onaylama",  "✅", "#581c87", "#f3e8ff", "#c4b5fd"),
+        new("Denetim",   "Denetim",   "🔍", "#0f766e", "#ccfbf1", "#5eead4"),
+        new("Kurul",     "Kurul",     "⚖️", "#7c3aed", "#ede9fe", "#c4b5fd"),
+    ];
+
+    protected override void OnInitialized() => LoadFromDb();
+
+    private void LoadFromDb()
     {
-        _selectedRole = role;
-        _currentPerms = [.. Db.RolePermissions
-            .Where(rp => rp.Role == role)
-            .Select(rp => rp.Permission)];
+        _matrix = [];
+        foreach (var role in _roles.Where(r => r != "admin"))
+        {
+            var perms = Db.RolePermissions
+                .Where(rp => rp.Role == role)
+                .Select(rp => rp.Permission)
+                .ToHashSet();
+            _matrix[role] = perms;
+        }
+        _saved = false;
+        _dirty = false;
     }
 
-    private void Toggle(string perm, bool checked_)
+    private void OnToggle(string role, string key, bool value)
     {
-        if (checked_) _currentPerms.Add(perm);
-        else _currentPerms.Remove(perm);
+        if (!_matrix.ContainsKey(role)) _matrix[role] = [];
+        if (value) _matrix[role].Add(key);
+        else       _matrix[role].Remove(key);
+        _dirty = true;
+        _saved = false;
     }
 
     private void Save()
     {
-        var existing = Db.RolePermissions.Where(rp => rp.Role == _selectedRole).ToList();
-        Db.RolePermissions.RemoveRange(existing);
-        foreach (var perm in _currentPerms)
-            Db.RolePermissions.Add(new RiskManagement.Models.RolePermission { Role = _selectedRole, Permission = perm });
+        foreach (var role in _roles.Where(r => r != "admin"))
+        {
+            var existing = Db.RolePermissions.Where(rp => rp.Role == role).ToList();
+            Db.RolePermissions.RemoveRange(existing);
+            if (_matrix.TryGetValue(role, out var perms))
+                foreach (var perm in perms)
+                    Db.RolePermissions.Add(new RiskManagement.Models.RolePermission { Role = role, Permission = perm });
+        }
         Db.SaveChanges();
-        _success = "Yetkiler kaydedildi.";
+        _saved = true;
+        _dirty = false;
+    }
+
+    private void ResetDefaults()
+    {
+        _matrix = [];
+        foreach (var (role, perms) in AuthService.DefaultPermissions)
+            if (role != "admin")
+                _matrix[role] = [.. perms];
+        _dirty = true;
+        _saved = false;
     }
 }

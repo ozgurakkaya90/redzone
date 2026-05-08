@@ -1,0 +1,54 @@
+@inject ToastService ToastSvc
+@implements IDisposable
+
+@if (_toasts.Count > 0)
+{
+    <div class="toast-container">
+        @foreach (var t in _toasts)
+        {
+            var tid = t.Id;
+            <div class="toast toast-@t.Toast.Type.ToString().ToLower()" role="alert" aria-live="polite">
+                <span class="toast-icon">@Icon(t.Toast.Type)</span>
+                <span class="toast-msg">@t.Toast.Message</span>
+                <button style="background:none;border:none;cursor:pointer;color:inherit;opacity:.6;padding:0 0 0 8px;font-size:16px;line-height:1;flex-shrink:0"
+                        @onclick="() => Dismiss(tid)" aria-label="Kapat">×</button>
+                <div class="toast-progress" style="animation-duration:@(t.Toast.DurationMs)ms"></div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    private readonly List<ToastItem> _toasts = [];
+
+    private record ToastItem(RiskManagement.Services.Toast Toast, Guid Id);
+
+    protected override void OnInitialized() => ToastSvc.OnShow += ShowToast;
+
+    private void ShowToast(RiskManagement.Services.Toast toast)
+    {
+        var item = new ToastItem(toast, Guid.NewGuid());
+        _toasts.Add(item);
+        InvokeAsync(StateHasChanged);
+        Task.Delay(toast.DurationMs + 200).ContinueWith(_ =>
+        {
+            _toasts.RemoveAll(t => t.Id == item.Id);
+            InvokeAsync(StateHasChanged);
+        });
+    }
+
+    private void Dismiss(Guid id)
+    {
+        _toasts.RemoveAll(t => t.Id == id);
+    }
+
+    private static string Icon(ToastType t) => t switch
+    {
+        ToastType.Success => "✓",
+        ToastType.Error   => "✕",
+        ToastType.Warning => "⚠",
+        _                 => "ℹ",
+    };
+
+    public void Dispose() => ToastSvc.OnShow -= ShowToast;
+}

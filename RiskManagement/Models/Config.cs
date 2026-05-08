@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace RiskManagement.Models;
 
 public class LdapConfiguration
@@ -32,4 +34,61 @@ public class AppConfig
 {
     public string Key { get; set; } = "";
     public string Value { get; set; } = ""; // JSON encoded
+}
+
+public class Company
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = "";
+
+    [MaxLength(500)]
+    public string? Description { get; set; }
+
+    public ICollection<Organization> Organizations { get; set; } = [];
+}
+
+public class Organization
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = "";
+
+    public int? CompanyId { get; set; }
+    public Company? Company { get; set; }
+    public ICollection<Department> Departments { get; set; } = [];
+}
+
+public class Department
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = "";
+
+    public int? ManagerUserId { get; set; }
+    public User? Manager { get; set; }
+    public int? OrganizationId { get; set; }
+    public Organization? Organization { get; set; }
+}
+
+public class DatabaseConnectionConfig
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = "";
+    public string Provider { get; set; } = "mysql"; // mysql, postgresql, sqlserver, sqlite
+    public string Host { get; set; } = "";
+    public int Port { get; set; } = 3306;
+    public string DatabaseName { get; set; } = "";
+    public string Username { get; set; } = "";
+    public string Password { get; set; } = "";
+    public bool UseSsl { get; set; } = false;
+    public int ConnectTimeout { get; set; } = 10;
+    public bool IsActive { get; set; } = true;
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? LastTestedAt { get; set; }
+    public bool? LastTestSuccess { get; set; }
+    public string? LastTestMessage { get; set; }
 }

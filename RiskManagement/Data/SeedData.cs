@@ -9,11 +9,19 @@ public static class SeedData
         if (db.Users.Any()) return; // Zaten seed edilmiş
 
         // ─── Kullanıcılar ─────────────────────────────────────────────────────
+        // For local/dev convenience set admin password to a known value
+        // (override by setting SEED_ADMIN_PASSWORD env var if needed)
+        var adminPassword = Environment.GetEnvironmentVariable("SEED_ADMIN_PASSWORD");
+        if (string.IsNullOrEmpty(adminPassword))
+        {
+            adminPassword = "admin123";
+        }
+
         var admin = new User
         {
             Username = "admin", FullName = "Sistem Yöneticisi",
             Department = "Yönetim", Role = "admin",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("admin123"),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
         };
         var committee = new User
         {
@@ -26,6 +34,12 @@ public static class SeedData
             Username = "riskowner1", FullName = "Mehmet Yılmaz",
             Department = "Operasyon", Role = "risk_owner",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("owner123"),
+        };
+        var riskMgr = new User
+        {
+            Username = "riskymgr1", FullName = "Fatma Arslan",
+            Department = "Risk Yönetimi", Role = "risk_manager",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("riskymgr123"),
         };
         var auditor = new User
         {
@@ -40,11 +54,28 @@ public static class SeedData
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("manager123"),
         };
 
-        db.Users.AddRange(admin, committee, owner, auditor, auditMgr);
+        db.Users.AddRange(admin, committee, owner, riskMgr, auditor, auditMgr);
+
+        // ─── Departmanlar ─────────────────────────────────────────────────────
+        var departments = new[]
+        {
+            new Department { Name = "Yönetim" },
+            new Department { Name = "Risk Komitesi" },
+            new Department { Name = "Operasyon" },
+            new Department { Name = "İç Denetim" },
+            new Department { Name = "Bilgi Teknolojileri" },
+            new Department { Name = "İnsan Kaynakları" },
+            new Department { Name = "Finans" },
+            new Department { Name = "Hukuk & Uyum" },
+            new Department { Name = "Satın Alma" },
+            new Department { Name = "Satış & Pazarlama" },
+        };
+        db.Departments.AddRange(departments);
+
         await db.SaveChangesAsync();
 
         // ─── Varsayılan İzinler ───────────────────────────────────────────────
-        var roles = new[] { "committee", "risk_owner", "user", "auditor", "audit_manager", "finding_owner", "ethics_board" };
+        var roles = new[] { "committee", "risk_manager", "risk_owner", "user", "auditor", "audit_manager", "finding_owner", "ethics_board" };
         foreach (var role in roles)
         {
             if (Services.AuthService.DefaultPermissions.TryGetValue(role, out var perms))
@@ -54,6 +85,16 @@ public static class SeedData
             }
         }
 
+        // ─── Seed kullanıcılarına UserRole kayıtları ─────────────────────────
+        db.UserRoles.AddRange(
+            new UserRole { User = admin,     RoleName = "admin" },
+            new UserRole { User = committee, RoleName = "committee" },
+            new UserRole { User = owner,     RoleName = "risk_owner" },
+            new UserRole { User = riskMgr,   RoleName = "risk_manager" },
+            new UserRole { User = auditor,   RoleName = "auditor" },
+            new UserRole { User = auditMgr,  RoleName = "audit_manager" }
+        );
+
         // ─── Örnek Riskler ────────────────────────────────────────────────────
         var risks = new[]
         {
@@ -62,7 +103,7 @@ public static class SeedData
                 Description="Müşteri verilerinin yetkisiz erişime maruz kalma riski." },
             new Risk { Code="R-2026-002", Title="Tedarik Zinciri Kesintisi", Category="Operasyonel",
                 Status="controlled", ProposedById=owner.Id, OwnerId=owner.Id,
-                ResponsibleUnit="İdari Koordinatörlük", RiskStrategy="Riski Azaltma",
+                RiskStrategy="Riski Azaltma",
                 Description="Kritik tedarikçi kesintilerinden kaynaklanan operasyonel aksaklık." },
             new Risk { Code="R-2026-003", Title="Döviz Kuru Riski", Category="Finansal",
                 Status="approved", ProposedById=admin.Id,
@@ -142,5 +183,13 @@ public static class SeedData
         db.AuditFindings.AddRange(findings);
 
         await db.SaveChangesAsync();
+    }
+
+    private static string GenerateRandomPassword()
+    {
+        // 24 byte -> 32 char base64 string, yeterince güçlü demo parola
+        var bytes = new byte[24];
+        System.Security.Cryptography.RandomNumberGenerator.Fill(bytes);
+        return Convert.ToBase64String(bytes);
     }
 }

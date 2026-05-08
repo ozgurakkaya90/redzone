@@ -7,13 +7,33 @@
 
 <PageTitle>Bulgular</PageTitle>
 
+<ImportModal Visible="_showImport" Title="Denetim Bulguları" Module="findings" OnClose="@(() => _showImport = false)" />
+
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
     <h1>Denetim Bulguları</h1>
-    @if (HasRole("auditor","admin"))
-    {
-        <a href="/audit/findings/new" class="btn btn-primary">➕ Bulgu Gir</a>
-    }
+    <div style="display:flex;gap:8px;align-items:center">
+        <div class="export-dropdown">
+            <button class="btn btn-outline btn-sm">⬇ Dışa Aktar</button>
+            <div class="export-menu">
+                <a href="/export/findings/excel" class="export-item">📊 Excel (.xlsx)</a>
+                <a href="/export/findings/pdf" class="export-item">📄 PDF</a>
+            </div>
+        </div>
+        @if (HasRole("auditor","admin"))
+        {
+            <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
+            <a href="/audit/findings/new" class="btn btn-primary">+ Bulgu Gir</a>
+        }
+    </div>
 </div>
+
+<style>
+    .export-dropdown { position:relative;display:inline-block }
+    .export-dropdown:hover .export-menu { display:block }
+    .export-menu { display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:100;min-width:160px;padding:4px }
+    .export-item { display:block;padding:8px 12px;font-size:13px;color:var(--text-1);text-decoration:none;border-radius:6px;white-space:nowrap }
+    .export-item:hover { background:#f1f5f9 }
+</style>
 
 <div class="card" style="margin-bottom:16px">
     <div style="display:flex;gap:12px;flex-wrap:wrap">
@@ -39,29 +59,24 @@
         <thead>
             <tr>
                 <th>Kod</th><th>Başlık</th><th>Kategori</th>
-                <th>Şiddet</th><th>Durum</th><th>Vade</th><th></th>
+                <th>Şiddet</th><th>Durum</th><th></th>
             </tr>
         </thead>
         <tbody>
             @foreach (var f in Filtered)
             {
-                var overdue = f.Status != "closed" && f.DueDate.HasValue && f.DueDate < DateOnly.FromDateTime(DateTime.Now);
                 <tr>
                     <td><code>@f.Code</code></td>
                     <td>@f.Title</td>
                     <td><span class="tag">@f.Category</span></td>
                     <td><span class="badge @SevBadge(f.Severity)">@f.Severity</span></td>
                     <td><span class="badge @StatusBadge(f.Status)">@StatusLabel(f.Status)</span></td>
-                    <td style="color:@(overdue?"#dc2626":"inherit")">
-                        @(f.DueDate?.ToString("dd.MM.yyyy") ?? "—")
-                        @if (overdue) { <span style="font-size:11px"> ⚠️</span> }
-                    </td>
                     <td><a href="/audit/findings/@f.Id" class="btn btn-outline btn-sm">Detay</a></td>
                 </tr>
             }
             @if (!Filtered.Any())
             {
-                <tr><td colspan="7" class="empty-state">Kayıt bulunamadı.</td></tr>
+                <EmptyState Colspan="6" Icon="🔍" Title="Bulgu bulunamadı" Subtitle="Farklı filtre kriterleri deneyin veya yeni bulgu girin." ActionHref="/audit/findings/new" ActionLabel="+ Bulgu Gir" />
             }
         </tbody>
     </table>
@@ -71,13 +86,15 @@
     private List<RiskManagement.Models.AuditFinding> _findings = [];
     private string[] _categories = [], _severities = [];
     private string _filterCat = "", _filterSev = "", _filterStatus = "";
+    private bool _showImport;
 
     private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     private bool HasRole(params string[] roles) => roles.Contains(Role);
 
     protected override void OnInitialized()
     {
-        _findings = AuditSvc.GetFindings();
+        _findings = AuditSvc.GetFindingsForUser(UserId, Role);
         _categories = CfgSvc.GetList("audit_categories");
         _severities = CfgSvc.GetList("audit_severities");
     }

@@ -2,140 +2,404 @@
 @attribute [Authorize(Roles = "admin")]
 @inject AppDbContext Db
 @inject AuthService Auth
-@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@using Microsoft.EntityFrameworkCore
+@using RiskManagement.Models
 
 <PageTitle>Kullanıcılar</PageTitle>
 
 <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
     <h1>Kullanıcı Yönetimi</h1>
-    <button class="btn btn-primary" @onclick="() => _showNew = !_showNew">➕ Yeni Kullanıcı</button>
+    <button class="btn btn-primary" @onclick="NewUser">+ Yeni Kullanıcı</button>
 </div>
 
-@if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-error">@_error</div> }
-@if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
+@if (!string.IsNullOrEmpty(_error))   { <div class="alert alert-error"   style="margin-bottom:12px">@_error</div> }
+@if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success" style="margin-bottom:12px">@_success</div> }
 
-@if (_showNew)
-{
-    <div class="card" style="max-width:560px;margin-bottom:20px">
-        <div class="section-title">Yeni Kullanıcı</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="form-group">
-                <label class="form-label">Kullanıcı Adı *</label>
-                <input class="form-control" @bind="_newUser.Username" />
-            </div>
-            <div class="form-group">
-                <label class="form-label">Ad Soyad *</label>
-                <input class="form-control" @bind="_newUser.FullName" />
-            </div>
-            <div class="form-group">
-                <label class="form-label">Departman *</label>
-                <input class="form-control" @bind="_newUser.Department" />
-            </div>
-            <div class="form-group">
-                <label class="form-label">Rol *</label>
-                <select class="form-control" @bind="_newUser.Role">
-                    @foreach (var r in AuthService.AllRoles)
-                    {
-                        <option value="@r">@AuthService.RoleLabels.GetValueOrDefault(r, r)</option>
-                    }
-                </select>
-            </div>
-        </div>
-        <div class="form-group">
-            <label class="form-label">Şifre *</label>
-            <input type="password" class="form-control" @bind="_newPassword" />
-        </div>
-        <div style="display:flex;gap:8px">
-            <button class="btn btn-success btn-sm" @onclick="CreateUser">Kaydet</button>
-            <button class="btn btn-outline btn-sm" @onclick="() => _showNew = false">İptal</button>
-        </div>
-    </div>
-}
+<div style="display:grid;grid-template-columns:1fr @(_editUser != null ? "460px" : "0px");gap:16px;align-items:start">
 
-<div class="card" style="padding:0">
-    <table class="table">
-        <thead>
-            <tr><th>Kullanıcı Adı</th><th>Ad Soyad</th><th>Departman</th><th>Rol</th><th>Durum</th><th></th></tr>
-        </thead>
-        <tbody>
-            @foreach (var u in _users)
-            {
+    @* ── Sol: liste ── *@
+    <div class="card" style="padding:0;overflow:auto">
+        <table class="table">
+            <thead>
                 <tr>
-                    <td>@u.Username</td>
-                    <td>@u.FullName</td>
-                    <td>@u.Department</td>
-                    <td><span class="tag">@AuthService.RoleLabels.GetValueOrDefault(u.Role, u.Role)</span></td>
-                    <td>
-                        <span class="badge @(u.IsActive ? "badge-green" : "badge-red")">
-                            @(u.IsActive ? "Aktif" : "Pasif")
-                        </span>
-                    </td>
-                    <td style="display:flex;gap:6px">
-                        <button class="btn btn-outline btn-sm" @onclick="() => ToggleActive(u)">
-                            @(u.IsActive ? "Pasifleştir" : "Aktifleştir")
-                        </button>
-                        <button class="btn btn-danger btn-sm" @onclick="() => DeleteUser(u.Id)">Sil</button>
-                    </td>
+                    <th>Kullanıcı</th>
+                    <th>Roller</th>
+                    <th>Şirket / Organizasyon / Departman</th>
+                    <th>Durum</th>
+                    <th></th>
                 </tr>
+            </thead>
+            <tbody>
+                @foreach (var u in _users)
+                {
+                    var uid = u.Id;
+                    <tr style="background:@(_editUser?.Id == uid ? "#eff6ff" : "")">
+                        <td>
+                            <div style="font-weight:600">@u.FullName</div>
+                            <div style="font-size:11px;color:var(--text-3)">@u.Username</div>
+                        </td>
+                        <td style="font-size:12px">
+                            <div style="display:flex;flex-wrap:wrap;gap:4px">
+                                @foreach (var r in u.UserRoles.Select(x => x.RoleName).Distinct())
+                                { <span class="tag" style="font-size:10px">@AuthService.RoleLabels.GetValueOrDefault(r, r)</span> }
+                                @if (!u.UserRoles.Any())
+                                { <span class="tag" style="font-size:10px">@AuthService.RoleLabels.GetValueOrDefault(u.Role, u.Role)</span> }
+                            </div>
+                        </td>
+                        <td style="font-size:12px;line-height:1.7">
+                            @foreach (var uc in u.UserCompanies)
+                            { <div style="color:var(--text-3)">🏛 @uc.Company?.Name</div> }
+                            @foreach (var uo in u.UserOrganizations)
+                            { <div>🏢 @uo.Organization?.Name</div> }
+                            @foreach (var ud in u.UserDepartments)
+                            { <div>📂 @ud.Department?.Name</div> }
+                        </td>
+                        <td>
+                            <span class="badge @(u.IsActive ? "badge-green" : "badge-red")">
+                                @(u.IsActive ? "Aktif" : "Pasif")
+                            </span>
+                        </td>
+                        <td style="display:flex;gap:6px">
+                            <button class="btn btn-outline btn-sm" @onclick="() => StartEdit(u)">Düzenle</button>
+                            <button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteUser(uid)">Sil</button>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @* ── Sağ: düzenleme paneli ── *@
+    @if (_editUser != null)
+    {
+        <div class="card" style="padding:18px;position:sticky;top:16px;min-width:420px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <span style="font-weight:700;font-size:14px">@(_isNew ? "Yeni Kullanıcı" : "Kullanıcı Düzenle")</span>
+                <button style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-3)" @onclick="CloseEdit">✕</button>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:12px">
+
+                @* Temel bilgiler *@
+                <div>
+                    <label class="form-label">Kullanıcı Adı *</label>
+                    <input class="form-control" @bind="_editUser.Username" disabled="@(!_isNew)" />
+                </div>
+                <div>
+                    <label class="form-label">Ad Soyad *</label>
+                    <input class="form-control" @bind="_editUser.FullName" />
+                </div>
+                <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                    <input type="checkbox" @bind="_editUser.IsActive" />
+                    <span style="font-size:13px">Aktif</span>
+                </label>
+
+                @if (_isNew)
+                {
+                    <div>
+                        <label class="form-label">Şifre *</label>
+                        <input type="password" class="form-control" @bind="_newPassword" placeholder="En az 6 karakter" />
+                    </div>
+                }
+
+                <hr style="border:none;border-top:1px solid var(--border)" />
+
+                @* Roller — çoklu checkbox *@
+                <div>
+                    <div class="form-label" style="margin-bottom:8px">Roller</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:#f8fafc;border:1px solid var(--border);border-radius:8px">
+                        @foreach (var r in AuthService.AllRoles.Where(r => r != "user"))
+                        {
+                            var role = r;
+                            var isChecked = _selectedRoles.Contains(role);
+                            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap">
+                                <input type="checkbox" checked="@isChecked"
+                                       @onchange="e => ToggleRole(role, (bool)(e.Value ?? false))" />
+                                @AuthService.RoleLabels.GetValueOrDefault(role, role)
+                            </label>
+                        }
+                    </div>
+                    @if (_selectedRoles.Count == 0)
+                    { <div style="font-size:11px;color:var(--text-3);margin-top:4px">En az bir rol seçin (seçilmezse "Kullanıcı" atanır)</div> }
+                </div>
+
+                <hr style="border:none;border-top:1px solid var(--border)" />
+
+                @* Şirketler — çoklu *@
+                <div>
+                    <div class="form-label" style="margin-bottom:6px">Şirketler</div>
+                    @foreach (var sel in _selectedCompanyIds.ToList())
+                    {
+                        var cid = sel;
+                        var cname = _companies.FirstOrDefault(c => c.Id == cid)?.Name ?? cid.ToString();
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                            <span class="tag" style="flex:1">@cname</span>
+                            <button class="btn btn-danger btn-sm" style="padding:2px 8px" @onclick="() => _selectedCompanyIds.Remove(cid)">×</button>
+                        </div>
+                    }
+                    <div style="display:flex;gap:6px;margin-top:4px">
+                        <select class="form-control" style="flex:1" @bind="_addCompanyId">
+                            <option value="0">— Şirket seç —</option>
+                            @foreach (var c in _companies.Where(c => !_selectedCompanyIds.Contains(c.Id)))
+                            { <option value="@c.Id">@c.Name</option> }
+                        </select>
+                        <button class="btn btn-outline btn-sm" @onclick="AddCompany">+ Ekle</button>
+                    </div>
+                </div>
+
+                @* Organizasyonlar — çoklu *@
+                <div>
+                    <div class="form-label" style="margin-bottom:6px">Organizasyonlar</div>
+                    @foreach (var sel in _selectedOrgIds.ToList())
+                    {
+                        var oid = sel;
+                        var oname = _allOrgs.FirstOrDefault(o => o.Id == oid)?.Name ?? oid.ToString();
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                            <span class="tag" style="flex:1">@oname</span>
+                            <button class="btn btn-danger btn-sm" style="padding:2px 8px" @onclick="() => _selectedOrgIds.Remove(oid)">×</button>
+                        </div>
+                    }
+                    <div style="display:flex;gap:6px;margin-top:4px">
+                        <select class="form-control" style="flex:1" @bind="_addOrgId">
+                            <option value="0">— Organizasyon seç —</option>
+                            @foreach (var o in _allOrgs.Where(o => !_selectedOrgIds.Contains(o.Id)))
+                            { <option value="@o.Id">@o.Name@(o.Company != null ? $" · {o.Company.Name}" : "")</option> }
+                        </select>
+                        <button class="btn btn-outline btn-sm" @onclick="AddOrg">+ Ekle</button>
+                    </div>
+                </div>
+
+                @* Departmanlar — çoklu *@
+                <div>
+                    <div class="form-label" style="margin-bottom:6px">Departmanlar</div>
+                    @foreach (var sel in _selectedDeptIds.ToList())
+                    {
+                        var did = sel;
+                        var dname = _allDepts.FirstOrDefault(d => d.Id == did)?.Name ?? did.ToString();
+                        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                            <span class="tag" style="flex:1">@dname</span>
+                            <button class="btn btn-danger btn-sm" style="padding:2px 8px" @onclick="() => _selectedDeptIds.Remove(did)">×</button>
+                        </div>
+                    }
+                    <div style="display:flex;gap:6px;margin-top:4px">
+                        <select class="form-control" style="flex:1" @bind="_addDeptId">
+                            <option value="0">— Departman seç —</option>
+                            @foreach (var d in _allDepts.Where(d => !_selectedDeptIds.Contains(d.Id)))
+                            { <option value="@d.Id">@d.Name</option> }
+                        </select>
+                        <button class="btn btn-outline btn-sm" @onclick="AddDept">+ Ekle</button>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary" @onclick="SaveEdit">Kaydet</button>
+            </div>
+
+            @if (!_isNew)
+            {
+                <hr style="border:none;border-top:1px solid var(--border);margin:16px 0" />
+                <div style="font-weight:600;font-size:13px;margin-bottom:10px">Şifre Sıfırlama</div>
+                <button class="btn btn-outline btn-sm" @onclick="GenerateResetLink">Sıfırlama Linki Oluştur</button>
+                @if (!string.IsNullOrEmpty(_resetLink))
+                {
+                    <div style="margin-top:10px;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;padding:10px">
+                        <div style="font-size:11px;font-weight:600;color:#92400e;margin-bottom:6px">
+                            Kullanıcıya bu linki iletin (30 dakika geçerli):
+                        </div>
+                        <div style="font-size:10px;font-family:monospace;color:#78350f;word-break:break-all;margin-bottom:8px">@_resetLink</div>
+                        <button class="btn btn-outline btn-sm"
+                                onclick="navigator.clipboard.writeText(this.previousElementSibling.textContent.trim()).then(()=>{var b=this;b.textContent='Kopyalandı';setTimeout(()=>b.textContent='Kopyala',2000)})">
+                            Kopyala
+                        </button>
+                    </div>
+                }
             }
-        </tbody>
-    </table>
+        </div>
+    }
 </div>
 
 @code {
-    private List<RiskManagement.Models.User> _users = [];
-    private bool _showNew;
+    private List<User> _users = [];
+    private List<Company> _companies = [];
+    private List<Organization> _allOrgs = [];
+    private List<Models.Department> _allDepts = [];
+
+    private User? _editUser;
+    private bool _isNew;
+    private string _newPassword = "", _resetLink = "";
     private string _error = "", _success = "";
-    private string _newPassword = "";
-    private NewUserModel _newUser = new();
+    private string _baseUrl = "";
 
-    protected override void OnInitialized() =>
-        _users = [.. Db.Users.OrderBy(u => u.FullName)];
+    // Çoklu seçim state'leri
+    private HashSet<string> _selectedRoles = [];
+    private HashSet<int>    _selectedCompanyIds = [];
+    private HashSet<int>    _selectedOrgIds = [];
+    private HashSet<int>    _selectedDeptIds = [];
 
-    private void CreateUser()
+    // "Ekle" dropdown geçici seçimleri
+    private int _addCompanyId, _addOrgId, _addDeptId;
+
+    protected override void OnInitialized()
     {
-        if (string.IsNullOrWhiteSpace(_newUser.Username) || string.IsNullOrWhiteSpace(_newPassword))
-        { _error = "Kullanıcı adı ve şifre zorunludur."; return; }
+        Reload();
+        var req = HttpCtx.HttpContext?.Request;
+        if (req != null) _baseUrl = $"{req.Scheme}://{req.Host}";
+    }
 
-        if (Db.Users.Any(u => u.Username == _newUser.Username))
-        { _error = "Bu kullanıcı adı zaten kullanılıyor."; return; }
+    void Reload()
+    {
+        _users = [.. Db.Users
+            .Include(u => u.UserRoles)
+            .Include(u => u.UserDepartments).ThenInclude(ud => ud.Department)
+            .Include(u => u.UserOrganizations).ThenInclude(uo => uo.Organization)
+            .Include(u => u.UserCompanies).ThenInclude(uc => uc.Company)
+            .OrderBy(u => u.FullName)];
+        _companies = [.. Db.Companies.OrderBy(c => c.Name)];
+        _allOrgs   = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
+        _allDepts  = [.. Db.Departments.OrderBy(d => d.Name)];
+    }
 
-        Db.Users.Add(new RiskManagement.Models.User
+    void NewUser()
+    {
+        _editUser = new User { IsActive = true, Role = "user" };
+        _isNew = true;
+        _selectedRoles = [];
+        _selectedCompanyIds = []; _selectedOrgIds = []; _selectedDeptIds = [];
+        _addCompanyId = _addOrgId = _addDeptId = 0;
+        _newPassword = ""; _resetLink = ""; _error = ""; _success = "";
+    }
+
+    void StartEdit(User u)
+    {
+        _editUser = new User { Id = u.Id, Username = u.Username, FullName = u.FullName, IsActive = u.IsActive, Role = u.Role };
+        _isNew = false;
+        _selectedRoles      = [.. u.UserRoles.Select(r => r.RoleName)];
+        _selectedCompanyIds = [.. u.UserCompanies.Select(c => c.CompanyId)];
+        _selectedOrgIds     = [.. u.UserOrganizations.Select(o => o.OrganizationId)];
+        _selectedDeptIds    = [.. u.UserDepartments.Select(d => d.DepartmentId)];
+        _addCompanyId = _addOrgId = _addDeptId = 0;
+        _newPassword = ""; _resetLink = ""; _error = ""; _success = "";
+    }
+
+    void CloseEdit() { _editUser = null; _isNew = false; _resetLink = ""; _error = ""; _success = ""; }
+
+    void ToggleRole(string role, bool add) { if (add) _selectedRoles.Add(role); else _selectedRoles.Remove(role); }
+    void AddCompany() { if (_addCompanyId > 0) { _selectedCompanyIds.Add(_addCompanyId); _addCompanyId = 0; } }
+    void AddOrg()     { if (_addOrgId     > 0) { _selectedOrgIds.Add(_addOrgId);         _addOrgId     = 0; } }
+    void AddDept()    { if (_addDeptId    > 0) { _selectedDeptIds.Add(_addDeptId);        _addDeptId    = 0; } }
+
+    void SaveEdit()
+    {
+        _error = ""; _success = "";
+        if (_editUser == null) return;
+        if (string.IsNullOrWhiteSpace(_editUser.FullName)) { _error = "Ad Soyad zorunludur."; return; }
+
+        // Rol yoksa varsayılan "user"
+        if (_selectedRoles.Count == 0) _selectedRoles.Add("user");
+        var primaryRole = _selectedRoles.Contains("admin") ? "admin"
+            : _selectedRoles.Contains("risk_manager") ? "risk_manager"
+            : _selectedRoles.Contains("committee") ? "committee"
+            : _selectedRoles.First();
+
+        // İlk atanan departmanın adını User.Department legacy alanına yaz
+        var primaryDeptName = _selectedDeptIds.Count > 0
+            ? _allDepts.FirstOrDefault(d => d.Id == _selectedDeptIds.First())?.Name ?? ""
+            : "";
+
+        if (_isNew)
         {
-            Username = _newUser.Username,
-            FullName = _newUser.FullName,
-            Department = _newUser.Department,
-            Role = _newUser.Role,
-            PasswordHash = Auth.HashPassword(_newPassword),
+            if (string.IsNullOrWhiteSpace(_editUser.Username)) { _error = "Kullanıcı adı zorunludur."; return; }
+            if (_newPassword.Length < 6) { _error = "Şifre en az 6 karakter olmalıdır."; return; }
+            if (Db.Users.Any(u => u.Username == _editUser.Username)) { _error = "Bu kullanıcı adı kullanılıyor."; return; }
+
+            var newUser = new User
+            {
+                Username     = _editUser.Username,
+                FullName     = _editUser.FullName,
+                Role         = primaryRole,
+                Department   = primaryDeptName,
+                IsActive     = _editUser.IsActive,
+                PasswordHash = Auth.HashPassword(_newPassword),
+                DepartmentId   = _selectedDeptIds.Count > 0 ? _selectedDeptIds.First() : null,
+                OrganizationId = _selectedOrgIds.Count > 0 ? _selectedOrgIds.First() : null,
+                CompanyId      = _selectedCompanyIds.Count > 0 ? _selectedCompanyIds.First() : null,
+            };
+            Db.Users.Add(newUser);
+            Db.SaveChanges();
+
+            SyncAssignments(newUser.Id, primaryRole);
+        }
+        else
+        {
+            var existing = Db.Users.Find(_editUser.Id);
+            if (existing == null) { _error = "Kullanıcı bulunamadı."; return; }
+            existing.FullName      = _editUser.FullName;
+            existing.Role          = primaryRole;
+            existing.IsActive      = _editUser.IsActive;
+            existing.Department    = primaryDeptName;
+            existing.DepartmentId   = _selectedDeptIds.Count > 0 ? _selectedDeptIds.First() : null;
+            existing.OrganizationId = _selectedOrgIds.Count > 0 ? _selectedOrgIds.First() : null;
+            existing.CompanyId      = _selectedCompanyIds.Count > 0 ? _selectedCompanyIds.First() : null;
+            Db.SaveChanges();
+
+            SyncAssignments(_editUser.Id, primaryRole);
+        }
+
+        _success = _isNew ? "Kullanıcı oluşturuldu." : "Kullanıcı güncellendi.";
+        CloseEdit();
+        Reload();
+    }
+
+    void SyncAssignments(int userId, string primaryRole)
+    {
+        // UserRoles — temizle ve yeniden ekle
+        Db.UserRoles.RemoveRange(Db.UserRoles.Where(r => r.UserId == userId));
+        foreach (var role in _selectedRoles)
+            Db.UserRoles.Add(new UserRole { UserId = userId, RoleName = role });
+
+        // UserCompanies
+        Db.UserCompanies.RemoveRange(Db.UserCompanies.Where(c => c.UserId == userId));
+        foreach (var cid in _selectedCompanyIds)
+            Db.UserCompanies.Add(new UserCompany { UserId = userId, CompanyId = cid });
+
+        // UserOrganizations
+        Db.UserOrganizations.RemoveRange(Db.UserOrganizations.Where(o => o.UserId == userId));
+        foreach (var oid in _selectedOrgIds)
+            Db.UserOrganizations.Add(new UserOrganization { UserId = userId, OrganizationId = oid });
+
+        // UserDepartments
+        Db.UserDepartments.RemoveRange(Db.UserDepartments.Where(d => d.UserId == userId));
+        foreach (var did in _selectedDeptIds)
+            Db.UserDepartments.Add(new UserDepartment { UserId = userId, DepartmentId = did });
+
+        Db.SaveChanges();
+    }
+
+    void GenerateResetLink()
+    {
+        _resetLink = string.Empty;
+        if (_editUser == null) return;
+        var old = Db.PasswordResetTokens.Where(t => t.UserId == _editUser.Id && !t.Used).ToList();
+        foreach (var resetToken in old) resetToken.Used = true;
+        var token = AuthService.GenerateResetToken();
+        Db.PasswordResetTokens.Add(new PasswordResetToken
+        {
+            UserId = _editUser.Id,
+            Token = AuthService.HashResetToken(token),
+            ExpiresAt = DateTime.UtcNow.Add(AuthService.PasswordResetTokenLifetime)
         });
         Db.SaveChanges();
-        _success = "Kullanıcı oluşturuldu.";
-        _showNew = false; _newUser = new(); _newPassword = "";
-        _users = [.. Db.Users.OrderBy(u => u.FullName)];
+        _resetLink = $"{_baseUrl}/reset-password?token={Uri.EscapeDataString(token)}";
     }
 
-    private void ToggleActive(RiskManagement.Models.User u)
+    void DeleteUser(int id)
     {
-        u.IsActive = !u.IsActive;
-        Db.SaveChanges();
-        _success = $"{u.FullName} {(u.IsActive ? "aktifleştirildi" : "pasifleştirildi")}.";
-    }
-
-    private void DeleteUser(int id)
-    {
+        if (_editUser?.Id == id) CloseEdit();
         var u = Db.Users.Find(id);
         if (u == null) return;
         Db.Users.Remove(u);
         Db.SaveChanges();
-        _users.RemoveAll(x => x.Id == id);
         _success = "Kullanıcı silindi.";
-    }
-
-    private class NewUserModel
-    {
-        public string Username { get; set; } = "";
-        public string FullName { get; set; } = "";
-        public string Department { get; set; } = "";
-        public string Role { get; set; } = "user";
+        Reload();
     }
 }

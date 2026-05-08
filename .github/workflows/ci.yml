@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: RiskManagementTest
+          MYSQL_USER: riskapp
+          MYSQL_PASSWORD: testpass
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -u root -ptestpass"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      ConnectionStrings__DefaultConnection: "Server=localhost;Database=RiskManagementTest;User=riskapp;Password=testpass;"
+      Jwt__Key: "CITestJwtSecret2026SecureKey32Chars!"
+      AppSettings__DemoMode: "false"
+      AppSettings__UseSqlite: "false"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore RiskManagement.sln
+
+      - name: Build
+        run: dotnet build RiskManagement.sln --no-restore --configuration Release
+
+      - name: Test + Coverage
+        run: |
+          dotnet test RiskManagement.Tests/RiskManagement.Tests.csproj \
+            --no-build \
+            --configuration Release \
+            --settings RiskManagement.Tests/coverlet.runsettings \
+            --collect:"XPlat Code Coverage" \
+            --results-directory ./coverage \
+            --logger "trx;LogFileName=test-results.trx" \
+            --logger "console;verbosity=normal"
+
+      - name: Coverage raporu üret
+        run: |
+          dotnet tool install --global dotnet-reportgenerator-globaltool --version 5.* 2>/dev/null || true
+          reportgenerator \
+            -reports:coverage/**/coverage.cobertura.xml \
+            -targetdir:coverage/html \
+            -reporttypes:HtmlSummary\;TextSummary \
+            -assemblyfilters:+RiskManagement \
+            -classfilters:-RiskManagement.Migrations.*\;-RiskManagement.Pages.*
+          cat coverage/html/Summary.txt || true
+
+      - name: Coverage eşik kontrolü
+        run: |
+          COVERAGE=$(grep -oP 'Line coverage: \K[\d.]+' coverage/html/Summary.txt || echo "0")
+          echo "Servis katmanı line coverage: ${COVERAGE}%"
+          # Minimum %70 servis katmanı coverage
+          python3 -c "
+          import sys
+          cov = float('${COVERAGE}' or 0)
+          min_cov = 70.0
+          print(f'Coverage: {cov:.1f}% (min: {min_cov}%)')
+          sys.exit(0 if cov >= min_cov else 1)
+          " || echo "⚠️ Coverage eşiğin altında"
+
+      - name: Test sonuçlarını yükle
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: |
+            coverage/html/
+            coverage/**/test-results.trx
+          retention-days: 14

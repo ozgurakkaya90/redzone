@@ -2,118 +2,509 @@
 @attribute [Authorize]
 @inject RiskService RiskSvc
 @inject ConfigService CfgSvc
+@inject IRiskCalculator RiskCalc
+@inject AppDbContext Db
+@inject IHttpContextAccessor HttpCtx
 @inject NavigationManager Nav
+@using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
+@using RiskManagement.Models
 
 <PageTitle>Risk Envanteri</PageTitle>
 
-<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
-    <h1>Risk Envanteri</h1>
-    <a href="/risk/new" class="btn btn-primary">➕ Risk Öner</a>
-</div>
+@* ── İçe Aktar Modal ── *@
+<ImportModal Visible="_showImport" Title="Risk Envanteri" Module="risks" OnClose="@(() => _showImport = false)" />
 
-<div class="card" style="margin-bottom:16px">
-    <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <select class="form-control" style="width:180px" @bind="_filterCat">
-            <option value="">Tüm Kategoriler</option>
-            @foreach (var c in _categories)
-            {
-                <option value="@c">@c</option>
-            }
-        </select>
-        <select class="form-control" style="width:180px" @bind="_filterStatus">
-            <option value="">Tüm Durumlar</option>
-            @foreach (var (v, l) in _statusOptions)
-            {
-                <option value="@v">@l</option>
-            }
-        </select>
-        <input class="form-control" style="flex:1;min-width:200px" placeholder="Ara…"
-               @bind="_search" @bind:event="oninput" />
+@* ── Üst bar ── *@
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div>
+        <h1 style="margin:0;font-size:22px;font-weight:800">Risk Envanteri</h1>
+        <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+            @Filtered.Count() kayıt gösteriliyor
+            @if (HasFilter) { <span> · <button style="background:none;border:none;color:#E1251B;cursor:pointer;font-size:12px;padding:0" @onclick="ClearFilters">Filtreleri temizle</button></span> }
+        </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+        @* Dışa Aktar *@
+        <div class="export-dropdown">
+            <button class="btn btn-outline btn-sm export-btn">
+                ⬇ Dışa Aktar
+            </button>
+            <div class="export-menu">
+                <a href="/export/risks/excel" class="export-item">📊 Excel (.xlsx)</a>
+                <a href="/export/risks/pdf" class="export-item">📄 PDF</a>
+            </div>
+        </div>
+        @* İçe Aktar *@
+        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">
+            ⬆ İçe Aktar
+        </button>
+        <a href="/risk/new" class="btn btn-primary">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Risk Öner
+        </a>
     </div>
 </div>
 
-<div class="card" style="padding:0">
+@* ── Filtreler ── *@
+<div class="card" style="padding:14px 16px;margin-bottom:16px">
+    <div class="risk-filter-grid">
+        <div>
+            <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Kategori</div>
+            <select class="form-control" @bind="_filterCat">
+                <option value="">Tümü</option>
+                @foreach (var c in _categories) { <option value="@c">@c</option> }
+            </select>
+        </div>
+        <div>
+            <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Durum</div>
+            <select class="form-control" @bind="_filterStatus">
+                <option value="">Tümü</option>
+                @foreach (var (v, l) in _statusOptions) { <option value="@v">@l</option> }
+            </select>
+        </div>
+        <div>
+            <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Risk Seviyesi</div>
+            <select class="form-control" @bind="_filterLevel">
+                <option value="">Tümü</option>
+                <option value="Çok Yüksek Risk">Çok Yüksek</option>
+                <option value="Yüksek Risk">Yüksek</option>
+                <option value="Önemli Risk">Önemli</option>
+                <option value="Orta Risk">Orta</option>
+                <option value="Kabul Edilebilir">Kabul Edilebilir</option>
+                <option value="__none">Değerlendirilmemiş</option>
+            </select>
+        </div>
+        <div>
+            <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Organizasyon</div>
+            <select class="form-control" @bind="_filterOrg">
+                <option value="">Tümü</option>
+                @foreach (var o in _organizations) { <option value="@o.Id">@o.Name</option> }
+            </select>
+        </div>
+        <div>
+            <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Arama</div>
+            <input class="form-control" placeholder="Kod, başlık, açıklama…"
+                   @bind="_search" @bind:event="oninput" />
+        </div>
+    </div>
+</div>
+
+@* ── İstatistik kartları ── *@
+<div class="risk-stat-grid" style="margin-bottom:16px">
+    @foreach (var (label, count, color, bg) in StatCards)
+    {
+        <div style="background:@bg;border:1px solid @color;border-radius:10px;padding:12px 14px;border-left:4px solid @color">
+            <div style="font-size:22px;font-weight:800;color:@color">@count</div>
+            <div style="font-size:11px;color:var(--text-2);margin-top:2px">@label</div>
+        </div>
+    }
+</div>
+
+@* ── Tablo ── *@
+<div class="risk-table-wrapper card" style="padding:0">
     <table class="table">
         <thead>
             <tr>
-                <th>Kod</th>
-                <th>Başlık</th>
-                <th>Kategori</th>
-                <th>Durum</th>
-                <th>Risk Skoru</th>
-                <th>Öneren</th>
-                <th></th>
+                <th style="width:100px">
+                    <button class="sort-btn" @onclick='() => SetSort("code")'>Kod @SortIcon("code")</button>
+                </th>
+                <th>
+                    <button class="sort-btn" @onclick='() => SetSort("title")'>Başlık @SortIcon("title")</button>
+                </th>
+                <th style="width:130px">Kategori</th>
+                <th style="width:140px">Departman / Org.</th>
+                <th style="width:130px">
+                    <button class="sort-btn" @onclick='() => SetSort("status")'>Durum @SortIcon("status")</button>
+                </th>
+                <th style="width:130px">
+                    <button class="sort-btn" @onclick='() => SetSort("score")'>
+                        <span class="th-tip">
+                            İlk Risk
+                            <span class="th-tip-icon" title="Fine-Kinney metodolojisiyle hesaplanan başlangıç risk skoru (P×E×C)">?</span>
+                        </span>
+                        @SortIcon("score")
+                    </button>
+                </th>
+                <th style="width:120px">
+                    <button class="sort-btn" @onclick='() => SetSort("residual")'>
+                        <span class="th-tip">
+                            Kalıntı
+                            <span class="th-tip-icon" title="Kontroller uygulandıktan sonraki kalan risk skoru">?</span>
+                        </span>
+                        @SortIcon("residual")
+                    </button>
+                </th>
+                <th style="width:130px">
+                    <button class="sort-btn" @onclick='() => SetSort("date")'>Tarih @SortIcon("date")</button>
+                </th>
             </tr>
         </thead>
         <tbody>
-            @foreach (var r in Filtered)
+            @foreach (var r in Paged)
             {
-                var initial = r.Evaluations.FirstOrDefault(e => e.EvalType == "initial");
-                <tr>
-                    <td><code>@r.Code</code></td>
-                    <td>@r.Title</td>
-                    <td><span class="tag">@r.Category</span></td>
-                    <td><span class="badge @StatusBadge(r.Status)">@StatusLabel(r.Status)</span></td>
+                var initial  = r.Evaluations.FirstOrDefault(e => e.EvalType == "initial");
+                var residual = r.Evaluations.LastOrDefault(e => e.EvalType == "residual");
+                <tr style="cursor:pointer" @onclick="@(() => Nav.NavigateTo("/risk/" + r.Id))">
+                    <td>
+                        <code style="font-size:11px;background:#f1f5f9;padding:2px 6px;border-radius:4px">
+                            @r.Code
+                        </code>
+                    </td>
+                    <td>
+                        <div style="font-weight:600;color:var(--text-1)">@r.Title</div>
+                        @if (!string.IsNullOrEmpty(r.Description))
+                        {
+                            <div style="font-size:11px;color:var(--text-3);margin-top:2px;max-width:320px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                                @r.Description
+                            </div>
+                        }
+                    </td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(r.Category))
+                        { <span class="tag">@r.Category</span> }
+                    </td>
+                    <td style="font-size:12px;color:var(--text-2)">
+                        @if (r.Department != null)
+                        {
+                            <div style="font-weight:500">@r.Department.Name</div>
+                            @if (r.Organization != null)
+                            { <div style="font-size:11px;color:var(--text-3)">@r.Organization.Name</div> }
+                        }
+                        else if (r.Organization != null)
+                        {
+                            <div>@r.Organization.Name</div>
+                            @if (r.Organization.Company != null)
+                            { <div style="font-size:11px;color:var(--text-3)">@r.Organization.Company.Name</div> }
+                        }
+                    </td>
+                    <td>
+                        <span class="badge @StatusBadge(r.Status)" style="white-space:nowrap">
+                            @StatusLabel(r.Status)
+                        </span>
+                    </td>
                     <td>
                         @if (initial != null)
                         {
-                            <span style="font-weight:600;color:@ConfigService.RiskLevelColor(initial.RiskLevel)">
-                                @initial.Score
-                            </span>
+                            <div>
+                                <span class="rl-badge @RlClass(initial.RiskLevel)">
+                                    <span class="rl-icon">@RlIcon(initial.RiskLevel)</span>
+                                    @initial.Score.ToString("0.##")
+                                </span>
+                                <div style="font-size:10px;color:var(--text-3);margin-top:2px">@initial.RiskLevel</div>
+                            </div>
                         }
+                        else { <span style="font-size:11px;color:var(--text-3)">—</span> }
                     </td>
-                    <td>@(r.ProposedBy?.FullName ?? r.ProposerName ?? "—")</td>
                     <td>
-                        <a href="/risk/@r.Id" class="btn btn-outline btn-sm">Detay</a>
+                        @if (residual != null)
+                        {
+                            <div>
+                                <span class="rl-badge @RlClass(residual.RiskLevel)">
+                                    <span class="rl-icon">@RlIcon(residual.RiskLevel)</span>
+                                    @residual.Score.ToString("0.##")
+                                </span>
+                                <div style="font-size:10px;color:var(--text-3);margin-top:2px">@residual.RiskLevel</div>
+                            </div>
+                        }
+                        else { <span style="font-size:11px;color:var(--text-3)">—</span> }
+                    </td>
+                    <td style="font-size:11px;color:var(--text-3)">
+                        <span title="@r.ProposedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")">
+                            @RelativeDate(r.ProposedAt)
+                        </span>
+                        @if (r.ProposedBy != null)
+                        { <div style="margin-top:2px">@r.ProposedBy.FullName</div> }
                     </td>
                 </tr>
             }
             @if (!Filtered.Any())
             {
-                <tr><td colspan="7" class="empty-state">Kayıt bulunamadı.</td></tr>
+                <tr>
+                    <td colspan="8" style="text-align:center;padding:40px 20px">
+                        <div style="font-size:32px;margin-bottom:8px">@(HasFilter ? "🔍" : "📋")</div>
+                        <div style="font-size:14px;font-weight:600;color:var(--text-2);margin-bottom:6px">
+                            @(HasFilter ? "Filtreyle eşleşen risk bulunamadı" : "Henüz risk girilmemiş")
+                        </div>
+                        <div style="font-size:13px;color:var(--text-3);margin-bottom:14px">
+                            @(HasFilter ? "Farklı filtre kriterleri deneyin." : "İlk riski önererek başlayın.")
+                        </div>
+                        @if (HasFilter)
+                        { <button class="btn btn-outline btn-sm" @onclick="ClearFilters">Filtreleri Temizle</button> }
+                        else
+                        { <a href="/risk/new" class="btn btn-primary btn-sm">+ İlk Riski Öner</a> }
+
+                    </td>
+                </tr>
             }
         </tbody>
     </table>
 </div>
 
+@* ── Sayfalama ── *@
+@if (TotalPages > 1)
+{
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-top:12px">
+        <div style="font-size:12px;color:var(--text-3)">
+            @((_page-1)*_pageSize+1)–@(Math.Min(_page*_pageSize, Filtered.Count())) / @Filtered.Count() kayıt
+        </div>
+        <div style="display:flex;gap:4px">
+            <button class="btn btn-outline btn-sm" @onclick="() => _page=1"          disabled="@(_page==1)">«</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _page--"           disabled="@(_page==1)">‹</button>
+            @for (int p = Math.Max(1,_page-2); p <= Math.Min(TotalPages,_page+2); p++)
+            {
+                var pp = p;
+                <button class="btn @(_page==pp?"btn-primary":"btn-outline") btn-sm" @onclick="() => _page=pp">@pp</button>
+            }
+            <button class="btn btn-outline btn-sm" @onclick="() => _page++"           disabled="@(_page==TotalPages)">›</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _page=TotalPages"  disabled="@(_page==TotalPages)">»</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-3)">
+            Sayfa başı
+            <select class="form-control" style="width:70px;padding:4px 6px;font-size:12px" @bind="_pageSize" @bind:after="() => _page=1">
+                <option value="10">10</option>
+                <option value="25">25</option>
+                <option value="50">50</option>
+            </select>
+        </div>
+    </div>
+}
+
+
+@* ── Mobil kart listesi (≤768px) ── *@
+<div class="risk-card-list">
+    @foreach (var r in Paged)
+    {
+        var initial = r.Evaluations.FirstOrDefault(e => e.EvalType == "initial");
+        <a href="/risk/@r.Id" class="risk-card">
+            <div class="risk-card-top">
+                <code style="font-size:11px;background:#f1f5f9;padding:2px 6px;border-radius:4px;flex-shrink:0">@r.Code</code>
+                <span class="badge @StatusBadge(r.Status)" style="white-space:nowrap">@StatusLabel(r.Status)</span>
+                @if (!string.IsNullOrEmpty(r.Category))
+                { <span class="tag" style="font-size:11px">@r.Category</span> }
+            </div>
+            <div class="risk-card-title">@r.Title</div>
+            <div class="risk-card-meta" style="margin-top:6px">
+                @if (initial != null)
+                {
+                    <span style="font-size:12px;font-weight:700;color:@RiskCalc.GetRiskLevelColor(initial.RiskLevel)">
+                        ● @initial.RiskLevel (@initial.Score.ToString("0.##"))
+                    </span>
+                }
+                <span class="risk-card-date" title="@r.ProposedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")">
+                    @RelativeDate(r.ProposedAt)
+                </span>
+            </div>
+        </a>
+    }
+    @if (!Filtered.Any())
+    {
+        <div style="text-align:center;padding:40px 16px">
+            <div style="font-size:32px;margin-bottom:8px">@(HasFilter ? "🔍" : "📋")</div>
+            <div style="font-size:14px;font-weight:600;color:var(--text-2);margin-bottom:6px">
+                @(HasFilter ? "Filtreyle eşleşen risk yok" : "Henüz risk girilmemiş")
+            </div>
+            @if (HasFilter)
+            { <button class="btn btn-outline btn-sm" @onclick="ClearFilters">Filtreleri Temizle</button> }
+            else
+            { <a href="/risk/new" class="btn btn-primary btn-sm">➕ İlk Riski Öner</a> }
+        </div>
+    }
+</div>
+
+<style>
+    .sort-btn { background:none;border:none;cursor:pointer;font-weight:600;font-size:12px;color:inherit;padding:0;display:flex;align-items:center;gap:4px;white-space:nowrap }
+    .sort-btn:hover { color:#E1251B }
+    .risk-filter-grid { display:grid;grid-template-columns:1fr 1fr 1fr 1fr 2fr;gap:10px;align-items:end }
+    .risk-stat-grid   { display:grid;grid-template-columns:repeat(5,1fr);gap:10px }
+    .export-dropdown { position:relative;display:inline-block }
+    .export-dropdown:hover .export-menu { display:block }
+    .export-btn { white-space:nowrap }
+    .export-menu { display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:100;min-width:160px;padding:4px }
+    .export-item { display:block;padding:8px 12px;font-size:13px;color:var(--text-1);text-decoration:none;border-radius:6px;white-space:nowrap }
+    .export-item:hover { background:#f1f5f9 }
+    @@media (max-width:1100px) {
+        .risk-filter-grid { grid-template-columns:1fr 1fr 1fr; }
+        .risk-stat-grid   { grid-template-columns:repeat(3,1fr); }
+    }
+    @@media (max-width:768px) {
+        .risk-filter-grid { grid-template-columns:1fr 1fr; }
+        .risk-stat-grid   { grid-template-columns:repeat(2,1fr); }
+    }
+    @@media (max-width:480px) {
+        .risk-filter-grid { grid-template-columns:1fr; }
+        .risk-stat-grid   { grid-template-columns:1fr 1fr; }
+    }
+</style>
+
 @code {
     private List<RiskManagement.Models.Risk> _risks = [];
     private string[] _categories = [];
-    private string _filterCat = "", _filterStatus = "", _search = "";
+    private List<Organization> _organizations = [];
+    private bool _showImport;
+
+    private string _filterCat = "", _filterStatus = "", _filterLevel = "", _search = "";
+    private int _filterOrg;
+    private string _sortCol = "date", _sortDir = "desc";
+    private int _page = 1, _pageSize = 25;
+
+    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
 
     private static readonly (string v, string l)[] _statusOptions =
     [
-        ("proposed","Öneri"), ("under_review","İncelemede"), ("approved","İlk Değerlendirme"),
-        ("strategy_set","Strateji"), ("controlled","Kontrollü"),
-        ("residual_evaluated","Kalan Risk"), ("action_planned","Aksiyon"), ("rejected","Reddedildi")
+        ("proposed","Öneri"), ("under_review","İncelemede"), ("awaiting_approval","Onay Bekliyor"),
+        ("approved","İlk Değerlendirme"), ("strategy_set","Strateji"), ("controlled","Kontrollü"),
+        ("residual_evaluated","Kalan Risk"), ("action_planned","Aksiyon"),
+        ("risk_accepted","Risk Kabul Edildi"), ("rejected","Reddedildi")
     ];
 
     protected override void OnInitialized()
     {
-        _risks = RiskSvc.GetAll();
-        _categories = CfgSvc.GetList("risk_categories");
+        _risks         = RiskSvc.GetForUser(UserId, Role);
+        _categories    = CfgSvc.GetList("risk_categories");
+        _organizations = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
+
+        // URL query parametrelerinden filtre değerlerini oku
+        var uri   = new Uri(Nav.Uri);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        if (query["status"] is { } s && s.Length > 0)  _filterStatus = s;
+        if (query["cat"]    is { } c && c.Length > 0)  _filterCat    = c;
+        if (query["level"]  is { } l && l.Length > 0)  _filterLevel  = l;
+        if (query["search"] is { } q && q.Length > 0)  _search       = q;
     }
 
-    private IEnumerable<RiskManagement.Models.Risk> Filtered => _risks
-        .Where(r => string.IsNullOrEmpty(_filterCat) || r.Category == _filterCat)
-        .Where(r => string.IsNullOrEmpty(_filterStatus) || r.Status == _filterStatus)
-        .Where(r => string.IsNullOrEmpty(_search) ||
-                    r.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
-                    r.Code.Contains(_search, StringComparison.OrdinalIgnoreCase));
+    bool HasFilter => !string.IsNullOrEmpty(_filterCat) || !string.IsNullOrEmpty(_filterStatus) ||
+                      !string.IsNullOrEmpty(_filterLevel) || _filterOrg > 0 || !string.IsNullOrEmpty(_search);
 
-    private static string StatusLabel(string s) => s switch
+    void ClearFilters() { _filterCat=""; _filterStatus=""; _filterLevel=""; _filterOrg=0; _search=""; _page=1; }
+
+    IEnumerable<RiskManagement.Models.Risk> Filtered
     {
-        "proposed" => "Öneri", "under_review" => "İncelemede",
-        "approved" => "İlk Değerlendirme", "strategy_set" => "Strateji",
-        "controlled" => "Kontrollü", "residual_evaluated" => "Kalan Risk",
-        "action_planned" => "Aksiyon", "rejected" => "Reddedildi", _ => s
+        get
+        {
+            var q = _risks.AsEnumerable();
+            if (!string.IsNullOrEmpty(_filterCat))    q = q.Where(r => r.Category == _filterCat);
+            if (!string.IsNullOrEmpty(_filterStatus)) q = q.Where(r => r.Status == _filterStatus);
+            if (_filterOrg > 0)                       q = q.Where(r => r.OrganizationId == _filterOrg);
+            if (!string.IsNullOrEmpty(_filterLevel))
+            {
+                if (_filterLevel == "__none")
+                    q = q.Where(r => !r.Evaluations.Any(e => e.EvalType == "initial"));
+                else
+                    q = q.Where(r => r.Evaluations.FirstOrDefault(e => e.EvalType == "initial")?.RiskLevel == _filterLevel);
+            }
+            if (!string.IsNullOrEmpty(_search))
+                q = q.Where(r =>
+                    r.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    r.Code.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    (r.Description ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    (r.Organization?.Name ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+            q = (_sortCol, _sortDir) switch
+            {
+                ("code",     "asc")  => q.OrderBy(r => r.Code),
+                ("code",     _)      => q.OrderByDescending(r => r.Code),
+                ("title",    "asc")  => q.OrderBy(r => r.Title),
+                ("title",    _)      => q.OrderByDescending(r => r.Title),
+                ("status",   "asc")  => q.OrderBy(r => StatusOrder(r.Status)),
+                ("status",   _)      => q.OrderByDescending(r => StatusOrder(r.Status)),
+                ("score",    "asc")  => q.OrderBy(r => r.Evaluations.FirstOrDefault(e=>e.EvalType=="initial")?.Score ?? -1),
+                ("score",    _)      => q.OrderByDescending(r => r.Evaluations.FirstOrDefault(e=>e.EvalType=="initial")?.Score ?? -1),
+                ("residual", "asc")  => q.OrderBy(r => r.Evaluations.LastOrDefault(e=>e.EvalType=="residual")?.Score ?? -1),
+                ("residual", _)      => q.OrderByDescending(r => r.Evaluations.LastOrDefault(e=>e.EvalType=="residual")?.Score ?? -1),
+                ("date",     "asc")  => q.OrderBy(r => r.ProposedAt),
+                _                    => q.OrderByDescending(r => r.ProposedAt),
+            };
+            return q;
+        }
+    }
+
+    IEnumerable<RiskManagement.Models.Risk> Paged => Filtered.Skip((_page-1)*_pageSize).Take(_pageSize);
+    int TotalPages => (int)Math.Ceiling(Filtered.Count() / (double)_pageSize);
+
+    void SetSort(string col)
+    {
+        if (_sortCol == col) _sortDir = _sortDir == "asc" ? "desc" : "asc";
+        else { _sortCol = col; _sortDir = "desc"; }
+        _page = 1;
+    }
+
+    string SortIcon(string col) => _sortCol != col ? "↕" : _sortDir == "asc" ? "↑" : "↓";
+
+    IEnumerable<(string label, int count, string color, string bg)> StatCards
+    {
+        get
+        {
+            var all = _risks;
+            yield return ("Toplam Risk",    all.Count,                                                   "#374151", "#f9fafb");
+            yield return ("Açık",          all.Count(r => r.Status is "proposed" or "under_review" or "awaiting_approval"),    "#1d4ed8", "#eff6ff");
+            yield return ("Çok Yüksek / Yüksek",
+                all.Count(r => r.Evaluations.FirstOrDefault(e=>e.EvalType=="initial")?.RiskLevel is "Çok Yüksek Risk" or "Yüksek Risk"),
+                "#dc2626", "#fef2f2");
+            yield return ("Kontrollü",     all.Count(r => r.Status is "controlled" or "residual_evaluated" or "action_planned" or "risk_accepted"), "#16a34a", "#f0fdf4");
+            yield return ("Reddedildi",    all.Count(r => r.Status == "rejected"),                      "#6b7280", "#f3f4f6");
+        }
+    }
+
+    static string LevelBg(string level) => level switch
+    {
+        "Çok Yüksek Risk" => "#fee2e2",
+        "Yüksek Risk"     => "#fecaca",
+        "Önemli Risk"     => "#fed7aa",
+        "Orta Risk"       => "#fef08a",
+        _                 => "#dcfce7"
     };
 
-    private static string StatusBadge(string s) => s switch
+    static string RlClass(string level) => level switch
     {
-        "proposed" => "badge-blue", "under_review" => "badge-yellow",
-        "approved" or "strategy_set" => "badge-orange",
-        "controlled" or "residual_evaluated" or "action_planned" => "badge-green",
-        "rejected" => "badge-red", _ => ""
+        "Çok Yüksek Risk" => "rl-critical",
+        "Yüksek Risk"     => "rl-high",
+        "Önemli Risk"     => "rl-medium",
+        "Orta Risk"       => "rl-low",
+        _                 => "rl-ok"
+    };
+
+    static string RlIcon(string level) => level switch
+    {
+        "Çok Yüksek Risk" => "▲▲",
+        "Yüksek Risk"     => "▲",
+        "Önemli Risk"     => "◆",
+        "Orta Risk"       => "●",
+        _                 => "✓"
+    };
+
+    static int StatusOrder(string s) => s switch
+    {
+        "proposed"=>0,"under_review"=>1,"awaiting_approval"=>2,"approved"=>3,"strategy_set"=>4,
+        "controlled"=>4,"residual_evaluated"=>5,"action_planned"=>6,
+        "risk_accepted"=>7,"rejected"=>8,_=>9
+    };
+
+    static string StatusLabel(string s) => s switch
+    {
+        "proposed"=>"Öneri","under_review"=>"İncelemede","awaiting_approval"=>"Onay Bekliyor","approved"=>"İlk Değerlendirme",
+        "strategy_set"=>"Strateji","controlled"=>"Kontrollü","residual_evaluated"=>"Kalan Risk",
+        "action_planned"=>"Aksiyon","risk_accepted"=>"Risk Kabul Edildi","rejected"=>"Reddedildi",_=>s
+    };
+
+    static string RelativeDate(DateTime dt)
+    {
+        var diff = DateTime.UtcNow - dt;
+        if (diff.TotalMinutes < 2)  return "Az önce";
+        if (diff.TotalMinutes < 60) return $"{(int)diff.TotalMinutes} dk önce";
+        if (diff.TotalHours < 24)   return $"{(int)diff.TotalHours} sa önce";
+        if (diff.TotalDays < 7)     return $"{(int)diff.TotalDays} gün önce";
+        if (diff.TotalDays < 30)    return $"{(int)(diff.TotalDays / 7)} hafta önce";
+        if (diff.TotalDays < 365)   return $"{(int)(diff.TotalDays / 30)} ay önce";
+        return dt.ToLocalTime().ToString("dd.MM.yyyy");
+    }
+
+    static string StatusBadge(string s) => s switch
+    {
+        "proposed"=>"badge-blue","under_review"=>"badge-yellow","awaiting_approval"=>"badge-orange",
+        "approved" or "strategy_set"=>"badge-orange",
+        "controlled" or "residual_evaluated" or "action_planned" or "risk_accepted"=>"badge-green",
+        "rejected"=>"badge-red",_=>""
     };
 }

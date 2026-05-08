@@ -10,7 +10,7 @@
     <h1>İç Denetimler</h1>
     @if (HasRole("auditor","audit_manager","admin"))
     {
-        <a href="/audit/internal/new" class="btn btn-primary">➕ Yeni Denetim</a>
+        <a href="/audit/internal/new" class="btn btn-primary">+ Yeni Denetim</a>
     }
 </div>
 
@@ -34,7 +34,7 @@
             }
             @if (!_audits.Any())
             {
-                <tr><td colspan="7" class="empty-state">Kayıt bulunamadı.</td></tr>
+                <EmptyState Colspan="7" Icon="📋" Title="Henüz denetim yok" Subtitle="İlk iç denetimi oluşturarak başlayın." ActionHref="/audit/internal/new" ActionLabel="+ Yeni Denetim" />
             }
         </tbody>
     </table>
@@ -43,9 +43,10 @@
 @code {
     private List<RiskManagement.Models.InternalAudit> _audits = [];
     private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     private bool HasRole(params string[] roles) => roles.Contains(Role);
 
-    protected override void OnInitialized() => _audits = AuditSvc.GetAudits();
+    protected override void OnInitialized() => _audits = AuditSvc.GetAuditsForUser(UserId, Role);
 
     private static string StatusLabel(string s) => s switch
     {

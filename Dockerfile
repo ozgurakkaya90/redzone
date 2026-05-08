@@ -6,7 +6,7 @@ RUN dotnet restore RiskManagement/RiskManagement.csproj
 
 COPY . .
 WORKDIR /src/RiskManagement
-RUN dotnet publish -c Release -o /app/publish
+RUN dotnet publish RiskManagement.csproj -c Release -o /app/publish
 
 FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app

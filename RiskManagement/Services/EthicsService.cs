@@ -15,8 +15,7 @@ public class EthicsService(AppDbContext db, IWebHostEnvironment env)
     public string GenerateCode()
     {
         var year = DateTime.UtcNow.Year;
-        var count = db.EthicsReports.Count(r => r.Code.StartsWith($"EB-{year}-"));
-        return $"EB-{year}-{(count + 1):D3}";
+        return $"EB-{year}-{CounterHelper.GetNext(db, $"ethics-{year}"):D3}";
     }
 
     public IQueryable<EthicsReport> Query() => db.EthicsReports

@@ -1,0 +1,255 @@
+@page "/login"
+@model RiskManagement.Pages.LoginModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Giriş — RED</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/css/app.css" />
+    <style>
+        /* ── Auth-type toggle ─────────────────────────────────── */
+        .auth-toggle {
+            display: flex;
+            background: #f1f5f9;
+            border-radius: 10px;
+            padding: 4px;
+            margin-bottom: 24px;
+            position: relative;
+        }
+        .auth-toggle input[type="radio"] { display: none; }
+
+        .auth-toggle label {
+            flex: 1;
+            text-align: center;
+            padding: 8px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            color: #64748b;
+            cursor: pointer;
+            border-radius: 7px;
+            transition: color .15s;
+            position: relative;
+            z-index: 1;
+            user-select: none;
+        }
+
+        .auth-toggle label span {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+        }
+
+        /* sliding pill */
+        .toggle-pill {
+            position: absolute;
+            top: 4px;
+            left: 4px;
+            width: calc(50% - 4px);
+            height: calc(100% - 8px);
+            background: #fff;
+            border-radius: 7px;
+            box-shadow: 0 1px 4px rgba(0,0,0,.12), 0 0 0 1px rgba(0,0,0,.04);
+            transition: left .22s cubic-bezier(.4,0,.2,1);
+            pointer-events: none;
+        }
+
+        #auth-ad:checked ~ .toggle-pill          { left: calc(50%); }
+        #auth-local:checked ~ .toggle-pill        { left: 4px; }
+
+        #auth-local:checked ~ label[for="auth-local"],
+        #auth-ad:checked    ~ label[for="auth-ad"]    { color: #1e3a5f; }
+
+        /* AD hint banner */
+        .ad-hint {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 8px;
+            padding: 10px 14px;
+            margin-bottom: 16px;
+            font-size: 12px;
+            color: #1d4ed8;
+        }
+        .ad-hint svg { flex-shrink: 0; }
+
+        /* show/hide panels */
+        .panel { display: none; }
+        #auth-local:checked ~ * .panel-local { display: block; }
+        #auth-ad:checked    ~ * .panel-ad    { display: block; }
+
+        /* fallback: use JS to avoid CSS sibling limits across containers */
+    </style>
+</head>
+<body>
+<div class="login-page">
+    <div class="login-card">
+        <div class="login-logo">
+            <div class="login-logo-icon">🛡️</div>
+            <h1>Risk Yönetim Sistemi</h1>
+            <p>Kurumsal Risk · İç Denetim · Etik</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(Model.Error))
+        {
+            <div class="alert alert-error" style="margin-bottom:16px">@Model.Error</div>
+        }
+
+        @* AD aktifse giriş türü seçici göster *@
+        @if (Model.LdapEnabled)
+        {
+        <div class="auth-toggle" id="authToggle">
+            <input type="radio" name="authType" id="auth-local" value="local" checked />
+            <input type="radio" name="authType" id="auth-ad"    value="ad"    @(Model.AuthType == "ad" ? "checked" : "") />
+            <span class="toggle-pill"></span>
+            <label for="auth-local"><span>🔑 Yerel Hesap</span></label>
+            <label for="auth-ad"><span>🏢 Active Directory</span></label>
+        </div>
+        }
+        else
+        {
+            <input type="hidden" name="authType" value="local" />
+        }
+
+        <form method="post" id="loginForm">
+            @Html.AntiForgeryToken()
+            @if (Model.LdapEnabled)
+            {
+                <input type="hidden" name="authType" id="authTypeHidden" value="@(Model.AuthType ?? "local")" />
+            }
+
+            @* AD hint (yalnızca AD modu aktifken gösterilir) *@
+            @if (Model.LdapEnabled)
+            {
+            <div id="adHint" class="ad-hint" style="display:none">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+                </svg>
+                Kurumsal kimliğinizle (domain\kullanıcı adı veya e-posta) giriş yapın.
+            </div>
+            }
+
+            <div class="form-group">
+                <label class="form-label" id="usernameLabel">Kullanıcı Adı</label>
+                <input class="form-control" name="username" id="usernameInput"
+                       value="@Model.Username"
+                       placeholder="kullanıcı adı"
+                       autocomplete="username" autofocus />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Şifre</label>
+                <input type="password" class="form-control" name="password"
+                       placeholder="••••••••" autocomplete="current-password" />
+            </div>
+
+            <button type="submit" class="btn btn-primary" style="width:100%" id="submitBtn">
+                Giriş Yap
+            </button>
+        </form>
+
+        <div id="forgotLink" style="text-align:center;margin-top:12px;font-size:13px">
+            <a href="/forgot-password" style="color:#E1251B">Şifremi unuttum</a>
+        </div>
+
+        @* Bildirim takibi — yalnızca etik modülü aktifse *@
+        @if (Model.EthicsEnabled)
+        {
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0">
+            <p style="text-align:center;font-size:12px;color:#94a3b8;margin-bottom:8px;font-weight:500;text-transform:uppercase;letter-spacing:.04em">Bildirim Takibi</p>
+            <form method="get" action="/ethics/status/placeholder" id="statusForm"
+                  onsubmit="this.action='/ethics/status/'+document.getElementById('statusCode').value.trim();return document.getElementById('statusCode').value.trim()!==''">
+                <div style="display:flex;gap:8px">
+                    <input id="statusCode" name="code" placeholder="Referans kodu" maxlength="60"
+                           style="flex:1;padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;outline:none;font-family:monospace" />
+                    <button type="submit"
+                            style="padding:9px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;color:#374151;cursor:pointer;white-space:nowrap">
+                        Sorgula
+                    </button>
+                </div>
+            </form>
+        </div>
+        }
+
+        @* Giriş yapmadan devam et — etik butonunu modüle göre göster *@
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid #e2e8f0">
+            <p style="text-align:center;font-size:12px;color:#94a3b8;margin-bottom:12px;font-weight:500;text-transform:uppercase;letter-spacing:.04em">Giriş yapmadan devam et</p>
+            <div style="display:flex;gap:10px">
+                <a href="/risk/propose"
+                   style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;color:#374151;text-decoration:none;background:#f8fafc;transition:background .15s"
+                   onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
+                    <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                    Risk Öner
+                </a>
+                @if (Model.EthicsEnabled)
+                {
+                <a href="/ethics/submit"
+                   style="flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:9px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;font-weight:600;color:#374151;text-decoration:none;background:#f8fafc;transition:background .15s"
+                   onmouseover="this.style.background='#f1f5f9'" onmouseout="this.style.background='#f8fafc'">
+                    <svg width="15" height="15" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16H9m3 0h3"/>
+                    </svg>
+                    Etik Bildirim
+                </a>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var localRadio  = document.getElementById('auth-local');
+    var adRadio     = document.getElementById('auth-ad');
+    // AD devre dışıysa bu elementler DOM'da yok; erken çık
+    if (!localRadio || !adRadio) return;
+
+    var hiddenInput = document.getElementById('authTypeHidden');
+    var adHint      = document.getElementById('adHint');
+    var label       = document.getElementById('usernameLabel');
+    var input       = document.getElementById('usernameInput');
+    var btn         = document.getElementById('submitBtn');
+
+    // Restore state from server (after failed submit)
+    if (hiddenInput && hiddenInput.value === 'ad') {
+        adRadio.checked    = true;
+        localRadio.checked = false;
+        applyAd();
+    }
+
+    var forgotLink = document.getElementById('forgotLink');
+
+    function applyLocal() {
+        if (hiddenInput) hiddenInput.value = 'local';
+        if (adHint)      adHint.style.display = 'none';
+        label.textContent    = 'Kullanıcı Adı';
+        input.placeholder    = 'kullanıcı adı';
+        btn.textContent      = 'Giriş Yap';
+        if (forgotLink) forgotLink.style.display = 'block';
+    }
+
+    function applyAd() {
+        if (hiddenInput) hiddenInput.value = 'ad';
+        if (adHint)      adHint.style.display = 'flex';
+        label.textContent    = 'AD Kullanıcı Adı / E-posta';
+        input.placeholder    = 'domain\\kullanici veya ad@sirket.com';
+        btn.textContent      = 'AD ile Giriş Yap';
+        if (forgotLink) forgotLink.style.display = 'none';
+    }
+
+    localRadio.addEventListener('change', function () { if (this.checked) applyLocal(); });
+    adRadio.addEventListener('change',    function () { if (this.checked) applyAd(); });
+})();
+</script>
+</body>
+</html>

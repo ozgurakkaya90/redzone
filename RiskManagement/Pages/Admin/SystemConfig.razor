@@ -3,6 +3,8 @@
 @inject ConfigService CfgSvc
 @inject AppDbContext Db
 @using System.Text.Json
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
 
 <PageTitle>Sistem Yapılandırması</PageTitle>
 
@@ -43,11 +45,216 @@
     </div>
 }
 
+@if (_tab == "companies")
+{
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+
+        @* ── Şirketler ── *@
+        <div>
+            <div class="card" style="margin-bottom:12px">
+                <div class="section-title">Yeni Şirket Ekle</div>
+                @if (!string.IsNullOrEmpty(_companyError)) { <div class="alert alert-error" style="margin-bottom:10px">@_companyError</div> }
+                <div class="form-group">
+                    <label class="form-label">Şirket Adı *</label>
+                    <input class="form-control" @bind="_newCompanyName" placeholder="örn. ABC Holding A.Ş." />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Açıklama</label>
+                    <input class="form-control" @bind="_newCompanyDesc" placeholder="İsteğe bağlı" />
+                </div>
+                <button class="btn btn-primary btn-sm" @onclick="AddCompany">Ekle</button>
+            </div>
+
+            <div class="card" style="padding:0">
+                <table class="table">
+                    <thead><tr><th>Şirket</th><th>Açıklama</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var c in _companies)
+                        {
+                            <tr>
+                                <td style="font-weight:600">@c.Name</td>
+                                <td style="font-size:12px;color:var(--text-3)">@(c.Description ?? "—")</td>
+                                <td><button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteCompany(c.Id)">Sil</button></td>
+                            </tr>
+                        }
+                        @if (!_companies.Any())
+                        { <tr><td colspan="3" class="empty-state">Henüz şirket eklenmemiş.</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        @* ── Organizasyonlar ── *@
+        <div>
+            <div class="card" style="margin-bottom:12px">
+                <div class="section-title">Yeni Organizasyon Ekle</div>
+                @if (!string.IsNullOrEmpty(_orgError)) { <div class="alert alert-error" style="margin-bottom:10px">@_orgError</div> }
+                <div class="form-group">
+                    <label class="form-label">Organizasyon Adı *</label>
+                    <input class="form-control" @bind="_newOrgName" placeholder="örn. Finans & Muhasebe Genel Müdürlüğü" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Bağlı Şirket</label>
+                    <select class="form-control" @bind="_newOrgCompanyId">
+                        <option value="">— Şirket Seçin —</option>
+                        @foreach (var c in _companies)
+                        { <option value="@c.Id">@c.Name</option> }
+                    </select>
+                </div>
+                <button class="btn btn-primary btn-sm" @onclick="AddOrganization">Ekle</button>
+            </div>
+
+            <div class="card" style="padding:0">
+                <table class="table">
+                    <thead><tr><th>Organizasyon</th><th>Şirket</th><th></th></tr></thead>
+                    <tbody>
+                        @foreach (var o in _organizations)
+                        {
+                            <tr>
+                                <td style="font-weight:600">@o.Name</td>
+                                <td style="font-size:12px;color:var(--text-3)">@(o.Company?.Name ?? "—")</td>
+                                <td><button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteOrganization(o.Id)">Sil</button></td>
+                            </tr>
+                        }
+                        @if (!_organizations.Any())
+                        { <tr><td colspan="3" class="empty-state">Henüz organizasyon eklenmemiş.</td></tr> }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_tab == "departments")
+{
+    <div class="card" style="margin-bottom:16px">
+        <div class="section-title">Yeni Departman Ekle</div>
+        @if (!string.IsNullOrEmpty(_deptError)) { <div class="alert alert-error" style="margin-bottom:12px">@_deptError</div> }
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+            <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">Departman Adı *</label>
+                <input class="form-control" @bind="_newDeptName" placeholder="örn. Finans Direktörlüğü" />
+            </div>
+            <div class="form-group" style="margin-bottom:0">
+                <label class="form-label">Bağlı Organizasyon</label>
+                <select class="form-control" @bind="_newDeptOrgId">
+                    <option value="">— Organizasyon Seçin —</option>
+                    @foreach (var o in _organizations)
+                    {
+                        <option value="@o.Id">@o.Name @(o.Company != null ? $"({o.Company.Name})" : "")</option>
+                    }
+                </select>
+            </div>
+        </div>
+        <button class="btn btn-primary" @onclick="AddDepartment">Ekle</button>
+    </div>
+
+    <div class="card" style="padding:0">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Departman</th>
+                    <th>Organizasyon</th>
+                    <th>Şirket</th>
+                    <th>Departman Yöneticisi</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var dept in _departments)
+                {
+                    var deptId = dept.Id;
+                    var deptManagerId = dept.ManagerUserId;
+                    <tr>
+                        <td style="font-weight:600">@dept.Name</td>
+                        <td>
+                            <select class="form-control" style="width:200px;font-size:12px"
+                                    value="@(dept.OrganizationId?.ToString() ?? string.Empty)"
+                                    @onchange="@(e => SetOrganization(deptId, e.Value?.ToString() ?? string.Empty))">
+                                <option value="">— Seçin —</option>
+                                @foreach (var o in _organizations)
+                                {
+                                    <option value="@o.Id" selected="@(dept.OrganizationId == o.Id)">@o.Name</option>
+                                }
+                            </select>
+                        </td>
+                        <td style="font-size:12px;color:var(--text-3)">
+                            @(dept.Organization?.Company?.Name ?? "—")
+                        </td>
+                        <td>
+                            <select class="form-control" style="width:200px;font-size:12px"
+                                    value="@(deptManagerId?.ToString() ?? string.Empty)"
+                                    @onchange="@(e => SetManager(deptId, e.Value?.ToString() ?? string.Empty))">
+                                <option value="">— Yönetici Seçin —</option>
+                                @foreach (var u in _allUsers)
+                                {
+                                    <option value="@u.Id" selected="@(deptManagerId == u.Id)">
+                                        @u.FullName (@u.Department)
+                                    </option>
+                                }
+                            </select>
+                        </td>
+                        <td>
+                            <button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteDepartment(deptId)">Sil</button>
+                        </td>
+                    </tr>
+                }
+                @if (!_departments.Any())
+                {
+                    <tr><td colspan="5" class="empty-state">Henüz departman tanımlanmamış.</td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div style="margin-top:16px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:#1d4ed8">
+        <strong>ℹ️ Departman Yöneticisi:</strong> Seçilen kullanıcı, bu departmanın sorumlu birimi olarak atanmış tüm riskleri görebilir.
+        Risk envanterinde risk kaydının <em>Sorumlu Birim</em> alanı departman adıyla eşleştiğinde erişim sağlanır.
+    </div>
+}
+
 @if (_tab == "risk")
 {
-    <ListEditor Title="Risk Kategorileri"    Items="_riskCategories"   OnSave="SaveRiskCategories" />
-    <ListEditor Title="Sorumlu Birimler"     Items="_responsibleUnits" OnSave="SaveResponsibleUnits" />
-    <ListEditor Title="Risk Stratejileri"    Items="_riskStrategies"   OnSave="SaveRiskStrategies" />
+    <ListEditor Title="Risk Kategorileri" Items="_riskCategories" OnSave="SaveRiskCategories" />
+    <ListEditor Title="Risk Stratejileri" Items="_riskStrategies" OnSave="SaveRiskStrategies" />
+
+    <div class="card">
+        <div class="section-title">Periyodik İnceleme Eşiği</div>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:16px">
+            Bu süreyi aşan incelemesiz riskler "Bekleyen İşler" sayfasında uyarı olarak görünür.
+        </p>
+        <div class="form-group" style="max-width:200px">
+            <label class="form-label">Eşik (gün)</label>
+            <input type="number" class="form-control" @bind="_reviewThresholdDays" min="1" max="730" />
+        </div>
+        <button class="btn btn-primary btn-sm" @onclick="SaveReviewThreshold">Kaydet</button>
+    </div>
+
+    @* ── Risk Detayları Alan Görünürlüğü ── *@
+    <div class="card">
+        <div class="section-title">Risk Detayları — Alan Görünürlüğü</div>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:16px">
+            Risk detayı kartında hangi alanların görüneceğini seçin.
+            Kapatılan alanlar formdan ve görüntülemeden tamamen gizlenir.
+        </p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+            @foreach (var (key, label, hint) in _riskDetailFieldDefs)
+            {
+                var k = key;
+                <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:@(_riskDetailFields.GetValueOrDefault(k,true)?"#f0fdf4":"#f9fafb")">
+                    <input type="checkbox"
+                           style="margin-top:2px;width:16px;height:16px;flex-shrink:0"
+                           checked="@_riskDetailFields.GetValueOrDefault(k, true)"
+                           @onchange="e => ToggleRiskField(k, (bool)(e.Value ?? true))" />
+                    <div>
+                        <div style="font-size:13px;font-weight:600;color:var(--text-1)">@label</div>
+                        <div style="font-size:11px;color:var(--text-3);margin-top:2px">@hint</div>
+                    </div>
+                </label>
+            }
+        </div>
+        <button class="btn btn-primary btn-sm" @onclick="SaveRiskDetailFields">Kaydet</button>
+    </div>
 }
 
 @if (_tab == "controls")
@@ -74,23 +281,56 @@
 
     private static readonly (string key, string label)[] _tabs =
     [
-        ("theme","🎨 Görsel Ayarlar"), ("risk","🛡️ Risk Modülü"),
-        ("controls","🔒 Kontroller"), ("audit","🔍 Denetim Modülü"), ("ethics","⚖️ Etik Modülü")
+        ("theme","🎨 Görsel Ayarlar"), ("companies","🏛️ Şirketler & Organizasyonlar"),
+        ("departments","🏢 Departmanlar"),
+        ("risk","🛡️ Risk Modülü"), ("controls","🔒 Kontroller"),
+        ("audit","🔍 Denetim Modülü"), ("ethics","⚖️ Etik Modülü")
     ];
 
     private string _primaryColor = "#E1251B", _secondaryColor = "#16a34a";
-    private List<string> _riskCategories = [], _responsibleUnits = [], _riskStrategies = [];
+    private List<string> _riskCategories = [], _riskStrategies = [];
+
+    // Risk detay alanları
+    private Dictionary<string, bool> _riskDetailFields = [];
+    private static readonly (string key, string label, string hint)[] _riskDetailFieldDefs =
+    [
+        ("source_type",          "Kaynak Türü",               "İç kaynak / Dış kaynak seçimi"),
+        ("source",               "Kaynak",                    "Riskin hangi kaynaktan geldiği"),
+        ("hazard",               "Tehlike",                   "Tehlike/tehdit tanımı"),
+        ("possible_impact",      "Olası Etki",                "Risk gerçekleşirse doğacak sonuçlar"),
+        ("affected_persons",     "Etkilenecek Kişiler",       "Risk kapsamındaki paydaş grupları"),
+        ("relevant_legislation", "İlgili Mevzuat / Doküman",  "Yasal düzenlemeler ve iç dokümanlar"),
+    ];
+    private int _reviewThresholdDays = 90;
     private List<string> _controlTypes = [], _controlEffectiveness = [], _controlFrequencies = [];
     private List<string> _auditCategories = [], _auditSeverities = [], _ethicsCategories = [];
 
+    // Companies & Organizations
+    private List<Company> _companies = [];
+    private List<Organization> _organizations = [];
+    private string _newCompanyName = "", _newCompanyDesc = "", _companyError = "";
+    private string _newOrgName = "";
+    private int? _newOrgCompanyId;
+    private string _orgError = "";
+
+    // Departments
+    private List<Department> _departments = [];
+    private List<User> _allUsers = [];
+    private string _newDeptName = "";
+    private int? _newDeptOrgId;
+    private string _deptError = "";
+
     protected override void OnInitialized()
     {
+        ReloadCompanies();
+        _departments = [.. Db.Departments.Include(d => d.Manager).Include(d => d.Organization).ThenInclude(o => o!.Company).OrderBy(d => d.Name)];
+        _allUsers    = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
+
         var theme = CfgSvc.Get<JsonElement>("site_theme");
         _primaryColor   = theme.TryGetProperty("primary_color",   out var p) ? p.GetString()! : "#E1251B";
         _secondaryColor = theme.TryGetProperty("secondary_color", out var s) ? s.GetString()! : "#16a34a";
 
         _riskCategories      = [.. CfgSvc.GetList("risk_categories")];
-        _responsibleUnits    = [.. CfgSvc.GetList("responsible_units")];
         _riskStrategies      = [.. CfgSvc.GetList("risk_strategies")];
         _controlTypes        = [.. CfgSvc.GetList("control_types")];
         _controlEffectiveness= [.. CfgSvc.GetList("control_effectiveness")];
@@ -98,13 +338,14 @@
         _auditCategories     = [.. CfgSvc.GetList("audit_categories")];
         _auditSeverities     = [.. CfgSvc.GetList("audit_severities")];
         _ethicsCategories    = [.. CfgSvc.GetList("ethics_categories")];
+        _riskDetailFields    = CfgSvc.GetRiskDetailFields();
+        _reviewThresholdDays = CfgSvc.Get<int>("review_threshold_days") is var t && t > 0 ? t : 90;
     }
 
     private void Save(string key, List<string> value) { CfgSvc.Set(key, value); _success = "Kaydedildi."; }
 
-    private Task SaveRiskCategories(List<string> v)    { Save("risk_categories",   v); return Task.CompletedTask; }
-    private Task SaveResponsibleUnits(List<string> v)  { Save("responsible_units", v); return Task.CompletedTask; }
-    private Task SaveRiskStrategies(List<string> v)    { Save("risk_strategies",   v); return Task.CompletedTask; }
+    private Task SaveRiskCategories(List<string> v) { Save("risk_categories", v); return Task.CompletedTask; }
+    private Task SaveRiskStrategies(List<string> v)  { Save("risk_strategies", v); return Task.CompletedTask; }
     private Task SaveControlTypes(List<string> v)        { Save("control_types",         v); return Task.CompletedTask; }
     private Task SaveControlEffectiveness(List<string> v){ Save("control_effectiveness", v); return Task.CompletedTask; }
     private Task SaveControlFrequencies(List<string> v)  { Save("control_frequencies",   v); return Task.CompletedTask; }
@@ -112,9 +353,102 @@
     private Task SaveAuditSeverities(List<string> v)   { Save("audit_severities",  v); return Task.CompletedTask; }
     private Task SaveEthicsCategories(List<string> v)  { Save("ethics_categories", v); return Task.CompletedTask; }
 
+    private void SaveReviewThreshold()
+    {
+        if (_reviewThresholdDays < 1) _reviewThresholdDays = 1;
+        CfgSvc.Set("review_threshold_days", _reviewThresholdDays);
+        _success = $"Periyodik inceleme eşiği {_reviewThresholdDays} gün olarak kaydedildi.";
+    }
+
+    private void ToggleRiskField(string key, bool val) => _riskDetailFields[key] = val;
+
+    private void SaveRiskDetailFields()
+    {
+        CfgSvc.Set("risk_detail_fields", _riskDetailFields);
+        _success = "Alan görünürlükleri kaydedildi.";
+    }
+
     private void SaveTheme()
     {
         CfgSvc.Set("site_theme", new { primary_color=_primaryColor, secondary_color=_secondaryColor });
         _success = "Tema kaydedildi.";
+    }
+
+    void ReloadCompanies()
+    {
+        _companies      = [.. Db.Companies.OrderBy(c => c.Name)];
+        _organizations  = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
+    }
+
+    void ReloadDepts() =>
+        _departments = [.. Db.Departments.Include(d => d.Manager)
+            .Include(d => d.Organization).ThenInclude(o => o!.Company)
+            .OrderBy(d => d.Name)];
+
+    private void AddCompany()
+    {
+        _companyError = "";
+        if (string.IsNullOrWhiteSpace(_newCompanyName)) { _companyError = "Şirket adı boş olamaz."; return; }
+        if (Db.Companies.Any(c => c.Name == _newCompanyName.Trim())) { _companyError = "Bu şirket zaten mevcut."; return; }
+        Db.Companies.Add(new Company { Name = _newCompanyName.Trim(), Description = string.IsNullOrWhiteSpace(_newCompanyDesc) ? null : _newCompanyDesc.Trim() });
+        Db.SaveChanges();
+        _newCompanyName = ""; _newCompanyDesc = "";
+        ReloadCompanies(); _success = "Şirket eklendi.";
+    }
+
+    private void DeleteCompany(int id)
+    {
+        var c = Db.Companies.Find(id); if (c == null) return;
+        Db.Companies.Remove(c); Db.SaveChanges();
+        ReloadCompanies(); _success = "Şirket silindi.";
+    }
+
+    private void AddOrganization()
+    {
+        _orgError = "";
+        if (string.IsNullOrWhiteSpace(_newOrgName)) { _orgError = "Organizasyon adı boş olamaz."; return; }
+        Db.Organizations.Add(new Organization { Name = _newOrgName.Trim(), CompanyId = _newOrgCompanyId });
+        Db.SaveChanges();
+        _newOrgName = ""; _newOrgCompanyId = null;
+        ReloadCompanies(); _success = "Organizasyon eklendi.";
+    }
+
+    private void DeleteOrganization(int id)
+    {
+        var o = Db.Organizations.Find(id); if (o == null) return;
+        Db.Organizations.Remove(o); Db.SaveChanges();
+        ReloadCompanies(); _success = "Organizasyon silindi.";
+    }
+
+    private void AddDepartment()
+    {
+        _deptError = "";
+        if (string.IsNullOrWhiteSpace(_newDeptName)) { _deptError = "Departman adı boş olamaz."; return; }
+        if (Db.Departments.Any(d => d.Name == _newDeptName.Trim())) { _deptError = "Bu departman zaten mevcut."; return; }
+        Db.Departments.Add(new Department { Name = _newDeptName.Trim(), OrganizationId = _newDeptOrgId });
+        Db.SaveChanges();
+        _newDeptName = ""; _newDeptOrgId = null;
+        ReloadDepts(); _success = "Departman eklendi.";
+    }
+
+    private void DeleteDepartment(int id)
+    {
+        var dept = Db.Departments.Find(id); if (dept == null) return;
+        Db.Departments.Remove(dept); Db.SaveChanges();
+        ReloadDepts(); _success = "Departman silindi.";
+    }
+
+    private void SetManager(int deptId, string managerIdStr)
+    {
+        var dept = Db.Departments.Find(deptId); if (dept == null) return;
+        dept.ManagerUserId = int.TryParse(managerIdStr, out var mid) && mid > 0 ? mid : null;
+        Db.SaveChanges(); ReloadDepts(); _success = "Yönetici güncellendi.";
+    }
+
+    private void SetOrganization(int deptId, string orgIdStr)
+    {
+        var dept = Db.Departments.Find(deptId); if (dept == null) return;
+        dept.OrganizationId = int.TryParse(orgIdStr, out var oid) && oid > 0 ? oid : null;
+        Db.SaveChanges(); ReloadDepts(); _success = "Organizasyon güncellendi.";
     }
 }

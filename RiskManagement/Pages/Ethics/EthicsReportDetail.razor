@@ -1,0 +1,214 @@
+@page "/ethics/reports/{Id:int}"
+@attribute [Authorize(Roles = "audit_manager,ethics_board,admin")]
+@inject EthicsService EthicsSvc
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+
+<PageTitle>Etik Bildirim Detayı</PageTitle>
+
+@if (_report == null)
+{
+    <div class="spinner">Yükleniyor…</div>
+}
+else
+{
+    <div style="max-width:860px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
+            <div>
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">
+                    <code>@_report.Code</code>
+                    <span class="badge @StatusBadge(_report.Status)">@StatusLabel(_report.Status)</span>
+                    @if (_report.ReportCategory != null)
+                    {
+                        <span class="tag">@_report.ReportCategory</span>
+                    }
+                </div>
+                <h2>@_report.Subject</h2>
+                <div class="text-muted">@_report.SubmittedAt.ToString("dd.MM.yyyy HH:mm")</div>
+            </div>
+            <a href="/ethics/reports" class="btn btn-outline btn-sm">← Bildirimler</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))   { <div class="alert alert-error">@_error</div> }
+        @if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
+
+        <!-- Açıklama -->
+        <div class="card">
+            <div class="section-title">Bildirim İçeriği</div>
+            <p style="font-size:14px;line-height:1.6;white-space:pre-wrap">@_report.Description</p>
+        </div>
+
+        <!-- Denetim Müdürü Değerlendirmesi -->
+        @if (_report.Status == "pending" && HasRole("audit_manager", "admin"))
+        {
+            <div class="card">
+                <div class="section-title">Denetim Müdürü Değerlendirmesi</div>
+                <div class="form-group">
+                    <label class="form-label">Karar *</label>
+                    <select class="form-control" @bind="_auditDecision">
+                        <option value="">— Seçiniz —</option>
+                        <option value="irrelevant">İlgisiz — İşleme alınmayacak</option>
+                        <option value="ethics_board_notified">Etik Kurul'a Bildir</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notlar</label>
+                    <textarea class="form-control" rows="3" @bind="_auditNotes"></textarea>
+                </div>
+                <button class="btn btn-primary btn-sm" @onclick="SaveAuditReview" disabled="@_loading">
+                    Değerlendirmeyi Kaydet
+                </button>
+            </div>
+        }
+
+        <!-- Etik Kurul Değerlendirmesi -->
+        @if (_report.Status == "ethics_board_notified" && HasRole("ethics_board", "admin"))
+        {
+            <div class="card">
+                <div class="section-title">Etik Kurul Değerlendirmesi</div>
+                <div class="form-group">
+                    <label class="form-label">Karar *</label>
+                    <select class="form-control" @bind="_ethicsDecision">
+                        <option value="">— Seçiniz —</option>
+                        <option value="no_violation">İhlal Yok</option>
+                        <option value="disciplinary_referred">Disiplin Sürecine Sevk</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notlar</label>
+                    <textarea class="form-control" rows="3" @bind="_ethicsNotes"></textarea>
+                </div>
+                <button class="btn btn-primary btn-sm" @onclick="SaveEthicsReview" disabled="@_loading">
+                    Değerlendirmeyi Kaydet
+                </button>
+            </div>
+        }
+
+        <!-- Denetim Kararı Geçmişi -->
+        @if (_report.AuditDecision != null)
+        {
+            <div class="card">
+                <div class="section-title">Denetim Müdürü Kararı</div>
+                <div style="display:flex;gap:12px;align-items:flex-start">
+                    <div style="flex:1">
+                        <span class="badge @AuditDecisionBadge(_report.AuditDecision)">
+                            @AuditDecisionLabel(_report.AuditDecision)
+                        </span>
+                        @if (!string.IsNullOrEmpty(_report.AuditNotes))
+                        {
+                            <p style="margin-top:8px;font-size:13px;color:#374151">@_report.AuditNotes</p>
+                        }
+                    </div>
+                    <div class="text-muted" style="white-space:nowrap">
+                        @_report.AuditReviewer?.FullName<br />
+                        @_report.AuditReviewedAt?.ToString("dd.MM.yyyy")
+                    </div>
+                </div>
+            </div>
+        }
+
+        <!-- Etik Kurul Kararı -->
+        @if (_report.EthicsDecision != null)
+        {
+            <div class="card">
+                <div class="section-title">Etik Kurul Kararı</div>
+                <div style="display:flex;gap:12px;align-items:flex-start">
+                    <div style="flex:1">
+                        <span class="badge @StatusBadge(_report.EthicsDecision)">
+                            @StatusLabel(_report.EthicsDecision)
+                        </span>
+                        @if (!string.IsNullOrEmpty(_report.EthicsNotes))
+                        {
+                            <p style="margin-top:8px;font-size:13px;color:#374151">@_report.EthicsNotes</p>
+                        }
+                    </div>
+                    <div class="text-muted" style="white-space:nowrap">
+                        @_report.EthicsReviewer?.FullName<br />
+                        @_report.EthicsReviewedAt?.ToString("dd.MM.yyyy")
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private EthicsReport? _report;
+    private bool _loading;
+    private string _error = "", _success = "";
+    private string _auditDecision = "", _auditNotes = "";
+    private string _ethicsDecision = "", _ethicsNotes = "";
+
+    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private bool HasRole(params string[] roles) =>
+        HttpCtx.HttpContext?.User.Claims
+            .Where(c => c.Type == ClaimTypes.Role)
+            .Any(c => roles.Contains(c.Value)) ?? false;
+
+    protected override void OnInitialized() => Load();
+
+    private void Load()
+    {
+        _report = EthicsSvc.Get(Id);
+        if (_report == null) Nav.NavigateTo("/ethics/reports");
+    }
+
+    private void SaveAuditReview()
+    {
+        if (string.IsNullOrEmpty(_auditDecision)) { _error = "Karar seçiniz."; return; }
+        _loading = true;
+        EthicsSvc.AuditReview(Id, _auditDecision, _auditNotes, UserId);
+        _success = "Değerlendirme kaydedildi.";
+        _auditDecision = ""; _auditNotes = "";
+        Load(); _loading = false;
+    }
+
+    private void SaveEthicsReview()
+    {
+        if (string.IsNullOrEmpty(_ethicsDecision)) { _error = "Karar seçiniz."; return; }
+        _loading = true;
+        EthicsSvc.EthicsReview(Id, _ethicsDecision, _ethicsNotes, UserId);
+        _success = "Etik Kurul kararı kaydedildi.";
+        _ethicsDecision = ""; _ethicsNotes = "";
+        Load(); _loading = false;
+    }
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "pending"                => "Bekliyor",
+        "irrelevant"             => "İlgisiz",
+        "ethics_board_notified"  => "Kurul Bildirimi",
+        "disciplinary_referred"  => "Disiplin Sürecinde",
+        "no_violation"           => "İhlal Yok",
+        _ => s
+    };
+
+    private static string StatusBadge(string s) => s switch
+    {
+        "pending"               => "badge-yellow",
+        "irrelevant"            => "badge-gray",
+        "ethics_board_notified" => "badge-orange",
+        "disciplinary_referred" => "badge-red",
+        "no_violation"          => "badge-green",
+        _ => ""
+    };
+
+    private static string AuditDecisionLabel(string s) => s switch
+    {
+        "irrelevant"            => "İlgisiz — İşleme alınmadı",
+        "ethics_board_notified" => "Etik Kurul'a Bildirildi",
+        _ => s
+    };
+
+    private static string AuditDecisionBadge(string s) => s switch
+    {
+        "irrelevant"            => "badge-gray",
+        "ethics_board_notified" => "badge-orange",
+        _ => ""
+    };
+}

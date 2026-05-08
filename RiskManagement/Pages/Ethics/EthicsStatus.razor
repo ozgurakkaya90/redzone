@@ -1,0 +1,97 @@
+@page "/ethics/status/{Code}"
+@layout EmptyLayout
+@inject AppDbContext Db
+
+<PageTitle>Bildirim Durumu</PageTitle>
+
+<div class="login-page">
+    <div class="login-card" style="max-width:520px">
+        <div class="login-logo">
+            <h1>Bildirim Durumu</h1>
+            <p>Etik bildiriminizin mevcut durumu</p>
+        </div>
+
+        @if (_notFound)
+        {
+            <div class="alert alert-error">Bu koda ait bildirim bulunamadı.</div>
+        }
+        else if (_report != null)
+        {
+            <div style="background:var(--surface,#fff);border:1px solid var(--border,#e5e7eb);border-radius:10px;padding:20px;margin-bottom:16px">
+                <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px">
+                    <div>
+                        <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;margin-bottom:4px">Referans Kodu</div>
+                        <div style="font-size:18px;font-weight:700;font-family:monospace;color:#1e293b">@_report.Code</div>
+                    </div>
+                    <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:600;background:@_statusBg;color:@_statusColor">
+                        @_statusLabel
+                    </span>
+                </div>
+                <div style="font-size:13px;color:#64748b;margin-bottom:4px">
+                    <strong>Konu:</strong> @_report.Subject
+                </div>
+                @if (_report.ReportCategory != null)
+                {
+                    <div style="font-size:13px;color:#64748b;margin-bottom:4px">
+                        <strong>Kategori:</strong> @_report.ReportCategory
+                    </div>
+                }
+                <div style="font-size:12px;color:#94a3b8;margin-top:8px">
+                    Bildirim tarihi: @_report.SubmittedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_report.AuditNotes) || !string.IsNullOrEmpty(_report.EthicsNotes))
+            {
+                <div style="border:1px solid #e0e7ff;border-radius:8px;padding:14px;background:#f8faff;margin-bottom:12px">
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#6366f1;margin-bottom:10px">İnceleme Notları</div>
+                    @if (!string.IsNullOrEmpty(_report.AuditNotes))
+                    {
+                        <div style="font-size:13px;color:#374151;margin-bottom:6px">
+                            <strong>Denetim:</strong> @_report.AuditNotes
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_report.EthicsNotes))
+                    {
+                        <div style="font-size:13px;color:#374151">
+                            <strong>Kurul:</strong> @_report.EthicsNotes
+                        </div>
+                    }
+                </div>
+            }
+
+            <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px;font-size:12px;color:#15803d">
+                Kimliğiniz gizli tutulmaktadır. Kişisel bilgiler hiçbir aşamada kayıt altına alınmamıştır.
+            </div>
+        }
+
+        <div style="text-align:center;margin-top:16px">
+            <a href="/login" style="color:#64748b;font-size:13px">← Giriş sayfasına dön</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Code { get; set; } = "";
+
+    private EthicsReport? _report;
+    private bool _notFound;
+
+    private string _statusLabel = "", _statusColor = "", _statusBg = "";
+
+    protected override void OnInitialized()
+    {
+        _report = Db.EthicsReports.FirstOrDefault(r => r.Code == Code);
+        if (_report == null) { _notFound = true; return; }
+
+        (_statusLabel, _statusColor, _statusBg) = _report.Status switch
+        {
+            "pending"                => ("Beklemede",               "#92400e", "#fffbeb"),
+            "ethics_board_notified"  => ("Kurul İncelemesinde",     "#1d4ed8", "#eff6ff"),
+            "disciplinary_referred"  => ("Disiplin Sürecine Alındı","#7c3aed", "#faf5ff"),
+            "no_violation"           => ("İhlal Tespit Edilmedi",   "#15803d", "#f0fdf4"),
+            "irrelevant"             => ("Kapsam Dışı",             "#64748b", "#f1f5f9"),
+            _                        => ("İşlemde",                 "#374151", "#f8fafc"),
+        };
+    }
+}

@@ -1,0 +1,145 @@
+@page "/audit/actions"
+@attribute [Authorize]
+@inject AuditService AuditSvc
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+
+<PageTitle>Denetim Aksiyon Planları</PageTitle>
+
+<ImportModal Visible="_showImport" Title="Denetim Aksiyon Planları" Module="audit-actions" OnClose="@(() => _showImport = false)" />
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Denetim Aksiyon Planları</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+        <div class="export-dropdown">
+            <button class="btn btn-outline btn-sm">⬇ Dışa Aktar</button>
+            <div class="export-menu">
+                <a href="/export/audit-actions/excel" class="export-item">📊 Excel (.xlsx)</a>
+                <a href="/export/audit-actions/pdf" class="export-item">📄 PDF</a>
+            </div>
+        </div>
+        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
+    </div>
+</div>
+
+<style>
+    .export-dropdown { position:relative;display:inline-block }
+    .export-dropdown:hover .export-menu { display:block }
+    .export-menu { display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:100;min-width:160px;padding:4px }
+    .export-item { display:block;padding:8px 12px;font-size:13px;color:var(--text-1);text-decoration:none;border-radius:6px;white-space:nowrap }
+    .export-item:hover { background:#f1f5f9 }
+</style>
+
+<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <select class="form-control" style="width:160px" @bind="_filterStatus">
+            <option value="">Tüm Durumlar</option>
+            <option value="planned">Planlandı</option>
+            <option value="in_progress">Devam Ediyor</option>
+            <option value="completed">Tamamlandı</option>
+            <option value="cancelled">İptal</option>
+        </select>
+        <input class="form-control" style="flex:1;min-width:180px" placeholder="Bulgu veya aksiyon ara…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+</div>
+
+<div class="card" style="padding:0;overflow-x:auto">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Bulgu</th>
+                <th>Aksiyon Açıklaması</th>
+                <th>Sorumlu Birim</th>
+                <th>Durum</th>
+                <th>Oluşturan</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in Filtered)
+            {
+                <tr>
+                    <td style="white-space:nowrap">
+                        <a href="/audit/findings/@a.FindingId" style="color:#1e40af;font-weight:600;font-size:12px;text-decoration:none">
+                            @a.Finding.Code
+                        </a>
+                        <div style="font-size:11px;color:#6b7280;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                            @a.Finding.Title
+                        </div>
+                        @if (a.Finding.InternalAudit != null)
+                        {
+                            <div style="font-size:10px;color:#9ca3af">📋 @a.Finding.InternalAudit.Code</div>
+                        }
+                    </td>
+                    <td style="max-width:260px">@a.Description</td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(a.Responsible))
+                        { <span class="badge badge-orange" style="font-size:10px">🏢 @a.Responsible</span> }
+                        else { <span style="color:#9ca3af">—</span> }
+                    </td>
+                    <td><span class="badge @StatusBadge(a.Status)">@StatusLabel(a.Status)</span></td>
+                    <td style="font-size:12px;color:#6b7280">@a.CreatedBy?.FullName</td>
+                    <td>
+                        <a href="/audit/findings/@a.FindingId" class="btn btn-outline btn-sm">Bulgu →</a>
+                    </td>
+                </tr>
+            }
+            @if (!Filtered.Any())
+            {
+                <tr><td colspan="7" class="empty-state">Kayıt bulunamadı.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px">
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Toplam</div>
+        <div style="font-size:28px;font-weight:700">@Filtered.Count()</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Planlandı</div>
+        <div style="font-size:28px;font-weight:700;color:#2563eb">@Filtered.Count(a => a.Status == "planned")</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Devam Ediyor</div>
+        <div style="font-size:28px;font-weight:700;color:#ca8a04">@Filtered.Count(a => a.Status == "in_progress")</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Tamamlandı</div>
+        <div style="font-size:28px;font-weight:700;color:#16a34a">@Filtered.Count(a => a.Status == "completed")</div>
+    </div>
+</div>
+
+@code {
+    private List<AuditFindingAction> _all = [];
+    private string _filterStatus = "", _search = "";
+    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private bool _showImport;
+
+    protected override void OnInitialized()
+    {
+        _all = AuditSvc.GetFindingActionsForUser(UserId, Role);
+    }
+
+    private IEnumerable<AuditFindingAction> Filtered => _all
+        .Where(a => string.IsNullOrEmpty(_filterStatus) || a.Status == _filterStatus)
+        .Where(a => string.IsNullOrEmpty(_search) ||
+                    a.Description.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    a.Finding.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    a.Finding.Code.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "planned" => "Planlandı", "in_progress" => "Devam Ediyor",
+        "completed" => "Tamamlandı", "cancelled" => "İptal", _ => s
+    };
+    private static string StatusBadge(string s) => s switch
+    {
+        "planned" => "badge-blue", "in_progress" => "badge-yellow",
+        "completed" => "badge-green", "cancelled" => "badge-gray", _ => ""
+    };
+}

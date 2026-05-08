@@ -11,29 +11,24 @@
 <div class="page-header"><h1>Risk Öner</h1></div>
 <div style="max-width:680px">
     <div class="card">
-        @if (!string.IsNullOrEmpty(_error))
-        {
-            <div class="alert alert-error" style="margin-bottom:16px">@_error</div>
-        }
+        <div class="alert alert-info" style="margin-bottom:16px">
+            Önerdiğiniz risk, Risk Komitesi tarafından incelenecek ve Fine-Kinney
+            metodolojisiyle değerlendirilerek envantere alınacaktır.
+        </div>
 
         <div class="form-group">
-            <label class="form-label">Risk Başlığı *</label>
-            <input class="form-control" @bind="_title" maxlength="200" placeholder="Kısa, açıklayıcı başlık" />
+            <label class="form-label">Risk Başlığı <span style="color:#dc2626">*</span></label>
+            <input class="form-control @(_errTitle ? "input-error" : "")"
+                   @bind="_title" @bind:event="oninput" @onblur="() => _errTitle = string.IsNullOrWhiteSpace(_title)"
+                   maxlength="200" placeholder="Kısa, açıklayıcı başlık" />
+            @if (_errTitle)
+            { <div class="field-error">Başlık zorunludur.</div> }
         </div>
-        <div class="form-group">
-            <label class="form-label">Kategori *</label>
-            <select class="form-control" @bind="_category">
-                <option value="">— Seçiniz —</option>
-                @foreach (var c in _categories)
-                {
-                    <option value="@c">@c</option>
-                }
-            </select>
-        </div>
+
         <div class="form-group">
             <label class="form-label">Açıklama</label>
             <textarea class="form-control" rows="4" @bind="_description"
-                      placeholder="Riskin detaylı açıklaması…"></textarea>
+                      placeholder="Olası nedenleri, etkilerini ve ilgili süreçleri belirtin."></textarea>
         </div>
 
         <div style="display:flex;gap:10px;margin-top:8px">
@@ -46,26 +41,18 @@
 </div>
 
 @code {
-    private string _title = "", _category = "", _description = "";
-    private string[] _categories = [];
-    private bool _loading;
-    private string _error = "";
-
-    protected override void OnInitialized()
-    {
-        _categories = CfgSvc.GetList("risk_categories");
-    }
+    private string _title = "", _description = "";
+    private bool _loading, _errTitle;
 
     private void Submit()
     {
-        if (string.IsNullOrWhiteSpace(_title)) { _error = "Başlık zorunludur."; return; }
-        if (string.IsNullOrWhiteSpace(_category)) { _error = "Kategori seçiniz."; return; }
+        _errTitle = string.IsNullOrWhiteSpace(_title);
+        if (_errTitle) return;
 
         _loading = true;
         var userId = int.TryParse(
             HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : (int?)null;
-
-        var risk = RiskSvc.Create(_title, _description, _category, null, null, userId, null);
+        var risk = RiskSvc.Create(_title.Trim(), _description.Trim(), null, null, null, userId, null);
         Nav.NavigateTo($"/risk/{risk.Id}");
     }
 }

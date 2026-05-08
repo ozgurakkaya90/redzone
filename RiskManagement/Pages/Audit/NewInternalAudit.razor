@@ -2,11 +2,13 @@
 @attribute [Authorize(Roles = "auditor,audit_manager,admin")]
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
+@inject AppDbContext Db
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
 @using System.Text.Json
 @using System.Text.Json.Serialization
+@using RiskManagement.Models
 
 <PageTitle>Yeni İç Denetim</PageTitle>
 
@@ -19,15 +21,23 @@
             <label class="form-label">Denetim Başlığı *</label>
             <input class="form-control" @bind="_title" maxlength="200" placeholder="örn. 2026 Yılı Mali İşlemler Denetimi" />
         </div>
-        <div class="form-group">
-            <label class="form-label">Denetim Türü *</label>
-            <select class="form-control" @bind="_auditType">
-                <option value="">— Seçiniz —</option>
-                @foreach (var t in _auditTypes)
-                {
-                    <option value="@t.Value">@t.Label</option>
-                }
-            </select>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group">
+                <label class="form-label">Denetim Türü *</label>
+                <select class="form-control" @bind="_auditType">
+                    <option value="">— Seçiniz —</option>
+                    @foreach (var t in _auditTypes)
+                    { <option value="@t.Value">@t.Label</option> }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Denetlenen Birim</label>
+                <select class="form-control" @bind="_auditedUnit">
+                    <option value="">— Seçiniz —</option>
+                    @foreach (var d in _departments)
+                    { <option value="@d.Name">@d.Name</option> }
+                </select>
+            </div>
         </div>
         <div class="form-group">
             <label class="form-label">Kapsam</label>
@@ -57,15 +67,17 @@
 </div>
 
 @code {
-    private string _title = "", _auditType = "", _scope = "", _period = "";
+    private string _title = "", _auditType = "", _auditedUnit = "", _scope = "", _period = "";
     private DateTime? _startDate, _endDate;
     private AuditTypeOption[] _auditTypes = [];
+    private List<Department> _departments = [];
     private bool _loading;
     private string _error = "";
 
     protected override void OnInitialized()
     {
         _auditTypes = CfgSvc.Get<AuditTypeOption[]>("audit_types") ?? [];
+        _departments = [.. Db.Departments.OrderBy(d => d.Name)];
     }
 
     private void Submit()
@@ -77,7 +89,9 @@
             HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
         var start = _startDate.HasValue ? DateOnly.FromDateTime(_startDate.Value) : (DateOnly?)null;
         var end   = _endDate.HasValue   ? DateOnly.FromDateTime(_endDate.Value)   : (DateOnly?)null;
-        var audit = AuditSvc.CreateAudit(_title, _auditType, _scope, _period, start, end, userId);
+        var audit = AuditSvc.CreateAudit(_title, _auditType,
+            string.IsNullOrEmpty(_auditedUnit) ? null : _auditedUnit,
+            _scope, _period, start, end, userId);
         Nav.NavigateTo($"/audit/internal/{audit.Id}");
     }
 

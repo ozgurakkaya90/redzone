@@ -1,0 +1,203 @@
+@page "/risk/actions"
+@attribute [Authorize]
+@inject AppDbContext Db
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Aksiyon Planları</PageTitle>
+
+<ImportModal Visible="_showImport" Title="Risk Aksiyon Planları" Module="action-plans" OnClose="@(() => _showImport = false)" />
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Aksiyon Planları</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+        <div class="export-dropdown">
+            <button class="btn btn-outline btn-sm">⬇ Dışa Aktar</button>
+            <div class="export-menu">
+                <a href="/export/action-plans/excel" class="export-item">📊 Excel (.xlsx)</a>
+                <a href="/export/action-plans/pdf" class="export-item">📄 PDF</a>
+            </div>
+        </div>
+        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
+    </div>
+</div>
+
+<style>
+    .export-dropdown { position:relative;display:inline-block }
+    .export-dropdown:hover .export-menu { display:block }
+    .export-menu { display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:100;min-width:160px;padding:4px }
+    .export-item { display:block;padding:8px 12px;font-size:13px;color:var(--text-1);text-decoration:none;border-radius:6px;white-space:nowrap }
+    .export-item:hover { background:#f1f5f9 }
+</style>
+
+<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <select class="form-control" style="width:160px" @bind="_filterStatus">
+            <option value="">Tüm Durumlar</option>
+            <option value="planned">Planlandı</option>
+            <option value="in_progress">Devam Ediyor</option>
+            <option value="completed">Tamamlandı</option>
+            <option value="cancelled">İptal</option>
+        </select>
+        <select class="form-control" style="width:200px" @bind="_filterDept">
+            <option value="">Tüm Departmanlar</option>
+            @foreach (var d in _departments) { <option value="@d.Id.ToString()">@d.Name</option> }
+        </select>
+        <select class="form-control" style="width:140px" @bind="_filterOverdue">
+            <option value="">Tümü</option>
+            <option value="overdue">Vadesi Geçmiş</option>
+            <option value="upcoming">Yaklaşan (7 gün)</option>
+        </select>
+        <input class="form-control" style="flex:1;min-width:180px" placeholder="Risk veya aksiyon ara…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+</div>
+
+<div class="card" style="padding:0;overflow-x:auto">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Risk</th>
+                <th>Aksiyon Açıklaması</th>
+                <th>Sorumlu Departman</th>
+                <th>Hedef Tarih</th>
+                <th>Durum</th>
+                <th>Oluşturan</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var a in Filtered)
+            {
+                var overdue = a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress";
+                <tr style="@(overdue ? "background:#fff5f5" : "")">
+                    <td style="white-space:nowrap">
+                        <a href="/risk/@a.RiskId" style="color:#1e40af;font-weight:600;font-size:12px;text-decoration:none">
+                            @a.Risk.Code
+                        </a>
+                        <div style="font-size:11px;color:#6b7280;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                            @a.Risk.Title
+                        </div>
+                    </td>
+                    <td style="max-width:260px">@a.Description</td>
+                    <td>
+                        @if (a.OwnerDept != null)
+                        { <span class="badge badge-orange" style="font-size:10px">@a.OwnerDept.Name</span> }
+                        else if (!string.IsNullOrEmpty(a.Responsible))
+                        { <span style="font-size:12px;color:#374151">@a.Responsible</span> }
+                        else { <span style="color:#9ca3af">—</span> }
+                    </td>
+                    <td style="white-space:nowrap">
+                        @if (a.DueDate.HasValue)
+                        {
+                            <span style="font-size:12px;color:@(overdue ? "#dc2626" : "#374151");font-weight:@(overdue ? "700" : "400")">
+                                @(overdue ? "⚠️ " : "")@a.DueDate.Value.ToString("dd.MM.yyyy")
+                            </span>
+                        }
+                        else { <span style="color:#9ca3af">—</span> }
+                    </td>
+                    <td><span class="badge @StatusBadge(a.Status)">@StatusLabel(a.Status)</span></td>
+                    <td style="font-size:12px;color:#6b7280">@a.CreatedBy?.FullName</td>
+                    <td>
+                        <a href="/risk/@a.RiskId" class="btn btn-outline btn-sm">Risk →</a>
+                    </td>
+                </tr>
+            }
+            @if (!Filtered.Any())
+            {
+                <EmptyState Colspan="7" Icon="✅" Title="Aksiyon bulunamadı" Subtitle="Filtreyi temizleyin veya risk detayından yeni aksiyon ekleyin." />
+            }
+        </tbody>
+    </table>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px">
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Toplam</div>
+        <div style="font-size:28px;font-weight:700">@Filtered.Count()</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Planlandı</div>
+        <div style="font-size:28px;font-weight:700;color:#2563eb">@Filtered.Count(a => a.Status == "planned")</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Devam Ediyor</div>
+        <div style="font-size:28px;font-weight:700;color:#ca8a04">@Filtered.Count(a => a.Status == "in_progress")</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Tamamlandı</div>
+        <div style="font-size:28px;font-weight:700;color:#16a34a">@Filtered.Count(a => a.Status == "completed")</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Vadesi Geçmiş</div>
+        <div style="font-size:28px;font-weight:700;color:#dc2626">
+            @Filtered.Count(a => a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress")
+        </div>
+    </div>
+</div>
+
+@code {
+    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    private List<ActionPlan> _all = [];
+    private List<Department> _departments = [];
+    private string _filterStatus = "", _filterDept = "", _filterOverdue = "", _search = "";
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+    private bool _showImport;
+
+    protected override void OnInitialized()
+    {
+        var managedOrgIds = Role is "admin" or "committee"
+            ? null
+            : Db.Departments.Where(d => d.ManagerUserId == UserId && d.OrganizationId != null)
+                .Select(d => d.OrganizationId!.Value).Distinct().ToList();
+
+        var q = Db.ActionPlans
+            .Include(a => a.Risk)
+            .Include(a => a.CreatedBy)
+            .Include(a => a.OwnerDept)
+            .AsQueryable();
+
+        if (managedOrgIds != null)
+            q = q.Where(a =>
+                a.Risk.ProposedById == UserId ||
+                a.Risk.OwnerId == UserId ||
+                (a.Risk.OrganizationId != null && managedOrgIds.Contains(a.Risk.OrganizationId.Value)));
+
+        _all = [.. q.OrderBy(a => a.DueDate == null).ThenBy(a => a.DueDate).ThenBy(a => a.Status)];
+        _departments = [.. Db.Departments.OrderBy(d => d.Name)];
+    }
+
+    private IEnumerable<ActionPlan> Filtered => _all
+        .Where(a => string.IsNullOrEmpty(_filterStatus) || a.Status == _filterStatus)
+        .Where(a => string.IsNullOrEmpty(_filterDept)   || a.OwnerDeptId?.ToString() == _filterDept)
+        .Where(a => _filterOverdue switch {
+            "overdue"   => a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress",
+            "upcoming"  => a.DueDate.HasValue && a.DueDate.Value >= _today && a.DueDate.Value <= _today.AddDays(7) && a.Status is "planned" or "in_progress",
+            _           => true
+        })
+        .Where(a => string.IsNullOrEmpty(_search) ||
+                    a.Description.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    a.Risk.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    a.Risk.Code.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "planned"     => "Planlandı",
+        "in_progress" => "Devam Ediyor",
+        "completed"   => "Tamamlandı",
+        "cancelled"   => "İptal",
+        _ => s
+    };
+    private static string StatusBadge(string s) => s switch
+    {
+        "planned"     => "badge-blue",
+        "in_progress" => "badge-yellow",
+        "completed"   => "badge-green",
+        "cancelled"   => "badge-gray",
+        _ => ""
+    };
+}

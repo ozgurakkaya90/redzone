@@ -1,0 +1,17 @@
+{
+  "stryker-config": {
+    "test-projects": ["../RiskManagement.Tests/RiskManagement.Tests.csproj"],
+    "reporters": ["cleartext","json"],
+    "mutation-level": "Standard",
+    "coverage-analysis": "all",
+    "thresholds": { "high": 75, "low": 60 },
+    "mutate": [
+      "Services/RiskService.cs",
+      "Services/AuditService.cs",
+      "Services/ConfigService.cs",
+      "Services/EthicsService.cs",
+      "Services/AuthService.cs",
+      "Services/TaskService.cs"
+    ]
+  }
+}

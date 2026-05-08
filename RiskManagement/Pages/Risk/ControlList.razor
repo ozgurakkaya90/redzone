@@ -1,0 +1,389 @@
+@page "/risk/controls"
+@attribute [Authorize]
+@inject AppDbContext Db
+@inject RiskService RiskSvc
+@inject ConfigService CfgSvc
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Kontrol Envanteri</PageTitle>
+
+<ImportModal Visible="_showImport" Title="Kontrol Planı" Module="controls" OnClose="@(() => _showImport = false)" />
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <h1>Kontrol Envanteri</h1>
+    <div style="display:flex;gap:8px;align-items:center">
+        <div class="export-dropdown">
+            <button class="btn btn-outline btn-sm export-btn">⬇ Dışa Aktar</button>
+            <div class="export-menu">
+                <a href="/export/controls/excel" class="export-item">📊 Excel (.xlsx)</a>
+                <a href="/export/controls/pdf" class="export-item">📄 PDF</a>
+            </div>
+        </div>
+        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
+        @if (IsCommitteeOrOwner)
+        {
+            <button class="btn btn-primary" @onclick="() => _showForm = !_showForm">
+                @(_showForm ? "✕ İptal" : "+ Yeni Kontrol Ekle")
+            </button>
+        }
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))   { <div class="alert alert-error">@_error</div> }
+@if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
+
+@if (_showForm)
+{
+    <div class="card" style="margin-bottom:16px">
+        <div class="section-title">Yeni Kontrol Ekle</div>
+        <div class="form-group">
+            <label class="form-label">İlişkili Risk *</label>
+            <select class="form-control" @bind="_formRiskId">
+                <option value="0">— Risk Seçiniz —</option>
+                @foreach (var r in _risks)
+                {
+                    <option value="@r.Id">[@r.Code] @r.Title</option>
+                }
+            </select>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Kontrol Açıklaması *</label>
+            <textarea class="form-control" rows="2" @bind="_formDesc"></textarea>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+            <div class="form-group">
+                <label class="form-label">Tür</label>
+                <select class="form-control" @bind="_formType">
+                    @foreach (var t in _controlTypes)
+                    { <option value="@t">@t</option> }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Etkinlik</label>
+                <select class="form-control" @bind="_formEff">
+                    <option value="">— Seçiniz —</option>
+                    @foreach (var e in _controlEffectiveness)
+                    { <option value="@e">@e</option> }
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Sıklık</label>
+                <select class="form-control" @bind="_formFreq">
+                    <option value="">— Seçiniz —</option>
+                    @foreach (var f in _controlFrequencies)
+                    { <option value="@f">@f</option> }
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label class="form-label">Kontrol Sahibi Departman</label>
+            <select class="form-control" @bind="_formDeptId">
+                <option value="0">— Seçiniz —</option>
+                @foreach (var d in _departments)
+                { <option value="@d.Id">@d.Name</option> }
+            </select>
+        </div>
+        <div style="display:flex;gap:8px">
+            <button class="btn btn-success" @onclick="SaveControl" disabled="@_loading">Kaydet</button>
+            <button class="btn btn-outline" @onclick="() => _showForm = false">İptal</button>
+        </div>
+    </div>
+}
+
+<div class="card" style="margin-bottom:16px">
+    <div style="display:flex;gap:12px;flex-wrap:wrap">
+        <select class="form-control" style="width:180px" @bind="_filterType">
+            <option value="">Tüm Türler</option>
+            @foreach (var t in _types) { <option value="@t">@t</option> }
+        </select>
+        <select class="form-control" style="width:180px" @bind="_filterEff">
+            <option value="">Tüm Etkinlikler</option>
+            @foreach (var e in _effectiveness) { <option value="@e">@e</option> }
+        </select>
+        <select class="form-control" style="width:200px" @bind="_filterDept">
+            <option value="">Tüm Departmanlar</option>
+            @foreach (var d in _departments) { <option value="@d.Id.ToString()">@d.Name</option> }
+        </select>
+        <input class="form-control" style="flex:1;min-width:180px" placeholder="Risk veya kontrol ara…"
+               @bind="_search" @bind:event="oninput" />
+    </div>
+</div>
+
+<div class="card" style="padding:0;overflow-x:auto">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Risk</th>
+                <th>Kontrol Açıklaması</th>
+                <th>Tür</th>
+                <th>Etkinlik</th>
+                <th>Sıklık</th>
+                <th>Sahibi</th>
+                <th>Giren</th>
+                <th>Tarih</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in Filtered)
+            {
+                <tr>
+                    <td style="white-space:nowrap">
+                        <a href="/risk/@c.RiskId" style="color:#1e40af;font-weight:600;text-decoration:none;font-size:12px">
+                            @c.Risk.Code
+                        </a>
+                        <div style="font-size:11px;color:#6b7280;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                            @c.Risk.Title
+                        </div>
+                        @if (c.Risk.Organization != null)
+                        {
+                            <div style="font-size:10px;color:#9ca3af">🏢 @c.Risk.Organization.Name</div>
+                        }
+                    </td>
+                    <td style="max-width:260px">@c.Description</td>
+                    <td><span class="tag">@c.ControlType</span></td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(c.Effectiveness))
+                        {
+                            <span class="badge @EffBadge(c.Effectiveness)">@c.Effectiveness</span>
+                        }
+                        else { <span style="color:#9ca3af">—</span> }
+                    </td>
+                    <td>
+                        @if (!string.IsNullOrEmpty(c.Frequency))
+                        { <span style="font-size:12px">@c.Frequency</span> }
+                        else { <span style="color:#9ca3af">—</span> }
+                    </td>
+                    <td>
+                        @if (c.OwnerDept != null)
+                        { <span class="badge badge-orange" style="font-size:10px">@c.OwnerDept.Name</span> }
+                        else { <span style="color:#9ca3af">—</span> }
+                    </td>
+                    <td style="font-size:12px;color:#6b7280">@c.EnteredBy?.FullName</td>
+                    <td style="font-size:12px;color:#9ca3af;white-space:nowrap">@c.EnteredAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
+                    <td style="display:flex;gap:4px;white-space:nowrap">
+                        <a href="/risk/@c.RiskId" class="btn btn-outline btn-sm">Risk →</a>
+                        @if (IsCommitteeOrOwner)
+                        {
+                            <button class="btn btn-primary btn-sm" @onclick="() => StartEdit(c)">Düzenle</button>
+                            <button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteControl(c.Id)">Sil</button>
+                        }
+                    </td>
+                </tr>
+                @if (_editId == c.Id)
+                {
+                    <tr style="background:#f8fafc">
+                        <td colspan="9" style="padding:16px">
+                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:12px">
+                                <div class="form-group" style="grid-column:1/-1">
+                                    <label class="form-label">Kontrol Açıklaması *</label>
+                                    <textarea class="form-control" rows="2" @bind="_editDesc"></textarea>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Tür</label>
+                                    <select class="form-control" @bind="_editType">
+                                        @foreach (var t in _controlTypes)
+                                        { <option value="@t">@t</option> }
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Etkinlik</label>
+                                    <select class="form-control" @bind="_editEff">
+                                        <option value="">— Seçiniz —</option>
+                                        @foreach (var e in _controlEffectiveness)
+                                        { <option value="@e">@e</option> }
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Sıklık</label>
+                                    <select class="form-control" @bind="_editFreq">
+                                        <option value="">— Seçiniz —</option>
+                                        @foreach (var f in _controlFrequencies)
+                                        { <option value="@f">@f</option> }
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Sahibi Departman</label>
+                                    <select class="form-control" @bind="_editDeptId">
+                                        <option value="0">— Seçiniz —</option>
+                                        @foreach (var d in _departments)
+                                        { <option value="@d.Id">@d.Name</option> }
+                                    </select>
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:8px">
+                                <button class="btn btn-success btn-sm" @onclick="SaveEdit">Kaydet</button>
+                                <button class="btn btn-outline btn-sm" @onclick="() => _editId = 0">İptal</button>
+                            </div>
+                        </td>
+                    </tr>
+                }
+            }
+            @if (!Filtered.Any())
+            {
+                <tr><td colspan="9" class="empty-state">Kayıt bulunamadı.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px">
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Toplam Kontrol</div>
+        <div style="font-size:28px;font-weight:700">@Filtered.Count()</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Sahibi Atanmış</div>
+        <div style="font-size:28px;font-weight:700;color:#0284c7">@Filtered.Count(c => c.OwnerDeptId != null)</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Tatmin Edici</div>
+        <div style="font-size:28px;font-weight:700;color:#16a34a">@Filtered.Count(c => c.Effectiveness == "Tatmin Edici")</div>
+    </div>
+    <div class="card" style="padding:14px;text-align:center">
+        <div class="stat-label">Etkisiz / Zayıf</div>
+        <div style="font-size:28px;font-weight:700;color:#dc2626">@Filtered.Count(c => c.Effectiveness is "Etkisiz" or "Zayıf")</div>
+    </div>
+</div>
+
+<style>
+    .export-dropdown { position:relative;display:inline-block }
+    .export-dropdown:hover .export-menu { display:block }
+    .export-menu { display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:100;min-width:160px;padding:4px }
+    .export-item { display:block;padding:8px 12px;font-size:13px;color:var(--text-1);text-decoration:none;border-radius:6px;white-space:nowrap }
+    .export-item:hover { background:#f1f5f9 }
+</style>
+
+@code {
+    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private bool IsCommitteeOrOwner => Role is "admin" or "committee" or "risk_owner";
+    private bool _showImport;
+
+    private List<Control> _allControls = [];
+    private List<Department> _departments = [];
+    private List<Risk> _risks = [];
+    private string _filterType = "", _filterEff = "", _filterDept = "", _search = "";
+    private bool _showForm, _loading;
+    private string _error = "", _success = "";
+
+    // New control form fields
+    private int _formRiskId = 0;
+    private string _formDesc = "", _formType = "Önleyici", _formEff = "", _formFreq = "";
+    private int _formDeptId = 0;
+
+    // Edit form fields
+    private int _editId = 0;
+    private string _editDesc = "", _editType = "", _editEff = "", _editFreq = "";
+    private int _editDeptId = 0;
+
+    private string[] _controlTypes = [], _controlEffectiveness = [], _controlFrequencies = [];
+    private static readonly string[] _types = ["Önleyici", "Tespit Edici", "Düzeltici"];
+    private static readonly string[] _effectiveness = ["Tatmin Edici", "Gelişmekte", "Etkisiz", "Zayıf", "Hiç"];
+
+    protected override void OnInitialized()
+    {
+        _controlTypes         = CfgSvc.GetList("control_types");
+        _controlEffectiveness = CfgSvc.GetList("control_effectiveness");
+        _controlFrequencies   = CfgSvc.GetList("control_frequencies");
+        _departments = [.. Db.Departments.OrderBy(d => d.Name)];
+        _risks = [.. Db.Risks
+            .Where(r => r.Status != "rejected")
+            .OrderBy(r => r.Code)];
+        LoadControls();
+    }
+
+    private void LoadControls()
+    {
+        var managedOrgIds = Role is "admin" or "committee"
+            ? null
+            : Db.Departments.Where(d => d.ManagerUserId == UserId && d.OrganizationId != null)
+                .Select(d => d.OrganizationId!.Value).Distinct().ToList();
+
+        var q = Db.Controls
+            .Include(c => c.Risk).ThenInclude(r => r.Organization)
+            .Include(c => c.EnteredBy)
+            .Include(c => c.OwnerDept)
+            .AsQueryable();
+
+        if (managedOrgIds != null)
+            q = q.Where(c =>
+                c.Risk.ProposedById == UserId ||
+                c.Risk.OwnerId == UserId ||
+                (c.Risk.OrganizationId != null && managedOrgIds.Contains(c.Risk.OrganizationId.Value)));
+
+        _allControls = [.. q.OrderByDescending(c => c.EnteredAt)];
+    }
+
+    private void SaveControl()
+    {
+        if (_formRiskId <= 0) { _error = "Lütfen bir risk seçiniz."; return; }
+        if (string.IsNullOrWhiteSpace(_formDesc)) { _error = "Kontrol açıklaması zorunludur."; return; }
+
+        _loading = true;
+        _error = "";
+        RiskSvc.AddControl(_formRiskId, _formDesc, _formType, _formEff, _formFreq, UserId, _formDeptId);
+        _success = "Kontrol başarıyla eklendi.";
+        _formRiskId = 0; _formDesc = ""; _formType = "Önleyici"; _formEff = ""; _formFreq = ""; _formDeptId = 0;
+        _showForm = false;
+        LoadControls();
+        _loading = false;
+    }
+
+    private void StartEdit(Control c)
+    {
+        _editId = c.Id;
+        _editDesc = c.Description;
+        _editType = c.ControlType;
+        _editEff = c.Effectiveness ?? "";
+        _editFreq = c.Frequency ?? "";
+        _editDeptId = c.OwnerDeptId ?? 0;
+    }
+
+    private void SaveEdit()
+    {
+        if (string.IsNullOrWhiteSpace(_editDesc)) { _error = "Açıklama zorunludur."; return; }
+        var ctrl = Db.Controls.Find(_editId);
+        if (ctrl == null) return;
+        ctrl.Description = _editDesc;
+        ctrl.ControlType = _editType;
+        ctrl.Effectiveness = string.IsNullOrEmpty(_editEff) ? null : _editEff;
+        ctrl.Frequency = string.IsNullOrEmpty(_editFreq) ? null : _editFreq;
+        ctrl.OwnerDeptId = _editDeptId > 0 ? _editDeptId : null;
+        Db.SaveChanges();
+        _success = "Kontrol güncellendi.";
+        _error = "";
+        _editId = 0;
+        LoadControls();
+    }
+
+    private void DeleteControl(int controlId)
+    {
+        var ctrl = Db.Controls.Find(controlId);
+        if (ctrl == null) return;
+        Db.Controls.Remove(ctrl);
+        Db.SaveChanges();
+        _success = "Kontrol silindi.";
+        LoadControls();
+    }
+
+    private IEnumerable<Control> Filtered => _allControls
+        .Where(c => string.IsNullOrEmpty(_filterType) || c.ControlType == _filterType)
+        .Where(c => string.IsNullOrEmpty(_filterEff)  || c.Effectiveness == _filterEff)
+        .Where(c => string.IsNullOrEmpty(_filterDept) || c.OwnerDeptId?.ToString() == _filterDept)
+        .Where(c => string.IsNullOrEmpty(_search) ||
+                    c.Description.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    c.Risk.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    c.Risk.Code.Contains(_search, StringComparison.OrdinalIgnoreCase));
+
+    private static string EffBadge(string e) => e switch
+    {
+        "Tatmin Edici" => "badge-green",
+        "Gelişmekte"   => "badge-yellow",
+        "Etkisiz" or "Zayıf" or "Hiç" => "badge-red",
+        _ => ""
+    };
+}

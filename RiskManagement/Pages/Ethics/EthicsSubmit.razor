@@ -16,9 +16,12 @@
         @if (_submitted)
         {
             <div class="alert alert-success">
-                <strong>Bildiriminiz alındı.</strong> Kod: <strong>@_code</strong>
-                <p style="margin-top:8px;font-size:13px">Bu kodu saklayınız. İnceleme sürecinde size bilgi verilecektir.</p>
+                <strong>Bildiriminiz alındı.</strong> Referans kodunuz: <strong>@_code</strong>
+                <p style="margin-top:8px;font-size:13px">Bu kodu saklayınız. Durumu takip etmek için kullanabilirsiniz.</p>
             </div>
+            <a href="/ethics/status/@_code" class="btn btn-outline" style="width:100%;text-align:center;margin-top:8px">
+                Bildirim Durumunu Görüntüle →
+            </a>
         }
         else
         {

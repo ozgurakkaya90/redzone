@@ -4,7 +4,10 @@
 @inject ConfigService CfgSvc
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
+@inject IWebHostEnvironment Env
+@inject AppDbContext Db
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Components.Forms
 @using RiskManagement.Models
 
 <PageTitle>Bulgu Detayı</PageTitle>
@@ -15,31 +18,40 @@ else
     <div style="max-width:860px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
             <div>
-                <div style="display:flex;gap:10px;align-items:center;margin-bottom:4px">
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
                     <code>@_finding.Code</code>
                     <span class="badge @StatusBadge(_finding.Status)">@StatusLabel(_finding.Status)</span>
                     @if (_finding.Severity != null) { <span class="badge @SevBadge(_finding.Severity)">@_finding.Severity</span> }
+                    @if (_finding.ActionDecision == "risk_accepted")
+                    { <span class="badge badge-gray">✅ Risk Kabul Edildi</span> }
+                    @if (_finding.ActionDecision == "action_planned")
+                    { <span class="badge badge-blue">📌 Aksiyon Planlandı</span> }
                 </div>
                 <h2>@_finding.Title</h2>
-                <div class="text-muted">Denetçi: @_finding.Auditor?.FullName • @_finding.CreatedAt.ToString("dd.MM.yyyy")</div>
+                <div class="text-muted">
+                    Denetçi: @_finding.Auditor?.FullName • @_finding.CreatedAt.ToString("dd.MM.yyyy")
+                    @if (_finding.InternalAudit != null)
+                    {
+                        <span> • Denetim: <a href="/audit/internal/@_finding.InternalAudit.Id"
+                            style="color:#1e40af">@_finding.InternalAudit.Code</a></span>
+                    }
+                </div>
             </div>
             <a href="/audit/findings" class="btn btn-outline btn-sm">← Bulgular</a>
         </div>
 
-        @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-error">@_error</div> }
+        @if (!string.IsNullOrEmpty(_error))   { <div class="alert alert-error">@_error</div> }
         @if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
 
         <div class="card">
             <div class="section-title">Bulgu Bilgileri</div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
                 <div><div class="form-label">Kategori</div><span class="tag">@(_finding.Category ?? "—")</span></div>
-                <div><div class="form-label">Denetim Dönemi</div><span>@(_finding.AuditPeriod ?? "—")</span></div>
                 <div><div class="form-label">Sorumlu</div><span>@(_finding.Owner?.FullName ?? "—")</span></div>
-                <div><div class="form-label">Vade</div>
-                    <span style="color:@(IsOverdue?"#dc2626":"inherit")">
-                        @(_finding.DueDate?.ToString("dd.MM.yyyy") ?? "—")
-                        @if (IsOverdue) { <span> ⚠️ Gecikmiş</span> }
-                    </span>
+                <div><div class="form-label">İlgili Denetim</div>
+                    @if (_finding.InternalAudit != null)
+                    { <a href="/audit/internal/@_finding.InternalAudit.Id" style="color:#1e40af">@_finding.InternalAudit.Title</a> }
+                    else { <span style="color:#9ca3af">—</span> }
                 </div>
             </div>
             @if (!string.IsNullOrEmpty(_finding.Description))
@@ -48,6 +60,159 @@ else
                     <div class="form-label">Açıklama</div>
                     <p style="font-size:14px;white-space:pre-wrap">@_finding.Description</p>
                 </div>
+            }
+        </div>
+
+        <!-- Aksiyon Kararı -->
+        @if (_finding.Status == "open" && _finding.ActionDecision == null && HasRole("auditor","audit_manager","admin"))
+        {
+            <div class="alert" style="background:#fffbeb;border:1px solid #f59e0b;margin-bottom:0">
+                <div style="font-weight:600;color:#92400e;margin-bottom:8px">Aksiyon Kararı: Bu bulgu için ne yapılacak?</div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap">
+                    <button class="btn btn-warning btn-sm" @onclick="() => { _showAction = true; _showAccept = false; }">
+                        📌 Aksiyon Al
+                    </button>
+                    <button class="btn btn-outline btn-sm" style="border-color:#6b7280;color:#374151"
+                            @onclick="() => { _showAccept = !_showAccept; _showAction = false; }">
+                        ✅ Riski Kabul Et
+                    </button>
+                </div>
+                @if (_showAccept)
+                {
+                    <div style="margin-top:12px;background:#f8fafc;padding:14px;border-radius:8px">
+                        <div class="form-group">
+                            <label class="form-label">Kabul Gerekçesi</label>
+                            <textarea class="form-control" rows="2" @bind="_acceptReason"
+                                      placeholder="Riski kabul etme gerekçenizi yazın…"></textarea>
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn btn-success btn-sm" @onclick="AcceptRisk">Onayla</button>
+                            <button class="btn btn-outline btn-sm" @onclick="() => _showAccept = false">İptal</button>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (_finding.ActionDecision == "risk_accepted")
+        {
+            <div class="alert" style="background:#f0fdf4;border:1px solid #86efac;display:flex;align-items:center;gap:12px">
+                <span style="font-size:20px">✅</span>
+                <div>
+                    <div style="font-weight:600;color:#166534">Kalıntı Risk Kabul Edildi</div>
+                    <div style="font-size:12px;color:#166534;margin-top:2px">Bu bulgu için risk kabul edildi.</div>
+                </div>
+            </div>
+        }
+
+        <!-- Aksiyon Planları -->
+        @if (_finding.ActionDecision == "action_planned" || _showAction || _finding.Actions.Any())
+        {
+            <div class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                    <div class="section-title" style="margin-bottom:0">Aksiyon Planları</div>
+                    @if (HasRole("auditor","audit_manager","admin") && _finding.Status == "open")
+                    {
+                        <button class="btn btn-primary btn-sm" @onclick="() => _showAction = !_showAction">
+                            @(_showAction ? "İptal" : "+ Aksiyon Ekle")
+                        </button>
+                    }
+                </div>
+
+                @if (_showAction)
+                {
+                    <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:16px">
+                        <div class="form-group">
+                            <label class="form-label">Açıklama *</label>
+                            <textarea class="form-control" rows="2" @bind="_actDesc"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Sorumlu Birim *</label>
+                            <select class="form-control" @bind="_actResp">
+                                <option value="">— Seçiniz —</option>
+                                @foreach (var d in _departments)
+                                { <option value="@d.Name">@d.Name</option> }
+                            </select>
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn btn-success btn-sm" @onclick="SaveAction" disabled="@_loading">Kaydet</button>
+                            <button class="btn btn-outline btn-sm" @onclick="() => _showAction = false">İptal</button>
+                        </div>
+                    </div>
+                }
+
+                @if (!_finding.Actions.Any())
+                {
+                    <div class="empty-state"><p>Henüz aksiyon girilmemiş.</p></div>
+                }
+                else
+                {
+                    @foreach (var a in _finding.Actions.OrderBy(a => a.DueDate == null).ThenBy(a => a.DueDate))
+                    {
+                        var overdue = a.DueDate.HasValue && a.DueDate.Value < DateOnly.FromDateTime(DateTime.Today)
+                                      && a.Status is "planned" or "in_progress";
+                        <div style="padding:12px 0;border-bottom:1px solid #f3f4f6;display:flex;gap:12px;align-items:flex-start">
+                            <div style="flex:1">
+                                <div style="font-size:13px;margin-bottom:4px">@a.Description</div>
+                                <div class="text-muted" style="display:flex;gap:8px;flex-wrap:wrap">
+                                    @if (!string.IsNullOrEmpty(a.Responsible))
+                                    { <span class="badge badge-orange" style="font-size:10px">🏢 @a.Responsible</span> }
+                                </div>
+                            </div>
+                            <div style="display:flex;gap:6px;align-items:center">
+                                <span class="badge @ActionBadge(a.Status)">@ActionLabel(a.Status)</span>
+                                @if (HasRole("auditor","audit_manager","admin") && a.Status != "completed" && a.Status != "cancelled")
+                                {
+                                    <button class="btn btn-success btn-sm"
+                                            @onclick='() => UpdateAction(a.Id, "completed")'>Tamamlandı</button>
+                                }
+                                @if (HasRole("auditor","admin"))
+                                {
+                                    <button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteAction(a.Id)">Sil</button>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        }
+
+        <!-- Ekler -->
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div class="section-title" style="margin-bottom:0">Ekler</div>
+                @if (HasRole("auditor","admin"))
+                {
+                    <label style="cursor:pointer" class="btn btn-outline btn-sm">
+                        📎 Dosya Ekle
+                        <InputFile OnChange="UploadFiles" multiple style="display:none" />
+                    </label>
+                }
+            </div>
+            @if (_uploading) { <div style="font-size:13px;color:#6b7280">Yükleniyor…</div> }
+            @if (!_finding.Attachments.Any())
+            {
+                <div class="empty-state"><p>Henüz ek dosya yüklenmemiş.</p></div>
+            }
+            else
+            {
+                @foreach (var att in _finding.Attachments.OrderByDescending(a => a.UploadedAt))
+                {
+                    <div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">
+                        <span style="font-size:18px">📎</span>
+                        <div style="flex:1">
+                            <a href="/audit/findings/@_finding.Id/attachments/@att.Id/download" target="_blank"
+                               style="font-size:13px;color:#1e40af;font-weight:500">@att.FileName</a>
+                            <div style="font-size:11px;color:#9ca3af">
+                                @FormatSize(att.FileSize) • @att.UploadedBy?.FullName • @att.UploadedAt.ToLocalTime().ToString("dd.MM.yyyy")
+                            </div>
+                        </div>
+                        @if (HasRole("auditor","admin"))
+                        {
+                            <button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteFile(att.Id)">Sil</button>
+                        }
+                    </div>
+                }
             }
         </div>
 
@@ -61,8 +226,20 @@ else
                     <textarea class="form-control" rows="3" @bind="_closureDesc"></textarea>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Kanıt / Ek Bilgi</label>
-                    <textarea class="form-control" rows="2" @bind="_closureEvidence"></textarea>
+                    <label class="form-label">Kanıt Dosyaları</label>
+                    <InputFile OnChange="HandleClosureFiles" multiple
+                               style="display:block;padding:8px;border:1px dashed #d1d5db;border-radius:6px;width:100%;font-size:13px" />
+                    @if (_closureFiles.Any())
+                    {
+                        <div style="margin-top:6px">
+                            @foreach (var f in _closureFiles)
+                            {
+                                <div style="font-size:12px;color:#374151;padding:2px 0">
+                                    📎 @f.Name <span style="color:#9ca3af">(@FormatSize(f.Size))</span>
+                                </div>
+                            }
+                        </div>
+                    }
                 </div>
                 <button class="btn btn-primary btn-sm" @onclick="SubmitClosure" disabled="@_loading">
                     Kapanış Başvurusu Yap
@@ -81,7 +258,15 @@ else
                     <p style="font-size:13px">@pending.Description</p>
                     @if (!string.IsNullOrEmpty(pending.Evidence))
                     {
-                        <p style="font-size:13px;color:#6b7280">Kanıt: @pending.Evidence</p>
+                        <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;gap:6px">
+                            @foreach (var fn in pending.Evidence.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                            {
+                                <a href="@ClosureFileUrl(fn)" target="_blank"
+                                   style="font-size:12px;color:#1e40af;display:flex;align-items:center;gap:3px">
+                                    📎 @fn
+                                </a>
+                            }
+                        </div>
                     }
                     <div class="form-group" style="margin-top:12px">
                         <label class="form-label">İnceleme Notu</label>
@@ -108,10 +293,20 @@ else
                             <span class="badge @ReqBadge(req.Status)">@ReqLabel(req.Status)</span>
                         </div>
                         <div class="text-muted">@req.RequestedBy?.FullName • @req.RequestedAt.ToString("dd.MM.yyyy")</div>
-                        @if (!string.IsNullOrEmpty(req.ReviewNotes))
+                        @if (!string.IsNullOrEmpty(req.Evidence))
                         {
-                            <div style="font-size:12px;color:#6b7280;margin-top:4px">Not: @req.ReviewNotes</div>
+                            <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:6px">
+                                @foreach (var fn in req.Evidence.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+                                {
+                                    <a href="@ClosureFileUrl(fn)" target="_blank"
+                                       style="font-size:11px;color:#1e40af;display:flex;align-items:center;gap:3px">
+                                        📎 @fn
+                                    </a>
+                                }
+                            </div>
                         }
+                        @if (!string.IsNullOrEmpty(req.ReviewNotes))
+                        { <div style="font-size:12px;color:#6b7280;margin-top:4px">Not: @req.ReviewNotes</div> }
                     </div>
                 }
             </div>
@@ -123,30 +318,133 @@ else
     [Parameter] public int Id { get; set; }
 
     private AuditFinding? _finding;
-    private bool _loading;
+    private bool _loading, _uploading;
     private string _error = "", _success = "";
-    private string _closureDesc = "", _closureEvidence = "", _reviewNote = "";
+    private string _closureDesc = "", _reviewNote = "";
+    private List<IBrowserFile> _closureFiles = [];
+    private string _acceptReason = "";
+    private string _actDesc = "", _actResp = "";
+    private bool _showAction, _showAccept;
+    private List<RiskManagement.Models.Department> _departments = [];
 
     private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
     private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private bool HasRole(params string[] roles) => roles.Contains(Role);
-    private bool IsOverdue => _finding?.Status != "closed" && _finding?.DueDate.HasValue == true
-        && _finding.DueDate < DateOnly.FromDateTime(DateTime.Now);
+    private bool HasRole(params string[] roles) =>
+        HttpCtx.HttpContext?.User.Claims
+            .Where(c => c.Type == ClaimTypes.Role)
+            .Any(c => roles.Contains(c.Value)) ?? false;
 
-    protected override void OnInitialized() => Load();
+    protected override void OnInitialized()
+    {
+        Load();
+        _departments = [.. Db.Departments.OrderBy(d => d.Name)];
+    }
 
     private void Load()
     {
-        _finding = AuditSvc.GetFinding(Id);
+        _finding = AuditSvc.GetFindingForUser(Id, UserId, Role);
         if (_finding == null) Nav.NavigateTo("/audit/findings");
     }
 
-    private void SubmitClosure()
+    private void AcceptRisk()
+    {
+        AuditSvc.SetActionDecision(Id, "risk_accepted");
+        _success = "Risk kabul edildi."; _error = "";
+        _showAccept = false;
+        Load();
+    }
+
+    private void SaveAction()
+    {
+        if (string.IsNullOrWhiteSpace(_actDesc)) { _error = "Açıklama zorunludur."; return; }
+        if (string.IsNullOrWhiteSpace(_actResp)) { _error = "Sorumlu birim seçiniz."; return; }
+        _loading = true;
+        AuditSvc.AddFindingAction(Id, _actDesc, _actResp, null, UserId);
+        _success = "Aksiyon eklendi."; _error = "";
+        _actDesc = ""; _actResp = ""; _showAction = false;
+        Load(); _loading = false;
+    }
+
+    private void UpdateAction(int actionId, string status)
+    {
+        AuditSvc.UpdateFindingActionStatus(Id, actionId, status);
+        _success = "Aksiyon güncellendi."; _error = "";
+        Load();
+    }
+
+    private void DeleteAction(int actionId)
+    {
+        AuditSvc.DeleteFindingAction(Id, actionId);
+        _success = "Aksiyon silindi."; _error = "";
+        Load();
+    }
+
+    private async Task UploadFiles(InputFileChangeEventArgs e)
+    {
+        _uploading = true;
+        var uploadDir = Path.Combine(Env.ContentRootPath, "uploads", "findings", Id.ToString());
+        Directory.CreateDirectory(uploadDir);
+        foreach (var file in e.GetMultipleFiles(10))
+        {
+            var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+            if (!AuditService.AllowedAttachmentExtensions.Contains(ext))
+            { _error = $"İzin verilmeyen dosya türü: {ext}"; continue; }
+            if (file.Size > AuditService.MaxAttachmentSize)
+            { _error = $"Dosya {AuditService.MaxAttachmentSize / 1024 / 1024} MB sınırını aşıyor."; continue; }
+
+            var originalName = Path.GetFileName(file.Name);
+            var storedName   = $"{Guid.NewGuid()}{ext}";
+            var dest = Path.Combine(uploadDir, storedName);
+            await using var fs  = File.Create(dest);
+            await using var src = file.OpenReadStream(maxAllowedSize: AuditService.MaxAttachmentSize);
+            await src.CopyToAsync(fs);
+            AuditSvc.SaveAttachment(Id, originalName, dest, file.Size, UserId);
+        }
+        if (string.IsNullOrEmpty(_error)) _success = "Dosyalar yüklendi.";
+        _uploading = false;
+        Load();
+    }
+
+    private void DeleteFile(int attachmentId)
+    {
+        AuditSvc.DeleteAttachment(attachmentId);
+        _success = "Dosya silindi."; _error = "";
+        Load();
+    }
+
+    private void HandleClosureFiles(InputFileChangeEventArgs e)
+    {
+        _closureFiles = [.. e.GetMultipleFiles(10)];
+    }
+
+    private async Task SubmitClosure()
     {
         if (string.IsNullOrWhiteSpace(_closureDesc)) { _error = "Gerekçe zorunludur."; return; }
         _loading = true;
-        AuditSvc.SubmitClosureRequest(Id, _closureDesc, _closureEvidence, UserId);
-        _success = "Kapanış başvurusu yapıldı."; _closureDesc = ""; _closureEvidence = "";
+        var evidence = "";
+        if (_closureFiles.Any())
+        {
+            var uploadDir = Path.Combine(Env.ContentRootPath, "uploads", "findings", Id.ToString(), "closure");
+            Directory.CreateDirectory(uploadDir);
+            var names = new List<string>();
+            foreach (var file in _closureFiles)
+            {
+                var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+                if (!AuditService.AllowedAttachmentExtensions.Contains(ext)) continue;
+                if (file.Size > AuditService.MaxAttachmentSize) continue;
+
+                // Guid prefix → overwrite koruması + path traversal güvencesi
+                var storedName = $"{Guid.NewGuid()}{ext}";
+                var dest = Path.Combine(uploadDir, storedName);
+                await using var fs  = File.Create(dest);
+                await using var src = file.OpenReadStream(maxAllowedSize: AuditService.MaxAttachmentSize);
+                await src.CopyToAsync(fs);
+                names.Add(storedName);
+            }
+            evidence = string.Join('\n', names);
+        }
+        AuditSvc.SubmitClosureRequest(Id, _closureDesc, evidence, UserId);
+        _success = "Kapanış başvurusu yapıldı."; _closureDesc = ""; _closureFiles = [];
         Load(); _loading = false;
     }
 
@@ -157,6 +455,16 @@ else
         _success = decision == "approved" ? "Bulgu kapatıldı." : "Başvuru reddedildi.";
         _reviewNote = ""; Load(); _loading = false;
     }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes >= 1024L * 1024) return $"{bytes / 1024 / 1024} MB";
+        if (bytes >= 1024) return $"{bytes / 1024} KB";
+        return $"{bytes} B";
+    }
+
+    private string ClosureFileUrl(string fileName) =>
+        $"/audit/findings/{Id}/closure-files/{Uri.EscapeDataString(fileName)}";
 
     private static string StatusLabel(string s) => s switch
     {
@@ -177,5 +485,15 @@ else
     private static string ReqBadge(string s) => s switch
     {
         "pending" => "badge-yellow", "approved" => "badge-green", "rejected" => "badge-red", _ => ""
+    };
+    private static string ActionLabel(string s) => s switch
+    {
+        "planned" => "Planlandı", "in_progress" => "Devam Ediyor",
+        "completed" => "Tamamlandı", "cancelled" => "İptal", _ => s
+    };
+    private static string ActionBadge(string s) => s switch
+    {
+        "planned" => "badge-blue", "in_progress" => "badge-yellow",
+        "completed" => "badge-green", "cancelled" => "badge-gray", _ => ""
     };
 }

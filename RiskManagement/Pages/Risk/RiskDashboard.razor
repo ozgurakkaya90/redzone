@@ -1,0 +1,405 @@
+@page "/risk/dashboard"
+@attribute [Authorize]
+@inject RiskService RiskSvc
+@inject ConfigService CfgSvc
+@inject IRiskCalculator RiskCalc
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+
+<PageTitle>Risk Yönetimi Paneli</PageTitle>
+
+<div class="page-header"><h1>Risk Yönetimi Paneli</h1></div>
+
+@if (_stats == null) { <div class="spinner">Yükleniyor…</div> }
+else
+{
+    <!-- ── Stat Kartları ─────────────────────────────────────────── -->
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-bottom:20px">
+        @foreach (var s in _statCards)
+        {
+            <a href="/risk" style="background:var(--surface);border:1px solid var(--border);border-radius:var(--r-xl);padding:18px 20px;box-shadow:var(--shadow-sm);text-decoration:none;display:block;transition:box-shadow .15s,transform .1s"
+               onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='var(--shadow-md)'"
+               onmouseout="this.style.transform='';this.style.boxShadow='var(--shadow-sm)'">
+                <div style="font-size:32px;font-weight:800;color:@s.Color;line-height:1;letter-spacing:-1px">@s.Value</div>
+                <div style="font-size:11px;font-weight:600;color:var(--text-2);margin-top:6px;text-transform:uppercase;letter-spacing:.5px">@s.Label</div>
+            </a>
+        }
+    </div>
+
+    <!-- ── Fine-Kinney Ölçeği ────────────────────────────────────── -->
+    <div class="card">
+        <div class="section-title">Fine-Kinney Risk Ölçeği</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            @foreach (var l in _scaleItems)
+            {
+                <div style="background:@l.Bg;color:@l.Color;padding:8px 14px;border-radius:8px;flex:1;text-align:center;min-width:120px">
+                    <div style="font-size:11px;font-weight:600">@l.Range</div>
+                    <div style="font-size:13px;font-weight:700;margin-top:2px">@l.Label</div>
+                </div>
+            }
+        </div>
+        <div style="font-size:12px;color:var(--text-2)">
+            Risk Skoru = <strong>Olasılık (P)</strong> × <strong>Maruziyet (E)</strong> × <strong>Sonuç (C)</strong>
+        </div>
+    </div>
+
+    <!-- ── Kategori Karşılaştırma (tablo varsayılan, radar opsiyonel) ─── -->
+    @if (_radar.Count == 0)
+    {
+        <div class="card">
+            <div class="section-title">Kategori Bazlı Risk Analizi</div>
+            <div style="text-align:center;padding:32px 16px;color:var(--text-3)">
+                <div style="font-size:28px;margin-bottom:8px">📊</div>
+                <div style="font-size:13px;font-weight:500;color:var(--text-2);margin-bottom:4px">Henüz değerlendirilmiş risk yok</div>
+                <div style="font-size:12px">İlk değerlendirme yapıldıktan sonra burada görünecek.</div>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="card">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
+                <div>
+                    <div class="section-title" style="margin-bottom:2px">Kategori Bazlı Risk Analizi</div>
+                    <div style="font-size:11px;color:var(--text-3)">Fine-Kinney ortalama ve maksimum skorlar</div>
+                </div>
+                <button class="btn btn-outline btn-sm" @onclick="() => _showRadar = !_showRadar">
+                    @(_showRadar ? "📋 Tablo Görünümü" : "🕸 Radar Görünümü")
+                </button>
+            </div>
+
+            @if (_showRadar)
+            {
+                <div style="overflow:auto">
+                    @{ var svg = BuildRadarSvg(); }
+                    @((MarkupString)svg)
+                </div>
+                <div style="display:flex;gap:16px;margin-top:10px">
+                    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2)">
+                        <svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#E1251B" stroke-width="2"/></svg>İlk Risk
+                    </div>
+                    <div style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-2)">
+                        <svg width="20" height="8"><line x1="0" y1="4" x2="20" y2="4" stroke="#2563eb" stroke-width="1.5" stroke-dasharray="4,2"/></svg>Kalan Risk
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div style="overflow-x:auto">
+                    <table style="width:100%;border-collapse:collapse;font-size:13px">
+                        <thead>
+                            <tr style="background:var(--gray-50)">
+                                @foreach (var h in new[]{"Kategori","Risk","İlk Ort.","İlk Max","Kalan Ort.","Kalan Max","Azaltım"})
+                                {
+                                    <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:var(--text-3);border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.3px;white-space:nowrap">@h</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in _radar)
+                            {
+                                var red = d.AvgInitial > 0 && d.AvgResidual > 0
+                                    ? (int?)Math.Round((1 - d.AvgResidual / d.AvgInitial) * 100) : null;
+                                var redColor = red.HasValue
+                                    ? (red >= 50 ? "#16a34a" : red >= 25 ? "#ca8a04" : "#dc2626")
+                                    : "var(--text-3)";
+                                <tr style="border-bottom:1px solid var(--gray-100)">
+                                    <td style="padding:8px 12px;font-weight:600">@d.Category</td>
+                                    <td style="padding:8px 12px;color:var(--text-2)">@d.Count</td>
+                                    <td style="padding:8px 12px">@((MarkupString)ScoreHtml(d.AvgInitial))</td>
+                                    <td style="padding:8px 12px">@((MarkupString)ScoreHtml(d.MaxInitial))</td>
+                                    <td style="padding:8px 12px">@((MarkupString)ScoreHtml(d.AvgResidual))</td>
+                                    <td style="padding:8px 12px">@((MarkupString)ScoreHtml(d.MaxResidual))</td>
+                                    <td style="padding:8px 12px;font-weight:700;color:@redColor">
+                                        @(red.HasValue ? $"%{red}" : "—")
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+
+    <!-- ── Alt Satır: Seviye + Kategori dağılımı ─────────────────── -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+        <div class="card">
+            <div class="section-title">Risk Seviyelerine Göre Dağılım</div>
+            @{
+                var levels = new[]{"Çok Yüksek Risk","Yüksek Risk","Önemli Risk","Orta Risk","Kabul Edilebilir"};
+                var levelCounts = levels.ToDictionary(l => l,
+                    l => _risks.Count(r => r.Evaluations.Any(e => e.EvalType=="initial" && e.RiskLevel==l)));
+                var maxLv = levelCounts.Values.DefaultIfEmpty(1).Max(); if(maxLv==0) maxLv=1;
+            }
+            @foreach (var lv in levels)
+            {
+                var cnt = levelCounts[lv];
+                var pct = (int)Math.Round((double)cnt / maxLv * 100);
+                var col = LevelColor(lv);
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                    <div style="width:12px;height:12px;border-radius:3px;flex-shrink:0;background:@col"></div>
+                    <span style="flex:1;font-size:13px">@lv</span>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <div style="width:120px;height:8px;background:var(--gray-100);border-radius:4px">
+                            <div style="width:@(pct)%;height:8px;border-radius:4px;background:@col;transition:width .4s"></div>
+                        </div>
+                        <span style="font-size:14px;font-weight:700;color:#1e3a5f;min-width:20px">@cnt</span>
+                    </div>
+                </div>
+            }
+        </div>
+
+        <div class="card">
+            <div class="section-title">Kategorilere Göre Dağılım</div>
+            @{
+                var catCounts = _categories.ToDictionary(c => c,
+                    c => _risks.Count(r => r.Category==c));
+                var sorted = catCounts.OrderByDescending(kv => kv.Value).ToList();
+                var maxCat = sorted.Select(kv => kv.Value).DefaultIfEmpty(1).Max(); if(maxCat==0) maxCat=1;
+            }
+            @foreach (var kv in sorted)
+            {
+                var pct = (int)Math.Round((double)kv.Value / maxCat * 100);
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+                    <span style="flex:1;font-size:13px">@kv.Key</span>
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <div style="width:120px;height:8px;background:var(--gray-100);border-radius:4px">
+                            <div style="width:@(pct)%;height:8px;border-radius:4px;background:#E1251B;transition:width .4s"></div>
+                        </div>
+                        <span style="font-size:14px;font-weight:700;color:#1e3a5f;min-width:20px">@kv.Value</span>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- ── Sorumlu Birim Tablosu ──────────────────────────────────── -->
+    @if (_unitData.Any())
+    {
+        <div class="card" style="padding:0;overflow-x:auto">
+            <div style="padding:20px 24px 8px">
+                <div class="section-title" style="margin-bottom:2px">Risk Sorumluluğuna Göre Dağılım</div>
+                <div style="font-size:11px;color:var(--text-3)">Onaylı ve aktif riskler dahil</div>
+            </div>
+            <table class="table">
+                <thead>
+                    <tr>
+                        @foreach (var h in new[]{"Sorumlu Birim","Risk Sayısı","Oran","Dağılım","İlk Ort.","İlk Max","Kalan Ort.","Kalan Max"})
+                        {
+                            <th>@h</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var u in _unitData)
+                    {
+                        var pct2    = _stats.Total > 0 ? (int)Math.Round((double)u.Count / _stats.Total * 100) : 0;
+                        var barPct  = (int)Math.Round((double)u.Count / _maxUnit * 100);
+                        <tr>
+                            <td>
+                                <span style="font-size:12px;font-weight:600;padding:3px 10px;border-radius:6px;background:#f0f9ff;color:#1e3a5f;border:1px solid #bae6fd;white-space:nowrap">
+                                    @u.Unit
+                                </span>
+                            </td>
+                            <td style="font-weight:700;color:#1e3a5f;font-size:15px">@u.Count</td>
+                            <td style="color:var(--text-2);white-space:nowrap">%@pct2</td>
+                            <td style="min-width:80px">
+                                <div style="height:8px;background:var(--gray-100);border-radius:4px">
+                                    <div style="height:8px;width:@(barPct)%;background:#3b82f6;border-radius:4px;transition:width .4s"></div>
+                                </div>
+                            </td>
+                            <td>@((MarkupString)ScoreHtml(u.AvgInit))</td>
+                            <td>@((MarkupString)ScoreHtml(u.MaxInit))</td>
+                            <td>@((MarkupString)ScoreHtml(u.AvgResid))</td>
+                            <td>@((MarkupString)ScoreHtml(u.MaxResid))</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+@code {
+    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    private bool _showRadar;
+    private DashboardStats? _stats;
+    private List<RiskManagement.Models.Risk> _risks = [];
+    private List<CategoryRadarData> _radar = [];
+    private string[] _categories = [];
+
+    private record StatCard(string Label, int Value, string Color);
+    private record ScaleItem(string Range, string Label, string Color, string Bg);
+    private record UnitRow(string Unit, int Count, double AvgInit, double MaxInit, double AvgResid, double MaxResid);
+
+    private StatCard[] _statCards = [];
+    private List<UnitRow> _unitData = [];
+    private int _maxUnit = 1;
+    private readonly ScaleItem[] _scaleItems =
+    [
+        new("< 20",      "Kabul Edilebilir", "#16a34a", "#dcfce7"),
+        new("20 – 70",   "Orta Risk",        "#854d0e", "#fef9c3"),
+        new("70 – 200",  "Önemli Risk",      "#9a3412", "#ffedd5"),
+        new("200 – 400", "Yüksek Risk",      "#991b1b", "#fee2e2"),
+        new("≥ 400",     "Çok Yüksek Risk",  "#fef2f2", "#7f1d1d"),
+    ];
+
+    protected override void OnInitialized()
+    {
+        _risks = RiskSvc.GetForUser(UserId, Role);
+        _stats = new DashboardStats
+        {
+            Total         = _risks.Count,
+            Proposed      = _risks.Count(r => r.Status == "proposed"),
+            UnderReview   = _risks.Count(r => r.Status == "under_review"),
+            Approved      = _risks.Count(r => r.Status is "approved" or "strategy_set"),
+            Rejected      = _risks.Count(r => r.Status == "rejected"),
+            Controlled    = _risks.Count(r => r.Status == "controlled"),
+            ActionPlanned = _risks.Count(r => r.Status == "action_planned"),
+        };
+        _radar      = RiskSvc.GetRadarData();
+        _categories = CfgSvc.GetList("risk_categories");
+
+        _statCards =
+        [
+            new("Toplam Risk",         _stats.Total,         "#1e3a5f"),
+            new("Önerilen",            _stats.Proposed,      "#6d28d9"),
+            new("İnceleniyor",         _stats.UnderReview,   "#92400e"),
+            new("Envanterde",          _stats.Approved,      "#065f46"),
+            new("Reddedilen",          _stats.Rejected,      "#991b1b"),
+            new("Kontrol Aşamasında",  _stats.Controlled,    "#075985"),
+            new("Aksiyon Planlı",      _stats.ActionPlanned, "#166534"),
+        ];
+
+        _unitData = _risks
+            .Where(r => r.Organization != null)
+            .GroupBy(r => r.Organization!.Name)
+            .Select(g =>
+            {
+                var inits  = g.SelectMany(r => r.Evaluations.Where(e => e.EvalType == "initial")).Select(e => e.Score).ToList();
+                var resids = g.SelectMany(r => r.Evaluations.Where(e => e.EvalType == "residual")).Select(e => e.Score).ToList();
+                return new UnitRow(
+                    g.Key, g.Count(),
+                    inits.Count  > 0 ? Math.Round(inits.Average(),  1) : 0,
+                    inits.Count  > 0 ? inits.Max()  : 0,
+                    resids.Count > 0 ? Math.Round(resids.Average(), 1) : 0,
+                    resids.Count > 0 ? resids.Max() : 0);
+            })
+            .OrderByDescending(u => u.Count)
+            .ToList();
+        _maxUnit = _unitData.Select(u => u.Count).DefaultIfEmpty(1).Max();
+        if (_maxUnit == 0) _maxUnit = 1;
+    }
+
+    private string ScoreHtml(double score)
+    {
+        var level = RiskCalc.CalculateRiskLevel(score);
+        var color = LevelColor(level);
+        return $"<span style=\"font-weight:700;color:{color}\">{score:0.#}</span>";
+    }
+
+    private static string LevelColor(string l) => l switch
+    {
+        "Çok Yüksek Risk" => "#7f1d1d",
+        "Yüksek Risk"     => "#dc2626",
+        "Önemli Risk"     => "#ea580c",
+        "Orta Risk"       => "#ca8a04",
+        _                 => "#16a34a",
+    };
+
+    // ── Radar SVG ──────────────────────────────────────────────────
+    private string BuildRadarSvg()
+    {
+        if (_radar.Count == 0) return "";
+
+        const double CX = 175, CY = 165, R = 120;
+        const double RMAX = 400;
+        const int W = 380, H = 350;
+        double[] rings = [0.2, 0.4, 0.6, 0.8, 1.0];
+        string[] ringVals = ["80", "160", "240", "320", "400"];
+        int N = _radar.Count;
+
+        var sb = new System.Text.StringBuilder();
+        sb.Append($"<svg viewBox=\"0 0 {W} {H}\" width=\"{W}\" height=\"{H}\" style=\"display:block;overflow:visible\">");
+        sb.Append("<defs>");
+        sb.Append("<radialGradient id=\"gInit\" cx=\"50%\" cy=\"50%\" r=\"50%\"><stop offset=\"0%\" stop-color=\"#E1251B\" stop-opacity=\"0.18\"/><stop offset=\"100%\" stop-color=\"#E1251B\" stop-opacity=\"0.04\"/></radialGradient>");
+        sb.Append("<radialGradient id=\"gResid\" cx=\"50%\" cy=\"50%\" r=\"50%\"><stop offset=\"0%\" stop-color=\"#2563eb\" stop-opacity=\"0.15\"/><stop offset=\"100%\" stop-color=\"#2563eb\" stop-opacity=\"0.02\"/></radialGradient>");
+        sb.Append("</defs>");
+
+        // Ring grid
+        for (int ri = 0; ri < rings.Length; ri++)
+        {
+            var rpts = RingPoints(CX, CY, R, rings[ri], N);
+            var fill = ri % 2 == 0 ? "#f8fafc" : "#fff";
+            sb.Append($"<path d=\"{ToPath(rpts)}\" fill=\"{fill}\" stroke=\"#e5e7eb\" stroke-width=\"0.8\"/>");
+            sb.Append($"<text x=\"{F(CX+3)}\" y=\"{F(CY-R*rings[ri]-2)}\" font-size=\"8\" fill=\"#c4c9d4\" text-anchor=\"start\" font-family=\"Inter,sans-serif\">{ringVals[ri]}</text>");
+        }
+
+        // Axis lines
+        for (int i = 0; i < N; i++)
+        {
+            var (ex, ey) = Pt(CX, CY, R, i, N, 1);
+            sb.Append($"<line x1=\"{F(CX)}\" y1=\"{F(CY)}\" x2=\"{F(ex)}\" y2=\"{F(ey)}\" stroke=\"#e2e8f0\" stroke-width=\"0.8\"/>");
+        }
+
+        // Initial polygon
+        var ptsInit = _radar.Select((d, i) => Pt(CX, CY, R, i, N, Math.Min(d.AvgInitial / RMAX, 1))).ToList();
+        if (_radar.Any(d => d.AvgInitial > 0))
+        {
+            sb.Append($"<path d=\"{ToPath(ptsInit)}\" fill=\"url(#gInit)\" stroke=\"#E1251B\" stroke-width=\"1.5\" stroke-linejoin=\"round\"/>");
+            for (int i = 0; i < ptsInit.Count; i++)
+            {
+                if (_radar[i].AvgInitial > 0)
+                    sb.Append($"<circle cx=\"{F(ptsInit[i].x)}\" cy=\"{F(ptsInit[i].y)}\" r=\"3.5\" fill=\"#E1251B\" stroke=\"#fff\" stroke-width=\"1\"/>");
+            }
+        }
+
+        // Residual polygon
+        var ptsResid = _radar.Select((d, i) => Pt(CX, CY, R, i, N, Math.Min(d.AvgResidual / RMAX, 1))).ToList();
+        if (_radar.Any(d => d.AvgResidual > 0))
+        {
+            sb.Append($"<path d=\"{ToPath(ptsResid)}\" fill=\"url(#gResid)\" stroke=\"#2563eb\" stroke-width=\"1.2\" stroke-dasharray=\"5,3\" stroke-linejoin=\"round\"/>");
+            for (int i = 0; i < ptsResid.Count; i++)
+            {
+                if (_radar[i].AvgResidual > 0)
+                    sb.Append($"<circle cx=\"{F(ptsResid[i].x)}\" cy=\"{F(ptsResid[i].y)}\" r=\"3\" fill=\"#2563eb\" stroke=\"#fff\" stroke-width=\"1\"/>");
+            }
+        }
+
+        // Labels
+        for (int i = 0; i < N; i++)
+        {
+            var (lx, ly) = Pt(CX, CY, R + 22, i, N, 1);
+            var anchor = lx < CX - 4 ? "end" : lx > CX + 4 ? "start" : "middle";
+            var words = _radar[i].Category.Split(' ');
+            var mid   = (int)Math.Ceiling(words.Length / 2.0);
+            var l1    = string.Join(" ", words.Take(mid));
+            var l2    = string.Join(" ", words.Skip(mid));
+            var yOff  = l2.Length > 0 ? -5 : 0;
+            sb.Append($"<text x=\"{F(lx)}\" y=\"{F(ly+yOff)}\" text-anchor=\"{anchor}\" font-size=\"10\" font-weight=\"500\" fill=\"#374151\" font-family=\"Inter,sans-serif\">{l1}</text>");
+            if (l2.Length > 0)
+                sb.Append($"<text x=\"{F(lx)}\" y=\"{F(ly+7)}\" text-anchor=\"{anchor}\" font-size=\"10\" font-weight=\"500\" fill=\"#374151\" font-family=\"Inter,sans-serif\">{l2}</text>");
+            sb.Append($"<text x=\"{F(lx)}\" y=\"{F(ly+(l2.Length>0?18:11))}\" text-anchor=\"{anchor}\" font-size=\"8.5\" fill=\"#b0b7c3\" font-family=\"Inter,sans-serif\">{_radar[i].Count} risk</text>");
+        }
+
+        sb.Append($"<circle cx=\"{F(CX)}\" cy=\"{F(CY)}\" r=\"2.5\" fill=\"#d1d5db\"/>");
+        sb.Append("</svg>");
+        return sb.ToString();
+    }
+
+    private static (double x, double y) Pt(double cx, double cy, double r, int i, int n, double v)
+    {
+        var a = (double)i / n * 2 * Math.PI - Math.PI / 2;
+        return (cx + r * v * Math.Cos(a), cy + r * v * Math.Sin(a));
+    }
+
+    private static List<(double x, double y)> RingPoints(double cx, double cy, double r, double ring, int n)
+        => Enumerable.Range(0, n).Select(i => Pt(cx, cy, r, i, n, ring)).ToList();
+
+    private static string ToPath(List<(double x, double y)> pts)
+        => string.Join(" ", pts.Select((p, i) => $"{(i==0?"M":"L")}{F(p.x)},{F(p.y)}")) + " Z";
+
+    private static string F(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}

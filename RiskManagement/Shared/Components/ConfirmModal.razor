@@ -1,0 +1,31 @@
+@if (Visible)
+{
+    <div class="confirm-overlay" @onclick="Cancel">
+        <div class="confirm-dialog" @onclick:stopPropagation>
+            <div class="confirm-icon">@Icon</div>
+            <div class="confirm-title">@Title</div>
+            @if (!string.IsNullOrEmpty(Message))
+            { <div class="confirm-msg">@Message</div> }
+            <div class="confirm-actions">
+                <button class="btn btn-outline" @onclick="Cancel">Vazgeç</button>
+                <button class="btn @DangerClass" @onclick="Confirm">@ConfirmLabel</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool    Visible       { get; set; }
+    [Parameter] public string  Title         { get; set; } = "Emin misiniz?";
+    [Parameter] public string  Message       { get; set; } = "";
+    [Parameter] public string  Icon          { get; set; } = "🗑️";
+    [Parameter] public string  ConfirmLabel  { get; set; } = "Sil";
+    [Parameter] public bool    Danger        { get; set; } = true;
+    [Parameter] public EventCallback OnConfirm { get; set; }
+    [Parameter] public EventCallback OnCancel  { get; set; }
+
+    private string DangerClass => Danger ? "btn-danger" : "btn-primary";
+
+    private async Task Confirm() => await OnConfirm.InvokeAsync();
+    private async Task Cancel()  => await OnCancel.InvokeAsync();
+}

@@ -1,0 +1,76 @@
+@page "/pending"
+@attribute [Authorize]
+@inject TaskService TaskSvc
+@inject IHttpContextAccessor HttpCtx
+@inject NavigationManager Nav
+@using System.Security.Claims
+
+<PageTitle>Bekleyen İşler</PageTitle>
+
+<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+    <div>
+        <h1 style="margin:0">Bekleyen İşler</h1>
+        <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+            @if (_tasks.Count == 0)
+            { <span>Bekleyen işiniz yok.</span> }
+            else
+            { <span><strong>@_tasks.Count</strong> görev bekliyor</span> }
+        </div>
+    </div>
+    <a href="/workflows" class="btn btn-outline btn-sm">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+        İş Akış Şemaları
+    </a>
+</div>
+
+@if (_tasks.Count == 0)
+{
+    <div class="card" style="padding:48px;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px;opacity:.4">✓</div>
+        <div style="font-size:16px;font-weight:600;color:var(--text-2);margin-bottom:6px">Tüm işler tamamlandı</div>
+        <div style="font-size:13px;color:var(--text-3)">Şu an bekleyen bir göreviniz yok.</div>
+    </div>
+}
+else
+{
+    @* Kategori bazlı grupla *@
+    @foreach (var group in _tasks.GroupBy(t => t.Category).OrderBy(g => g.Key))
+    {
+        <div style="margin-bottom:8px">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);padding:4px 0 8px">
+                @group.Key
+                <span style="font-size:10px;background:var(--gray-200);color:var(--gray-600);border-radius:10px;padding:1px 7px;margin-left:6px;font-weight:600;letter-spacing:0">
+                    @group.Count()
+                </span>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+                @foreach (var task in group)
+                {
+                    <a href="@task.Url" style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-left:4px solid @task.Color;border-radius:8px;text-decoration:none;color:inherit;transition:box-shadow .12s,transform .12s"
+                       onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,.08)';this.style.transform='translateY(-1px)'"
+                       onmouseout="this.style.boxShadow='';this.style.transform=''">
+                        <div style="flex:1;min-width:0">
+                            <div style="font-size:13px;font-weight:600;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">
+                                @task.Title
+                            </div>
+                            <div style="font-size:12px;color:var(--text-3)">@task.Detail</div>
+                        </div>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><polyline points="9 18 15 12 9 6"/></svg>
+                    </a>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private List<UserTask> _tasks = [];
+
+    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+
+    protected override void OnInitialized()
+    {
+        _tasks = TaskSvc.GetTasksForUser(UserId, Role);
+    }
+}

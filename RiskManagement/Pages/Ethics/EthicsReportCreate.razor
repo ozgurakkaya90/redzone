@@ -1,0 +1,68 @@
+@page "/ethics/reports/new"
+@attribute [Authorize(Roles = "auditor,audit_manager,admin")]
+@inject EthicsService EthicsSvc
+@inject ConfigService CfgSvc
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+
+<PageTitle>Etik Bildirim Oluştur</PageTitle>
+
+<div class="page-header"><h1>Etik Bildirim Oluştur</h1></div>
+<div style="max-width:680px">
+    <div class="card">
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <div class="alert alert-error" style="margin-bottom:16px">@_error</div>
+        }
+
+        <div class="form-group">
+            <label class="form-label">Konu *</label>
+            <input class="form-control" @bind="_subject" maxlength="200"
+                   placeholder="Bildirimin konusunu kısaca yazınız" />
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Kategori</label>
+            <select class="form-control" @bind="_category">
+                <option value="">— Seçiniz —</option>
+                @foreach (var c in _categories)
+                {
+                    <option value="@c">@c</option>
+                }
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Açıklama *</label>
+            <textarea class="form-control" rows="6" @bind="_description"
+                      placeholder="Olayı detaylı şekilde açıklayınız…"></textarea>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:8px">
+            <button class="btn btn-primary" @onclick="Submit" disabled="@_loading">
+                @(_loading ? "Kaydediliyor…" : "Bildirimi Oluştur")
+            </button>
+            <a href="/ethics/reports" class="btn btn-outline">İptal</a>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string _subject = "", _category = "", _description = "";
+    private string[] _categories = [];
+    private bool _loading;
+    private string _error = "";
+
+    protected override void OnInitialized() =>
+        _categories = CfgSvc.GetList("ethics_categories");
+
+    private async Task Submit()
+    {
+        if (string.IsNullOrWhiteSpace(_subject))     { _error = "Konu zorunludur."; return; }
+        if (string.IsNullOrWhiteSpace(_description)) { _error = "Açıklama zorunludur."; return; }
+        _loading = true;
+        var report = await EthicsSvc.SubmitAsync(_subject, _description, _category, []);
+        Nav.NavigateTo($"/ethics/reports/{report.Id}");
+    }
+}

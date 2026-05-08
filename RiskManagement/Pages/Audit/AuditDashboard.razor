@@ -2,6 +2,8 @@
 @attribute [Authorize]
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
 
 <PageTitle>Denetim Paneli</PageTitle>
 
@@ -55,9 +57,11 @@
 
 @code {
     private AuditDashboardStats? _stats;
+    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
 
     protected override void OnInitialized()
     {
-        _stats = AuditSvc.GetDashboard(CfgSvc.GetList("audit_severities"));
+        _stats = AuditSvc.GetDashboardForUser(UserId, Role, CfgSvc.GetList("audit_severities"));
     }
 }

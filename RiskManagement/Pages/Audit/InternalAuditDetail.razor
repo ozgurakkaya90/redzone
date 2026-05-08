@@ -1,0 +1,294 @@
+@page "/audit/internal/{Id:int}"
+@attribute [Authorize]
+@inject AuditService AuditSvc
+@inject ConfigService CfgSvc
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using RiskManagement.Models
+
+<PageTitle>Denetim Detayı</PageTitle>
+
+@if (_audit == null)
+{
+    <div class="spinner">Yükleniyor…</div>
+}
+else
+{
+    <div style="max-width:860px">
+        <div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:20px">
+            <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">
+                    <code style="font-size:13px;color:#6b7280">@_audit.Code</code>
+                    <span class="badge @StatusBadge(_audit.Status)">@StatusLabel(_audit.Status)</span>
+                    @if (_audit.AuditType != null) { <span class="tag">@_audit.AuditType</span> }
+                    @if (_audit.AuditedUnit != null) { <span class="badge badge-blue">🏢 @_audit.AuditedUnit</span> }
+                </div>
+                <h2 style="font-size:22px;font-weight:700">@_audit.Title</h2>
+                <div class="text-muted" style="margin-top:4px">
+                    Dönem: <strong>@_audit.Period</strong>
+                    &nbsp;• Baş Denetçi: <strong>@_audit.LeadAuditor.FullName</strong>
+                    @if (_audit.StartDate.HasValue)
+                    {
+                        <span> &nbsp;• @_audit.StartDate.Value.ToString("dd.MM.yyyy")
+                        @if (_audit.EndDate.HasValue) { <span> – @_audit.EndDate.Value.ToString("dd.MM.yyyy")</span> }
+                        </span>
+                    }
+                </div>
+            </div>
+            <a href="/audit/internal" class="btn btn-outline btn-sm">← Listeye Dön</a>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))   { <div class="alert alert-error">@_error</div> }
+        @if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
+
+        @if (!string.IsNullOrEmpty(_audit.Scope) || _audit.AuditedUnit != null)
+        {
+            <div class="card">
+                @if (_audit.AuditedUnit != null)
+                {
+                    <div style="margin-bottom:10px">
+                        <div class="form-label">Denetlenen Birim</div>
+                        <span class="badge badge-blue" style="font-size:13px">🏢 @_audit.AuditedUnit</span>
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(_audit.Scope))
+                {
+                    <div class="section-title">Kapsam</div>
+                    <p style="font-size:14px;line-height:1.6;white-space:pre-wrap">@_audit.Scope</p>
+                }
+            </div>
+        }
+
+        @if (IsManager && !_showEdit)
+        {
+            <div class="card">
+                <div class="section-title">Durum Güncelle</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    @if (_audit.Status == "planned")
+                    {
+                        <button class="btn btn-warning btn-sm" @onclick='() => UpdateStatus("in_progress")'>Başlat</button>
+                    }
+                    @if (_audit.Status == "in_progress")
+                    {
+                        <button class="btn btn-success btn-sm" @onclick='() => UpdateStatus("completed")'>Tamamlandı</button>
+                    }
+                    <button class="btn btn-outline btn-sm" @onclick="ToggleEdit">✏️ Düzenle</button>
+                </div>
+            </div>
+        }
+
+        @if (_showEdit)
+        {
+            <div class="card">
+                <div class="section-title">Denetimi Düzenle</div>
+                <div class="form-group">
+                    <label class="form-label">Başlık *</label>
+                    <input class="form-control" @bind="_editTitle" maxlength="200" />
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div class="form-group">
+                        <label class="form-label">Denetim Türü</label>
+                        <select class="form-control" @bind="_editType">
+                            <option value="">— Seçiniz —</option>
+                            @foreach (var t in _auditTypes)
+                            { <option value="@t.Value">@t.Label</option> }
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Denetlenen Birim</label>
+                        <select class="form-control" @bind="_editUnit">
+                            <option value="">— Seçiniz —</option>
+                            @foreach (var d in _departments)
+                            { <option value="@d.Name">@d.Name</option> }
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kapsam</label>
+                    <textarea class="form-control" rows="3" @bind="_editScope"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Dönem *</label>
+                    <input class="form-control" @bind="_editPeriod" />
+                </div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div class="form-group">
+                        <label class="form-label">Başlangıç Tarihi</label>
+                        <input type="date" class="form-control" @bind="_editStart" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Bitiş Tarihi</label>
+                        <input type="date" class="form-control" @bind="_editEnd" />
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px">
+                    <button class="btn btn-success btn-sm" @onclick="SaveEdit">Kaydet</button>
+                    <button class="btn btn-outline btn-sm" @onclick="() => _showEdit = false">İptal</button>
+                </div>
+            </div>
+        }
+
+        <div class="card">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div class="section-title" style="margin-bottom:0">
+                    Bulgular
+                    @if (_audit.Findings.Any())
+                    { <span class="badge badge-blue" style="margin-left:8px">@_audit.Findings.Count</span> }
+                </div>
+                @if (HasRole("auditor", "admin"))
+                {
+                    <a href="/audit/findings/new" class="btn btn-outline btn-sm">➕ Bulgu Ekle</a>
+                }
+            </div>
+
+            @if (!_audit.Findings.Any())
+            {
+                <div class="empty-state"><p>Henüz bulgu girilmemiş.</p></div>
+            }
+            else
+            {
+                <table class="table" style="margin:0">
+                    <thead>
+                        <tr>
+                            <th>Kod</th><th>Başlık</th><th>Kategori</th><th>Önem</th><th>Durum</th><th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in _audit.Findings.OrderByDescending(f => f.CreatedAt))
+                        {
+                            <tr>
+                                <td><code style="font-size:11px">@f.Code</code></td>
+                                <td>@f.Title</td>
+                                <td><span class="tag">@(f.Category ?? "—")</span></td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(f.Severity))
+                                    { <span class="badge @SeverityBadge(f.Severity)">@f.Severity</span> }
+                                    else { <span style="color:#9ca3af">—</span> }
+                                </td>
+                                <td><span class="badge @FindingStatusBadge(f.Status)">@FindingStatusLabel(f.Status)</span></td>
+                                <td><a href="/audit/findings/@f.Id" class="btn btn-outline btn-sm">Detay</a></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:8px">
+            <div class="card" style="padding:14px;text-align:center">
+                <div class="stat-label">Toplam Bulgu</div>
+                <div style="font-size:28px;font-weight:700">@_audit.Findings.Count</div>
+            </div>
+            <div class="card" style="padding:14px;text-align:center">
+                <div class="stat-label">Açık</div>
+                <div style="font-size:28px;font-weight:700;color:#dc2626">@_audit.Findings.Count(f => f.Status == "open")</div>
+            </div>
+            <div class="card" style="padding:14px;text-align:center">
+                <div class="stat-label">Kapatma Talebi</div>
+                <div style="font-size:28px;font-weight:700;color:#ca8a04">@_audit.Findings.Count(f => f.Status == "closure_requested")</div>
+            </div>
+            <div class="card" style="padding:14px;text-align:center">
+                <div class="stat-label">Kapatıldı</div>
+                <div style="font-size:28px;font-weight:700;color:#16a34a">@_audit.Findings.Count(f => f.Status == "closed")</div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private InternalAudit? _audit;
+    private bool _showEdit;
+    private string _error = "", _success = "";
+    private string _editTitle = "", _editType = "", _editUnit = "", _editScope = "", _editPeriod = "";
+    private DateTime? _editStart, _editEnd;
+    private AuditTypeOption[] _auditTypes = [];
+    private List<RiskManagement.Models.Department> _departments = [];
+
+    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private bool HasRole(params string[] roles) => roles.Contains(Role);
+    private bool IsManager => HasRole("audit_manager", "admin");
+
+    protected override void OnInitialized()
+    {
+        Load();
+        _auditTypes = CfgSvc.Get<AuditTypeOption[]>("audit_types") ?? [];
+        _departments = [.. Db.Departments.OrderBy(d => d.Name)];
+    }
+
+    private void Load()
+    {
+        _audit = AuditSvc.GetAuditForUser(Id, UserId, Role);
+        if (_audit == null) { Nav.NavigateTo("/audit/internal"); return; }
+    }
+
+    private void UpdateStatus(string status)
+    {
+        if (_audit == null) return;
+        AuditSvc.UpdateAudit(Id, _audit.Title, _audit.AuditType, _audit.AuditedUnit,
+            _audit.Scope, _audit.Period, _audit.StartDate, _audit.EndDate, status);
+        _success = "Durum güncellendi."; _error = "";
+        Load();
+    }
+
+    private void SaveEdit()
+    {
+        if (string.IsNullOrWhiteSpace(_editTitle)) { _error = "Başlık zorunludur."; return; }
+        if (string.IsNullOrWhiteSpace(_editPeriod)) { _error = "Dönem zorunludur."; return; }
+        var start = _editStart.HasValue ? DateOnly.FromDateTime(_editStart.Value) : (DateOnly?)null;
+        var end   = _editEnd.HasValue   ? DateOnly.FromDateTime(_editEnd.Value)   : (DateOnly?)null;
+        AuditSvc.UpdateAudit(Id, _editTitle, _editType,
+            string.IsNullOrEmpty(_editUnit) ? null : _editUnit,
+            _editScope, _editPeriod, start, end, _audit!.Status);
+        _success = "Denetim güncellendi."; _error = "";
+        _showEdit = false;
+        Load();
+    }
+
+    private void ToggleEdit()
+    {
+        _showEdit = !_showEdit;
+        if (_showEdit && _audit != null)
+        {
+            _editTitle  = _audit.Title;
+            _editType   = _audit.AuditType ?? "";
+            _editUnit   = _audit.AuditedUnit ?? "";
+            _editScope  = _audit.Scope ?? "";
+            _editPeriod = _audit.Period;
+            _editStart  = _audit.StartDate.HasValue ? _audit.StartDate.Value.ToDateTime(TimeOnly.MinValue) : null;
+            _editEnd    = _audit.EndDate.HasValue   ? _audit.EndDate.Value.ToDateTime(TimeOnly.MinValue)   : null;
+        }
+    }
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "planned" => "Planlandı", "in_progress" => "Devam Ediyor", "completed" => "Tamamlandı", _ => s
+    };
+    private static string StatusBadge(string s) => s switch
+    {
+        "planned" => "badge-blue", "in_progress" => "badge-yellow", "completed" => "badge-green", _ => ""
+    };
+    private static string FindingStatusLabel(string s) => s switch
+    {
+        "open" => "Açık", "closure_requested" => "Kapatma Talebi", "closed" => "Kapatıldı", _ => s
+    };
+    private static string FindingStatusBadge(string s) => s switch
+    {
+        "open" => "badge-red", "closure_requested" => "badge-yellow", "closed" => "badge-green", _ => ""
+    };
+    private static string SeverityBadge(string s) => s switch
+    {
+        "Kritik" => "badge-red", "Yüksek" => "badge-orange",
+        "Orta" => "badge-yellow", "Düşük" => "badge-blue", _ => ""
+    };
+
+    private record AuditTypeOption(
+        [property: JsonPropertyName("value")] string Value,
+        [property: JsonPropertyName("label")] string Label);
+}

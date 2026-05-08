@@ -1,0 +1,78 @@
+@page "/risk/propose"
+@layout EmptyLayout
+@inject RiskService RiskSvc
+
+<PageTitle>Risk Öner</PageTitle>
+
+<div class="login-page">
+    <div class="login-card" style="max-width:560px">
+        <div class="login-logo">
+            <h1>Risk Öner</h1>
+            <p>Giriş yapmadan anonim risk bildirimi yapabilirsiniz</p>
+        </div>
+
+        @if (_submitted)
+        {
+            <div class="alert alert-success">
+                <strong>Öneriniz alındı.</strong> Referans kodu: <strong>@_code</strong>
+                <p style="margin-top:8px;font-size:13px">Bu kodu saklayınız. Risk Komitesi inceleme sonucunda bilgilendirecektir.</p>
+            </div>
+            <a href="/login" class="btn btn-outline" style="width:100%;margin-top:8px;text-align:center">Giriş Sayfasına Dön</a>
+        }
+        else
+        {
+            @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-error">@_error</div> }
+
+            <div class="form-group">
+                <label class="form-label">Adınız / Biriminiz <span style="font-weight:400;color:#94a3b8">(isteğe bağlı)</span></label>
+                <input class="form-control" @bind="_proposerName" maxlength="100" placeholder="Anonim bırakabilirsiniz" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Risk Başlığı <span style="color:#dc2626">*</span></label>
+                <input class="form-control" @bind="_title" maxlength="200" placeholder="Kısa, açıklayıcı başlık" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Açıklama <span style="color:#dc2626">*</span></label>
+                <textarea class="form-control" rows="5" @bind="_description"
+                          placeholder="Olası nedenleri, etkilerini ve ilgili süreçleri belirtin."></textarea>
+            </div>
+            <button class="btn btn-primary" style="width:100%" @onclick="Submit" disabled="@_loading">
+                @(_loading ? "Gönderiliyor…" : "Gönder")
+            </button>
+            <div style="text-align:center;margin-top:12px">
+                <a href="/login" style="color:#64748b;font-size:13px">← Giriş sayfasına dön</a>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private string _title = "", _description = "", _proposerName = "";
+    private bool _loading, _submitted;
+    private string _error = "", _code = "";
+
+    private async Task Submit()
+    {
+        _error = "";
+        if (string.IsNullOrWhiteSpace(_title) || string.IsNullOrWhiteSpace(_description))
+        { _error = "Başlık ve açıklama zorunludur."; return; }
+
+        _loading = true;
+        try
+        {
+            var name = string.IsNullOrWhiteSpace(_proposerName) ? null : _proposerName.Trim();
+            var risk = await Task.Run(() =>
+                RiskSvc.Create(_title.Trim(), _description.Trim(), null, null, null, null, name));
+            _code = risk.Code;
+            _submitted = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Öneri kaydedilemedi: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+}

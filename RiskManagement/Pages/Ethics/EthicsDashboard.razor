@@ -1,0 +1,81 @@
+@page "/ethics"
+@attribute [Authorize(Roles = "audit_manager,ethics_board,admin")]
+@inject EthicsService EthicsSvc
+@inject ConfigService CfgSvc
+
+<PageTitle>Etik Paneli</PageTitle>
+
+<div class="page-header"><h1>Etik Paneli</h1></div>
+
+<div class="dashboard-grid">
+    <div class="stat-card" style="border-left:4px solid #f59e0b">
+        <div class="stat-label">Bekleyen</div>
+        <div class="stat-value">@_reports.Count(r => r.Status == "pending")</div>
+    </div>
+    <div class="stat-card" style="border-left:4px solid #2563eb">
+        <div class="stat-label">Kurul Bildirimi</div>
+        <div class="stat-value">@_reports.Count(r => r.Status == "ethics_board_notified")</div>
+    </div>
+    <div class="stat-card" style="border-left:4px solid #dc2626">
+        <div class="stat-label">Disiplin Sürecinde</div>
+        <div class="stat-value">@_reports.Count(r => r.Status == "disciplinary_referred")</div>
+    </div>
+    <div class="stat-card" style="border-left:4px solid #16a34a">
+        <div class="stat-label">İhlal Yok / İlgisiz</div>
+        <div class="stat-value">@_reports.Count(r => r.Status is "no_violation" or "irrelevant")</div>
+    </div>
+</div>
+
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-top:20px">
+    <div class="card">
+        <div class="section-title">Kategoriye Göre Dağılım</div>
+        @{
+            var cats = _reports
+                .Where(r => r.ReportCategory != null)
+                .GroupBy(r => r.ReportCategory!)
+                .OrderByDescending(g => g.Count())
+                .ToList();
+            var maxCat = cats.Select(g => g.Count()).DefaultIfEmpty(1).Max();
+        }
+        @if (!cats.Any())
+        {
+            <div class="empty-state">Veri yok.</div>
+        }
+        else
+        {
+            @foreach (var g in cats)
+            {
+                var pct = (int)Math.Round((double)g.Count() / maxCat * 100);
+                <div style="margin-bottom:10px">
+                    <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+                        <span>@g.Key</span><span>@g.Count()</span>
+                    </div>
+                    <div style="background:#f3f4f6;border-radius:4px;height:8px">
+                        <div style="width:@(pct)%;background:#f59e0b;height:8px;border-radius:4px"></div>
+                    </div>
+                </div>
+            }
+        }
+    </div>
+
+    <div class="card">
+        <div class="section-title">Son Bildirimler</div>
+        @foreach (var r in _reports.OrderByDescending(r => r.SubmittedAt).Take(5))
+        {
+            <div style="padding:8px 0;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center">
+                <div>
+                    <div style="font-size:13px;font-weight:500">@r.Subject</div>
+                    <div style="font-size:11px;color:#6b7280">@r.SubmittedAt.ToString("dd.MM.yyyy") — @(r.ReportCategory ?? "Kategori yok")</div>
+                </div>
+                <a href="/ethics/reports/@r.Id" class="btn btn-outline btn-sm">Detay</a>
+            </div>
+        }
+        @if (!_reports.Any()) { <div class="empty-state">Henüz bildirim yok.</div> }
+    </div>
+</div>
+
+@code {
+    private List<RiskManagement.Models.EthicsReport> _reports = [];
+
+    protected override void OnInitialized() => _reports = EthicsSvc.GetAll();
+}
