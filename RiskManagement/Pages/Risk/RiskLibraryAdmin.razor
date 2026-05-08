@@ -1,0 +1,237 @@
+@page "/risk/library/admin"
+@attribute [Authorize(Roles = "admin,committee,risk_manager")]
+@inject RiskLibraryService LibSvc
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+
+<PageTitle>Risk Kütüphanesi Yönetimi</PageTitle>
+
+<ImportModal Visible="_showImport" Title="Risk Kütüphanesi" Module="library" OnClose="@(() => { _showImport=false; Reload(); })" />
+
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div>
+        <h1 style="margin:0;font-size:22px;font-weight:800">Kütüphane Yönetimi</h1>
+        <div style="font-size:12px;color:var(--text-3);margin-top:2px">@_all.Count kayıt</div>
+    </div>
+    <div style="display:flex;gap:8px">
+        <a href="/export/library/excel" class="btn btn-outline btn-sm">⬇ Tümünü İndir</a>
+        <a href="/import/template/library" class="btn btn-outline btn-sm">⬇ Şablon</a>
+        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport=true)">⬆ Excel Yükle</button>
+        <button class="btn btn-primary btn-sm" @onclick="@(() => _showAddForm=!_showAddForm)">
+            @(_showAddForm ? "✕ İptal" : "+ Yeni Ekle")
+        </button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_msg))
+{
+    <div class="alert @(_msgOk?"alert-success":"alert-error")" style="margin-bottom:12px">@_msg</div>
+}
+
+@* ── Yeni Ekle Formu ── *@
+@if (_showAddForm)
+{
+    <div class="card" style="margin-bottom:16px;padding:20px">
+        <div class="section-title" style="margin-bottom:14px">Yeni Kütüphane Kaydı</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group" style="grid-column:1/-1">
+                <label class="form-label">Başlık *</label>
+                <input class="form-control" @bind="_fTitle" placeholder="Risk başlığı" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Kategori</label>
+                <input class="form-control" @bind="_fCategory" placeholder="ör. Operasyonel" list="cat-list" />
+                <datalist id="cat-list">
+                    @foreach (var c in _categories) { <option value="@c" /> }
+                </datalist>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Alt Kategori</label>
+                <input class="form-control" @bind="_fSubCat" placeholder="ör. Süreç Yönetimi" />
+            </div>
+            <div class="form-group" style="grid-column:1/-1">
+                <label class="form-label">Açıklama</label>
+                <textarea class="form-control" rows="2" @bind="_fDesc"></textarea>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Kaynak Türü</label>
+                <select class="form-control" @bind="_fSource">
+                    <option value="internal">İç</option>
+                    <option value="external">Dış</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Risk Stratejisi</label>
+                <select class="form-control" @bind="_fStrategy">
+                    <option value="">—</option>
+                    <option value="Azalt">Azalt</option>
+                    <option value="Transfer Et">Transfer Et</option>
+                    <option value="Kabul Et">Kabul Et</option>
+                    <option value="Kaçın">Kaçın</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Tehlike / Kaynak</label>
+                <input class="form-control" @bind="_fHazard" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Olası Etki</label>
+                <input class="form-control" @bind="_fImpact" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Etiketler (virgülle)</label>
+                <input class="form-control" @bind="_fTags" placeholder="ör. süreç, kalite" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Referans Standart</label>
+                <input class="form-control" @bind="_fRef" placeholder="ör. ISO 31000" />
+            </div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-success" @onclick="SaveNew">Kaydet</button>
+            <button class="btn btn-outline" @onclick="@(() => _showAddForm=false)">İptal</button>
+        </div>
+    </div>
+}
+
+@* ── Filtre ── *@
+<div class="card" style="padding:12px 16px;margin-bottom:12px">
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+        <select class="form-control" style="width:180px" @bind="_filterCat" @bind:after="FilterItems">
+            <option value="">Tüm Kategoriler</option>
+            @foreach (var c in _categories) { <option value="@c">@c</option> }
+        </select>
+        <select class="form-control" style="width:120px" @bind="_filterActive" @bind:after="FilterItems">
+            <option value="">Tümü</option>
+            <option value="active">Aktif</option>
+            <option value="passive">Pasif</option>
+        </select>
+        <input class="form-control" style="flex:1;min-width:200px" placeholder="Ara…"
+               @bind="_search" @bind:event="oninput" @bind:after="FilterItems" />
+    </div>
+</div>
+
+@* ── Tablo ── *@
+<div class="card" style="padding:0;overflow-x:auto">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Başlık</th>
+                <th style="width:140px">Kategori</th>
+                <th style="width:130px">Alt Kategori</th>
+                <th style="width:80px">Kaynak</th>
+                <th style="width:80px">Kullanım</th>
+                <th style="width:80px">Durum</th>
+                <th style="width:130px"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var item in PagedItems)
+            {
+                <tr style="@(item.IsActive?"":"opacity:.5")">
+                    <td>
+                        <div style="font-weight:600;font-size:13px">@item.Title</div>
+                        @if (!string.IsNullOrEmpty(item.Hazard))
+                        { <div style="font-size:11px;color:var(--text-3);margin-top:2px">⚠ @item.Hazard</div> }
+                    </td>
+                    <td>@if (!string.IsNullOrEmpty(item.Category)) { <span class="tag" style="font-size:11px">@item.Category</span> }</td>
+                    <td style="font-size:12px;color:var(--text-3)">@(item.SubCategory ?? "—")</td>
+                    <td><span class="badge @(item.SourceType=="external"?"badge-blue":"badge-gray")" style="font-size:11px">@(item.SourceType=="external"?"Dış":"İç")</span></td>
+                    <td style="font-size:13px;text-align:center;font-weight:600">@item.UsageCount</td>
+                    <td>
+                        <span class="badge @(item.IsActive?"badge-green":"badge-gray")" style="font-size:11px">
+                            @(item.IsActive ? "Aktif" : "Pasif")
+                        </span>
+                    </td>
+                    <td style="display:flex;gap:4px;white-space:nowrap">
+                        <button class="btn btn-outline btn-sm" @onclick="() => ToggleActive(item.Id)" title="@(item.IsActive?"Pasife Al":"Aktife Al")">
+                            @(item.IsActive ? "⏸" : "▶")
+                        </button>
+                        <button class="btn btn-ghost-danger btn-sm" @onclick="() => Delete(item.Id)">Sil</button>
+                    </td>
+                </tr>
+            }
+            @if (!_filtered.Any())
+            {
+                <tr><td colspan="7" class="empty-state">Kayıt bulunamadı.</td></tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@if (TotalPages > 1)
+{
+    <div style="display:flex;gap:4px;justify-content:center;margin-top:12px">
+        <button class="btn btn-outline btn-sm" @onclick="() => _page=1"         disabled="@(_page==1)">«</button>
+        <button class="btn btn-outline btn-sm" @onclick="() => _page--"          disabled="@(_page==1)">‹</button>
+        @for (int p = Math.Max(1,_page-2); p <= Math.Min(TotalPages,_page+2); p++)
+        {
+            var pp = p;
+            <button class="btn @(_page==pp?"btn-primary":"btn-outline") btn-sm" @onclick="() => _page=pp">@pp</button>
+        }
+        <button class="btn btn-outline btn-sm" @onclick="() => _page++"          disabled="@(_page==TotalPages)">›</button>
+        <button class="btn btn-outline btn-sm" @onclick="() => _page=TotalPages" disabled="@(_page==TotalPages)">»</button>
+    </div>
+}
+
+@code {
+    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    private List<RiskLibraryItem> _all = [], _filtered = [];
+    private string[] _categories = [];
+    private string _filterCat = "", _filterActive = "", _search = "";
+    private int _page = 1;
+    private const int _pageSize = 30;
+    private bool _showAddForm, _showImport;
+    private string _msg = ""; private bool _msgOk;
+
+    // Form fields
+    private string _fTitle="", _fCategory="", _fSubCat="", _fDesc="", _fSource="internal",
+                   _fStrategy="", _fHazard="", _fImpact="", _fTags="", _fRef="";
+
+    private IEnumerable<RiskLibraryItem> PagedItems => _filtered.Skip((_page-1)*_pageSize).Take(_pageSize);
+    private int TotalPages => (int)Math.Ceiling(_filtered.Count / (double)_pageSize);
+
+    protected override void OnInitialized() => Reload();
+
+    private void Reload()
+    {
+        _all        = LibSvc.Search(null, null, null, null, onlyActive: false);
+        _categories = LibSvc.GetCategories();
+        FilterItems();
+    }
+
+    private void FilterItems()
+    {
+        _filtered = _all
+            .Where(i => string.IsNullOrEmpty(_filterCat) || i.Category == _filterCat)
+            .Where(i => _filterActive switch { "active" => i.IsActive, "passive" => !i.IsActive, _ => true })
+            .Where(i => string.IsNullOrEmpty(_search) ||
+                        i.Title.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                        (i.Category ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                        (i.SubCategory ?? "").Contains(_search, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+        _page = 1;
+    }
+
+    private void SaveNew()
+    {
+        if (string.IsNullOrWhiteSpace(_fTitle)) { _msg="Başlık zorunludur."; _msgOk=false; return; }
+        LibSvc.Add(new RiskLibraryItem
+        {
+            Title=_fTitle, Description=_fDesc.NullIfEmpty(), Category=_fCategory.NullIfEmpty(),
+            SubCategory=_fSubCat.NullIfEmpty(), SourceType=_fSource, RiskStrategy=_fStrategy.NullIfEmpty(),
+            Hazard=_fHazard.NullIfEmpty(), PossibleImpact=_fImpact.NullIfEmpty(),
+            Tags=_fTags.NullIfEmpty(), ReferenceStandard=_fRef.NullIfEmpty(),
+            IsActive=true, CreatedAt=DateTime.UtcNow, CreatedById=UserId
+        });
+        _msg="Kayıt eklendi."; _msgOk=true;
+        _fTitle=_fCategory=_fSubCat=_fDesc=_fSource="internal"; _fStrategy=_fHazard=_fImpact=_fTags=_fRef="";
+        _showAddForm=false;
+        Reload();
+    }
+
+    private void ToggleActive(int id) { LibSvc.ToggleActive(id); Reload(); }
+    private void Delete(int id) { LibSvc.Delete(id); _msg="Silindi."; _msgOk=true; Reload(); }
+}

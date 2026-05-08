@@ -1,0 +1,194 @@
+@using System.Security.Claims
+@inject ImportService ImportSvc
+@inject IHttpContextAccessor HttpCtx
+@inject NavigationManager Nav
+
+@if (Visible)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center" @onclick="Close">
+        <div class="card" style="width:520px;max-width:95vw;padding:24px;position:relative;z-index:1001" @onclick:stopPropagation>
+
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                <div>
+                    <div style="font-size:17px;font-weight:800;color:var(--text-1)">&#x0130;&#xe7;e Aktar &#x2014; @Title</div>
+                    <div style="font-size:12px;color:var(--text-3);margin-top:2px">Yaln&#x131;zca .xlsx format&#x131; desteklenir</div>
+                </div>
+                <button @onclick="Close" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text-3)">&#x2715;</button>
+            </div>
+
+            <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px 14px;margin-bottom:16px;display:flex;align-items:center;gap:12px">
+                <div style="flex:1">
+                    <div style="font-size:13px;font-weight:600;color:#0369a1">&#x15e;ablonu &#x130;ndir</div>
+                    <div style="font-size:12px;color:#0284c7;margin-top:2px">Do&#x11f;ru format&#x131; g&#xf6;rmek i&#xe7;in &#xf6;nce &#x15f;ablonu indirin</div>
+                </div>
+                <a href="/import/template/@Module" class="btn btn-outline btn-sm" style="white-space:nowrap;flex-shrink:0">&#x2B07; &#x15e;ablon</a>
+            </div>
+
+            @if (!_loading && _result is null)
+            {
+                <div style="border:2px dashed #cbd5e1;border-radius:8px;padding:24px;text-align:center;background:#fafafa">
+                    <div style="font-size:28px;margin-bottom:8px">&#x1F4C2;</div>
+                    <div style="font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:12px">
+                        @(_file is null ? "Excel dosyas&#x131; se&#xe7;in (.xlsx)" : _file.Name)
+                    </div>
+                    <InputFile OnChange="FileSelected" accept=".xlsx" style="display:none" id="import-modal-file" />
+                    <label for="import-modal-file" class="btn btn-outline btn-sm" style="cursor:pointer">Dosya Se&#xe7;</label>
+                </div>
+
+                @if (_file is not null)
+                {
+                    <div style="margin-top:10px;padding:8px 12px;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;font-size:12px;color:#15803d;display:flex;align-items:center;gap:8px">
+                        <span>&#x2713; @_file.Name (@_fileSizeLabel)</span>
+                        <button @onclick="ClearFile" style="margin-left:auto;background:none;border:none;cursor:pointer;color:#dc2626">&#x2715;</button>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(_uploadError))
+                {
+                    <div style="margin-top:8px;padding:8px 12px;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;font-size:12px;color:#dc2626">@_uploadError</div>
+                }
+
+                <div style="display:flex;gap:8px;margin-top:16px">
+                    <button class="btn btn-primary" @onclick="Upload" disabled="@(_file is null)">&#x130;&#xe7;e Aktar</button>
+                    <button class="btn btn-outline" @onclick="Close">&#x130;ptal</button>
+                </div>
+            }
+
+            @if (_loading)
+            {
+                <div style="text-align:center;padding:32px 16px">
+                    <div style="font-size:14px;font-weight:600;color:var(--text-2)">Dosya i&#x15f;leniyor&#x2026;</div>
+                </div>
+            }
+
+            @if (_result is not null)
+            {
+                @if (_result.Imported > 0)
+                {
+                    <div style="background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:14px;margin-bottom:12px;display:flex;align-items:center;gap:12px">
+                        <span style="font-size:20px">&#x2705;</span>
+                        <div>
+                            <div style="font-size:14px;font-weight:700;color:#15803d">@_result.Imported kay&#x131;t ba&#x15f;ar&#x131;yla aktar&#x131;ld&#x131;</div>
+                            @if (_result.Skipped > 0)
+                            {
+                                <div style="font-size:12px;color:#6b7280;margin-top:2px">@_result.Skipped sat&#x131;r atland&#x131;</div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                @if (_result.Errors.Count > 0)
+                {
+                    <div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;padding:14px;margin-bottom:12px">
+                        <div style="font-size:13px;font-weight:700;color:#dc2626;margin-bottom:8px">@_result.Errors.Count hata</div>
+                        <div style="max-height:160px;overflow-y:auto;font-size:12px;color:#991b1b">
+                            @foreach (var err in _result.Errors)
+                            {
+                                <div style="padding:2px 0">&#x2022; @err</div>
+                            }
+                        </div>
+                    </div>
+                }
+
+                <div style="display:flex;gap:8px">
+                    @if (_result.Imported > 0)
+                    {
+                        <button class="btn btn-primary" @onclick="Done">Tamam, Sayfay&#x131; Yenile</button>
+                    }
+                    <button class="btn btn-outline" @onclick="Reset">Yeni Dosya Y&#xfc;kle</button>
+                    <button class="btn btn-outline" @onclick="Close">Kapat</button>
+                </div>
+            }
+
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public string Title { get; set; } = "";
+    [Parameter] public string Module { get; set; } = "";
+
+    private IBrowserFile? _file;
+    private string _fileSizeLabel = "";
+    private bool _loading;
+    private ImportResult? _result;
+    private string _uploadError = "";
+
+    private int UserId => int.TryParse(
+        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    private void FileSelected(InputFileChangeEventArgs e)
+    {
+        _file = e.File;
+        _result = null;
+        _uploadError = "";
+        _fileSizeLabel = FormatSize(_file.Size);
+    }
+
+    private void ClearFile()
+    {
+        _file = null;
+        _result = null;
+        _uploadError = "";
+        _fileSizeLabel = "";
+    }
+
+    private async Task Upload()
+    {
+        if (_file is null) return;
+        _loading = true;
+        _result = null;
+        _uploadError = "";
+        try
+        {
+            using var ms = new MemoryStream();
+            await using var s = _file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            await s.CopyToAsync(ms);
+            ms.Position = 0;
+            _result = RunImport(ms);
+        }
+        catch (Exception ex)
+        {
+            _uploadError = "Hata: " + ex.Message;
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    [Inject] private RiskLibraryService LibSvc { get; set; } = default!;
+
+    private ImportResult RunImport(MemoryStream ms) => Module switch
+    {
+        "risks"         => ImportSvc.ImportRisksFromExcel(ms, UserId),
+        "controls"      => ImportSvc.ImportControlsFromExcel(ms, UserId),
+        "action-plans"  => ImportSvc.ImportActionPlansFromExcel(ms, UserId),
+        "findings"      => ImportSvc.ImportFindingsFromExcel(ms, UserId),
+        "audit-actions" => ImportSvc.ImportAuditActionsFromExcel(ms, UserId),
+        "ethics"        => ImportSvc.ImportEthicsFromExcel(ms),
+        "library"       => LibSvc.ImportFromExcel(ms, UserId),
+        _               => new ImportResult { Errors = new List<string> { "Geçersiz modül." } }
+    };
+
+    private void Reset()
+    {
+        _file = null;
+        _result = null;
+        _uploadError = "";
+        _fileSizeLabel = "";
+    }
+
+    private void Done() => Nav.NavigateTo(Nav.Uri, forceLoad: true);
+
+    private void Close() { Reset(); _ = OnClose.InvokeAsync(); }
+
+    private static string FormatSize(long bytes)
+    {
+        if (bytes < 1024) return bytes + " B";
+        if (bytes < 1048576) return (bytes / 1024.0).ToString("F1") + " KB";
+        return (bytes / 1048576.0).ToString("F1") + " MB";
+    }
+}

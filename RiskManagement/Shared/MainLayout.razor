@@ -1,71 +1,182 @@
 @inherits LayoutComponentBase
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
+@inject ConfigService CfgSvc
+@inject TaskService TaskSvc
+@inject IJSRuntime JS
 @using System.Security.Claims
 
-<div class="app-shell">
+<div class="app-shell @(_collapsed ? "sidebar-collapsed" : "")">
     <aside class="sidebar">
         <div class="sidebar-logo">
-            <span class="logo-sub">Risk · Etik · Denetim</span>
+            <div class="sidebar-logo-mark">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                </svg>
+            </div>
+            <div class="sidebar-logo-text">
+                <span class="sidebar-logo-name">RED</span>
+                <span class="sidebar-logo-sub">Risk · Etik · Denetim</span>
+            </div>
+            <button class="sidebar-toggle-btn" @onclick="ToggleCollapse"
+                    title="@(_collapsed ? "Menüyü Genişlet" : "Menüyü Daralt")"
+                    style="margin-left:auto;flex-shrink:0">
+                @(_collapsed ? "»" : "«")
+            </button>
         </div>
 
         <nav class="sidebar-nav">
-            <NavLink href="/dashboard" class="nav-item" Match="NavLinkMatch.All">🏠 Ana Panel</NavLink>
+            <NavLink href="/dashboard" class="nav-item" Match="NavLinkMatch.All" title="Ana Panel">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                <span class="nav-label">Ana Panel</span>
+            </NavLink>
+            <NavLink href="/pending" class="nav-item" Match="NavLinkMatch.All" title="Bekleyen İşler">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+                <span class="nav-label">Bekleyen İşler</span>
+                @if (_pendingCount > 0)
+                { <span class="nav-badge">@(_pendingCount > 99 ? "99+" : _pendingCount.ToString())</span> }
+            </NavLink>
+            <NavLink href="/workflows" class="nav-item" Match="NavLinkMatch.All" title="İş Akış Şemaları">
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                <span class="nav-label">İş Akışları</span>
+            </NavLink>
 
             @if (IsActive("risk"))
             {
-                <div class="nav-section">Risk Yönetimi</div>
-                <NavLink href="/risk/dashboard" class="nav-item">📊 Risk Paneli</NavLink>
-                <NavLink href="/risk" class="nav-item">🗂 Risk Envanteri</NavLink>
-                <NavLink href="/risk/matrix" class="nav-item">🛡️ Kontrol Matrisi</NavLink>
-                <NavLink href="/risk/new" class="nav-item">➕ Risk Öner</NavLink>
+                <div class="nav-section"><span class="nav-label">Risk Yönetimi</span></div>
+                <NavLink href="/risk/dashboard" class="nav-item" Match="NavLinkMatch.All" title="Risk Paneli">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                    <span class="nav-label">Risk Paneli</span>
+                </NavLink>
+                <NavLink href="/risk" class="nav-item" Match="NavLinkMatch.All" title="Risk Envanteri">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+                    <span class="nav-label">Risk Envanteri</span>
+                </NavLink>
+                <NavLink href="/risk/matrix" class="nav-item" Match="NavLinkMatch.All" title="Kontrol Matrisi">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>
+                    <span class="nav-label">Kontrol Matrisi</span>
+                </NavLink>
+                <NavLink href="/risk/controls" class="nav-item" Match="NavLinkMatch.All" title="Kontrol Envanteri">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
+                    <span class="nav-label">Kontrol Envanteri</span>
+                </NavLink>
+                <NavLink href="/risk/actions" class="nav-item" Match="NavLinkMatch.All" title="Aksiyon Planları">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                    <span class="nav-label">Aksiyon Planları</span>
+                </NavLink>
+                <NavLink href="/risk/library" class="nav-item" Match="NavLinkMatch.All" title="Risk Kütüphanesi">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                    <span class="nav-label">Risk Kütüphanesi</span>
+                </NavLink>
+                <NavLink href="/risk/new" class="nav-item" Match="NavLinkMatch.All" title="Risk Öner">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                    <span class="nav-label">Risk Öner</span>
+                </NavLink>
             }
 
             @if (IsActive("audit"))
             {
-                <div class="nav-section">İç Denetim</div>
-                <NavLink href="/audit" class="nav-item">🔍 Denetim Paneli</NavLink>
-                <NavLink href="/audit/internal" class="nav-item">📁 İç Denetimler</NavLink>
+                <div class="nav-section"><span class="nav-label">İç Denetim</span></div>
+                <NavLink href="/audit" class="nav-item" Match="NavLinkMatch.All" title="Denetim Paneli">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                    <span class="nav-label">Denetim Paneli</span>
+                </NavLink>
+                <NavLink href="/audit/internal" class="nav-item" Match="NavLinkMatch.All" title="İç Denetimler">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    <span class="nav-label">İç Denetimler</span>
+                </NavLink>
                 @if (HasRole("auditor", "audit_manager", "admin"))
                 {
-                    <NavLink href="/audit/internal/new" class="nav-item">➕ Yeni Denetim</NavLink>
+                    <NavLink href="/audit/internal/new" class="nav-item" Match="NavLinkMatch.All" title="Yeni Denetim">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                        <span class="nav-label">Yeni Denetim</span>
+                    </NavLink>
                 }
-                <NavLink href="/audit/findings" class="nav-item">📋 Bulgular</NavLink>
+                <NavLink href="/audit/findings" class="nav-item" Match="NavLinkMatch.All" title="Bulgular">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="9" y1="16" x2="15" y2="16"/></svg>
+                    <span class="nav-label">Bulgular</span>
+                </NavLink>
+                <NavLink href="/audit/actions" class="nav-item" Match="NavLinkMatch.All" title="Aksiyon Planları">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                    <span class="nav-label">Aksiyon Planları</span>
+                </NavLink>
                 @if (HasRole("auditor", "admin"))
                 {
-                    <NavLink href="/audit/findings/new" class="nav-item">➕ Bulgu Gir</NavLink>
+                    <NavLink href="/audit/findings/new" class="nav-item" Match="NavLinkMatch.All" title="Bulgu Gir">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                        <span class="nav-label">Bulgu Gir</span>
+                    </NavLink>
                 }
             }
 
             @if (IsActive("ethics"))
             {
-                <div class="nav-section">Etik Yönetimi</div>
+                <div class="nav-section"><span class="nav-label">Etik Yönetimi</span></div>
                 @if (HasRole("audit_manager", "ethics_board", "admin"))
                 {
-                    <NavLink href="/ethics" class="nav-item">⚖️ Etik Paneli</NavLink>
-                    <NavLink href="/ethics/reports" class="nav-item">🔒 Etik Bildirimler</NavLink>
+                    <NavLink href="/ethics" class="nav-item" Match="NavLinkMatch.All" title="Etik Paneli">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="3" x2="12" y2="21"/><path d="M3 9l9-7 9 7"/><path d="M3 9a9 9 0 0 0 18 0"/></svg>
+                        <span class="nav-label">Etik Paneli</span>
+                    </NavLink>
+                    <NavLink href="/ethics/reports" class="nav-item" Match="NavLinkMatch.All" title="Etik Bildirimler">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        <span class="nav-label">Etik Bildirimler</span>
+                    </NavLink>
                 }
                 @if (HasRole("auditor", "audit_manager", "admin"))
                 {
-                    <NavLink href="/ethics/reports/new" class="nav-item">➕ Etik Bildirim Oluştur</NavLink>
+                    <NavLink href="/ethics/reports/new" class="nav-item" Match="NavLinkMatch.All" title="Etik Bildirim Oluştur">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                        <span class="nav-label">Etik Bildirim Oluştur</span>
+                    </NavLink>
                 }
             }
 
             @if (HasRole("admin"))
             {
-                <div class="nav-section">Yönetim</div>
-                <NavLink href="/admin/users" class="nav-item">👥 Kullanıcılar</NavLink>
-                <NavLink href="/admin/permissions" class="nav-item">🔐 Yetki Yönetimi</NavLink>
-                <NavLink href="/admin/ldap" class="nav-item">🏢 Active Directory</NavLink>
-                <NavLink href="/admin/config" class="nav-item">⚙️ Sistem Yapılandırması</NavLink>
+                <div class="nav-section"><span class="nav-label">Yönetim</span></div>
+                <NavLink href="/admin/users"       class="nav-item" Match="NavLinkMatch.All" title="Kullanıcılar">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span class="nav-label">Kullanıcılar</span>
+                </NavLink>
+                <NavLink href="/admin/permissions" class="nav-item" Match="NavLinkMatch.All" title="Yetki Yönetimi">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+                    <span class="nav-label">Yetki Yönetimi</span>
+                </NavLink>
+                <NavLink href="/admin/config"      class="nav-item" Match="NavLinkMatch.All" title="Sistem Yapılandırması">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                    <span class="nav-label">Sistem Yapılandırması</span>
+                </NavLink>
+                <NavLink href="/admin/database"    class="nav-item" Match="NavLinkMatch.All" title="Veritabanı">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+                    <span class="nav-label">Veritabanı</span>
+                </NavLink>
+                <NavLink href="/admin/ldap"        class="nav-item" Match="NavLinkMatch.All" title="Active Directory">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><path d="M6 12H4a2 2 0 0 0-2 2v8"/><path d="M18 9h2a2 2 0 0 1 2 2v11"/></svg>
+                    <span class="nav-label">Active Directory</span>
+                </NavLink>
+                <NavLink href="/admin/modules"     class="nav-item" Match="NavLinkMatch.All" title="Modüller">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="9" height="9" rx="1"/><rect x="13" y="2" width="9" height="9" rx="1"/><rect x="2" y="13" width="9" height="9" rx="1"/><rect x="13" y="13" width="9" height="9" rx="1"/></svg>
+                    <span class="nav-label">Modüller</span>
+                </NavLink>
             }
         </nav>
 
         <div class="sidebar-footer">
-            <strong>@FullName</strong>
-            <div>@Department</div>
-            <div class="role-badge">@RoleLabel</div>
-            <a href="/logout" class="btn btn-outline btn-sm" style="margin-top:10px;width:100%;display:block;text-align:center;">Çıkış</a>
+            <div class="sidebar-footer-info">
+                <span class="sidebar-footer-name">@FullName</span>
+                <span class="sidebar-footer-dept">@Department</span>
+                <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">
+                    @foreach (var r in AllRoles)
+                    { <span class="role-badge" style="font-size:10px">@(RoleLabels.GetValueOrDefault(r, r))</span> }
+                </div>
+            </div>
+            <a href="/logout" class="btn btn-outline btn-sm"
+               style="margin-top:10px;width:100%;justify-content:center;gap:6px">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                <span class="nav-label">Çıkış</span>
+            </a>
         </div>
     </aside>
 
@@ -76,23 +187,64 @@
     </div>
 </div>
 
+<ToastContainer />
+
 @code {
-    private string FullName => HttpCtx.HttpContext?.User.FindFirst("full_name")?.Value ?? "";
+    private bool _collapsed;
+    private int  _pendingCount;
+
+    private string FullName   => HttpCtx.HttpContext?.User.FindFirst("full_name")?.Value ?? "";
     private string Department => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Email)?.Value
         ?? HttpCtx.HttpContext?.User.FindFirst("department")?.Value ?? "";
     private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private IEnumerable<string> AllRoles =>
+        HttpCtx.HttpContext?.User?.FindAll(ClaimTypes.Role).Select(c => c.Value).Distinct().ToList()
+        ?? (string.IsNullOrEmpty(Role) ? [] : [Role]);
 
     private static readonly Dictionary<string, string> RoleLabels = new()
     {
-        ["admin"] = "Yönetici", ["committee"] = "Risk Komitesi",
-        ["risk_owner"] = "Risk Sahibi", ["user"] = "Kullanıcı",
-        ["auditor"] = "Denetçi", ["audit_manager"] = "Denetim Müdürü",
-        ["finding_owner"] = "Bulgu Sahibi", ["ethics_board"] = "Etik Kurul",
+        ["admin"]         = "Yönetici",
+        ["committee"]     = "Risk Komitesi",
+        ["risk_manager"]  = "Risk Yöneticisi",
+        ["risk_owner"]    = "Risk Sahibi",
+        ["user"]          = "Kullanıcı",
+        ["auditor"]       = "Denetçi",
+        ["audit_manager"] = "Denetim Müdürü",
+        ["finding_owner"] = "Bulgu Sahibi",
+        ["ethics_board"]  = "Etik Kurul",
     };
-    private string RoleLabel => RoleLabels.GetValueOrDefault(Role, Role);
 
-    private bool HasRole(params string[] roles) => roles.Contains(Role);
+    // Tüm rol claim'lerini kontrol et — tek role değişkeniyle kısıtlamaz
+    private bool HasRole(params string[] roles) => AllRoles.Any(roles.Contains);
+    private bool IsActive(string module) => CfgSvc.IsModuleActive(module);
 
-    // Tüm modüller aktif (ModuleContext Python versiyonundaki gibi konfigüre edilebilir)
-    private static bool IsActive(string _) => true;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            var saved = await JS.InvokeAsync<string?>("localStorage.getItem", "sidebar-collapsed");
+            _collapsed = saved == "true";
+
+            var userId = int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+            if (userId > 0)
+            {
+                // Tüm roller içinde en yetkili rolü bul
+                var allRoles = HttpCtx.HttpContext?.User.FindAll(ClaimTypes.Role).Select(c => c.Value).ToList() ?? [];
+                var effectiveRole = allRoles.Contains("admin") ? "admin"
+                    : allRoles.Contains("committee") ? "committee"
+                    : allRoles.Contains("risk_manager") ? "risk_manager"
+                    : allRoles.Contains("audit_manager") ? "audit_manager"
+                    : allRoles.FirstOrDefault() ?? Role;
+                _pendingCount = TaskSvc.GetTasksForUser(userId, effectiveRole).Count;
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    private async Task ToggleCollapse()
+    {
+        _collapsed = !_collapsed;
+        await JS.InvokeVoidAsync("localStorage.setItem", "sidebar-collapsed", _collapsed.ToString().ToLower());
+    }
 }
