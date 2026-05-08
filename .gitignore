@@ -6,3 +6,21 @@ obj/
 *.suo
 .DS_Store
 appsettings.Development.json
+
+# Local/runtime artifacts
+*.db
+*.db-shm
+*.db-wal
+coverage/
+coverage*/
+StrykerOutput/
+**/StrykerOutput/
+uploads/
+wwwroot/uploads/
+RiskManagement/uploads/
+RiskManagement/wwwroot/uploads/
+
+# Secrets
+*.pem
+*.key
+*.p12
