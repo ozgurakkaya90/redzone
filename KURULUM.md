@@ -268,4 +268,4 @@ Veritabanı güncelleme gerektiren sürümlerde migrasyon otomatik çalışır.
 
 ---
 
-*Sorun mu yaşıyorsunuz? GitHub Issues: https://github.com/your-org/risk-management-dotnet/issues*
+*Sorun mu yaşıyorsunuz? GitHub Issues: https://github.com/ozgurakkaya90/redzone/issues*

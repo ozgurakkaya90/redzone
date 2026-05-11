@@ -4,7 +4,7 @@ KOBİ'ler için kurumsal risk yönetimi, iç denetim ve etik raporlamayı tek pl
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![.NET 8](https://img.shields.io/badge/.NET-8.0-purple.svg)](https://dotnet.microsoft.com)
-[![CI](https://github.com/your-org/risk-management-dotnet/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/risk-management-dotnet/actions)
+[![CI](https://github.com/ozgurakkaya90/redzone/actions/workflows/ci.yml/badge.svg)](https://github.com/ozgurakkaya90/redzone/actions)
 
 ---
 
@@ -30,7 +30,7 @@ KOBİ'ler için kurumsal risk yönetimi, iç denetim ve etik raporlamayı tek pl
 ### 1. Repoyu klonla
 
 ```bash
-git clone https://github.com/your-org/risk-management-dotnet.git
+git clone https://github.com/ozgurakkaya90/redzone.git
 cd risk-management-dotnet
 ```
 
