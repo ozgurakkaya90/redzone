@@ -2,301 +2,951 @@
 @attribute [Authorize(Roles = "admin")]
 @inject ConfigService CfgSvc
 @inject AppDbContext Db
+@inject SmtpNotificationService EmailSvc
+@inject IWebHostEnvironment Env
+@inject IConfiguration AppConfig
 @using System.Text.Json
 @using RiskManagement.Models
+@using RiskManagement.Services.Email
 @using Microsoft.EntityFrameworkCore
+@using MySqlConnector
+@using Novell.Directory.Ldap
+@using Microsoft.AspNetCore.Components.Forms
 
 <PageTitle>Sistem Yapılandırması</PageTitle>
 
-<div class="page-header"><h1>Sistem Yapılandırması</h1></div>
+<style>
+.cfg-layout    { display:grid; grid-template-columns:220px 1fr; gap:24px; align-items:start; }
+.cfg-nav       { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-xl);
+                 padding:8px; position:sticky; top:80px; }
+.cfg-nav-group { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em;
+                 color:var(--text-3); padding:12px 12px 4px; }
+.cfg-nav-item  { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px;
+                 cursor:pointer; border:none; background:none; width:100%; text-align:left;
+                 font-size:13px; color:var(--text-2); transition:background .12s, color .12s; }
+.cfg-nav-item:hover   { background:var(--gray-50); color:var(--text-1); }
+.cfg-nav-item.active  { background:#f0f9ff; color:#0369a1; font-weight:600; }
+.cfg-nav-item .cfg-icon { font-size:16px; width:20px; text-align:center; flex-shrink:0; }
+.cfg-nav-item .cfg-badge { margin-left:auto; background:#e5e7eb; color:var(--text-3);
+                            font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; }
+.cfg-nav-item.active .cfg-badge { background:#bae6fd; color:#0369a1; }
 
-@if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
+.cfg-section-hdr { margin-bottom:20px; }
+.cfg-section-hdr h2 { font-size:18px; font-weight:800; color:var(--text-1); margin:0 0 4px; }
+.cfg-section-hdr p  { font-size:13px; color:var(--text-3); margin:0; }
 
-<!-- Sekmeler -->
-<div style="display:flex;gap:4px;border-bottom:2px solid #e5e7eb;margin-bottom:24px;flex-wrap:wrap">
-    @foreach (var (key, label) in _tabs)
-    {
-        <button style="padding:8px 16px;font-size:13px;font-weight:@(_tab==key?"700":"400");border:none;background:none;border-bottom:@(_tab==key?"3px solid #E1251B":"3px solid transparent");cursor:pointer;color:@(_tab==key?"#E1251B":"#374151")"
-                @onclick="() => _tab = key">@label</button>
-    }
+.cfg-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-xl);
+            padding:20px 24px; margin-bottom:16px; }
+.cfg-card-hdr { display:flex; align-items:center; gap:10px; margin-bottom:16px; padding-bottom:14px;
+                border-bottom:1px solid var(--border); }
+.cfg-card-icon { width:36px; height:36px; border-radius:8px; display:flex; align-items:center;
+                 justify-content:center; font-size:17px; flex-shrink:0; }
+.cfg-card-title  { font-size:14px; font-weight:700; color:var(--text-1); }
+.cfg-card-desc   { font-size:12px; color:var(--text-3); margin-top:1px; }
+
+.preset-btn { display:flex; align-items:center; gap:8px; padding:10px 14px; border:1px solid var(--border);
+              border-radius:8px; cursor:pointer; background:var(--surface); width:100%; text-align:left;
+              transition:border-color .12s, background .12s; }
+.preset-btn:hover { border-color:#3b82f6; background:#f0f9ff; }
+.preset-btn .pb-icon { font-size:20px; }
+.preset-btn .pb-name { font-size:13px; font-weight:600; color:var(--text-1); }
+.preset-btn .pb-host { font-size:11px; color:var(--text-3); }
+
+.color-swatch { width:48px; height:40px; border:1px solid var(--border); border-radius:8px;
+                cursor:pointer; overflow:hidden; padding:0; }
+.field-info   { font-size:11px; color:var(--text-3); margin-top:3px; line-height:1.4; }
+
+.toggle-row   { display:flex; align-items:center; gap:12px; padding:14px 16px;
+                border:1px solid var(--border); border-radius:10px; background:var(--gray-50);
+                cursor:pointer; margin-bottom:16px; }
+.toggle-row input[type=checkbox] { width:18px; height:18px; accent-color:#0369a1; cursor:pointer; }
+.toggle-row label { font-size:13px; font-weight:600; color:var(--text-1); cursor:pointer; margin:0; flex:1; }
+.toggle-row .toggle-sub { font-size:11px; color:var(--text-3); font-weight:400; display:block; margin-top:1px; }
+
+.status-pill { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700;
+               padding:3px 10px; border-radius:20px; }
+.pill-green  { background:#dcfce7; color:#166534; border:1px solid #86efac; }
+.pill-red    { background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; }
+.pill-gray   { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+
+.save-row    { display:flex; align-items:center; gap:12px; margin-top:16px; padding-top:14px;
+               border-top:1px solid var(--border); }
+.save-msg    { font-size:13px; color:#16a34a; font-weight:600; animation:fadeIn .3s; }
+@@keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+
+@@media(max-width:768px) {
+  .cfg-layout { grid-template-columns:1fr; }
+  .cfg-nav    { position:static; display:flex; flex-wrap:wrap; padding:6px; gap:4px; }
+  .cfg-nav-group { display:none; }
+  .cfg-nav-item { width:auto; padding:6px 10px; font-size:12px; }
+}
+</style>
+
+@if (!string.IsNullOrEmpty(_success))
+{
+    <div class="alert alert-success" style="margin-bottom:16px">@_success</div>
+}
+
+<div style="margin-bottom:24px">
+    <h1 style="font-size:22px;font-weight:800;margin:0 0 4px">Sistem Yapılandırması</h1>
+    <p style="font-size:13px;color:var(--text-3);margin:0">
+        Kurumsal hiyerarşi, modül ayarları ve e-posta bildirimleri
+    </p>
 </div>
 
-@if (_tab == "theme")
-{
-    <div class="card">
-        <div class="section-title">Görsel Ayarlar</div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-            <div class="form-group">
-                <label class="form-label">Birincil Renk</label>
-                <div style="display:flex;gap:10px;align-items:center">
-                    <input type="color" @bind="_primaryColor" style="width:48px;height:36px;border:none;cursor:pointer;border-radius:6px" />
-                    <input class="form-control" @bind="_primaryColor" style="width:120px;font-family:monospace" />
+<div class="cfg-layout">
+
+    @* ── Sol Navigasyon ─────────────────────────────────────────────────── *@
+    <nav class="cfg-nav">
+        <div class="cfg-nav-group">Görünüm</div>
+        <button class="cfg-nav-item @(_tab=="theme" ? "active" : "")" @onclick='()=>_tab="theme"'>
+            <span class="cfg-icon">🎨</span> Görsel Ayarlar
+        </button>
+
+        <div class="cfg-nav-group">Kurumsal Yapı</div>
+        <button class="cfg-nav-item @(_tab=="companies" ? "active" : "")" @onclick='()=>_tab="companies"'>
+            <span class="cfg-icon">🏛️</span> Şirketler
+            <span class="cfg-badge">@(_companies.Count + _organizations.Count)</span>
+        </button>
+        <button class="cfg-nav-item @(_tab=="departments" ? "active" : "")" @onclick='()=>_tab="departments"'>
+            <span class="cfg-icon">🏢</span> Departmanlar
+            <span class="cfg-badge">@_departments.Count</span>
+        </button>
+
+        <div class="cfg-nav-group">Modüller</div>
+        <button class="cfg-nav-item @(_tab=="risk" ? "active" : "")" @onclick='()=>_tab="risk"'>
+            <span class="cfg-icon">🛡️</span> Risk Modülü
+        </button>
+        <button class="cfg-nav-item @(_tab=="controls" ? "active" : "")" @onclick='()=>_tab="controls"'>
+            <span class="cfg-icon">🔒</span> Kontroller
+        </button>
+        <button class="cfg-nav-item @(_tab=="audit" ? "active" : "")" @onclick='()=>_tab="audit"'>
+            <span class="cfg-icon">🔍</span> Denetim
+        </button>
+        <button class="cfg-nav-item @(_tab=="ethics" ? "active" : "")" @onclick='()=>_tab="ethics"'>
+            <span class="cfg-icon">⚖️</span> Etik
+        </button>
+
+        <div class="cfg-nav-group">Entegrasyon</div>
+        <button class="cfg-nav-item @(_tab=="email" ? "active" : "")" @onclick='()=>_tab="email"'>
+            <span class="cfg-icon">✉️</span> E-posta
+            @if (_emailSettings.Enabled)
+            { <span class="cfg-badge" style="background:#dcfce7;color:#166534">Etkin</span> }
+        </button>
+        <button class="cfg-nav-item @(_tab=="ldap" ? "active" : "")" @onclick='()=>_tab="ldap"'>
+            <span class="cfg-icon">🏢</span> Active Directory
+            @if (_ldapEnabled)
+            { <span class="cfg-badge" style="background:#dcfce7;color:#166534">Etkin</span> }
+        </button>
+        <button class="cfg-nav-item @(_tab=="database" ? "active" : "")" @onclick='()=>_tab="database"'>
+            <span class="cfg-icon">🗄️</span> Veritabanı
+        </button>
+
+        <div class="cfg-nav-group">Sistem</div>
+        <button class="cfg-nav-item @(_tab=="modules" ? "active" : "")" @onclick='()=>_tab="modules"'>
+            <span class="cfg-icon">📦</span> Modüller
+        </button>
+    </nav>
+
+    @* ── İçerik Alanı ───────────────────────────────────────────────────── *@
+    <div>
+
+    @* ════ GÖRSEL AYARLAR ════════════════════════════════════════════════ *@
+    @if (_tab == "theme")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Görsel Ayarlar</h2>
+            <p>Uygulamanın kimliğini ve renklerini kurum standartlarına göre özelleştirin.</p>
+        </div>
+
+        @* ── Uygulama Kimliği ── *@
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#f0f9ff">🏷️</div>
+                <div>
+                    <div class="cfg-card-title">Uygulama Adı</div>
+                    <div class="cfg-card-desc">Sol üst köşede ve tarayıcı sekmesinde görünür</div>
                 </div>
             </div>
-            <div class="form-group">
-                <label class="form-label">İkincil Renk</label>
-                <div style="display:flex;gap:10px;align-items:center">
-                    <input type="color" @bind="_secondaryColor" style="width:48px;height:36px;border:none;cursor:pointer;border-radius:6px" />
-                    <input class="form-control" @bind="_secondaryColor" style="width:120px;font-family:monospace" />
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div class="form-group">
+                    <label class="form-label">Uygulama Adı</label>
+                    <input class="form-control" @bind="_appName" placeholder="RED" maxlength="20" />
+                    <div class="field-info">Kısa tutun — max 20 karakter</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Alt Başlık</label>
+                    <input class="form-control" @bind="_appTagline" placeholder="Risk · Etik · Denetim" maxlength="60" />
+                </div>
+            </div>
+            <div style="padding:14px 18px;background:var(--gray-50);border-radius:10px;border:1px solid var(--border);margin-top:4px">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-3);margin-bottom:8px">Önizleme</div>
+                <div style="display:flex;align-items:center;gap:10px">
+                    <div style="width:32px;height:32px;background:#1e3a5f;border-radius:8px;display:flex;align-items:center;justify-content:center">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                    </div>
+                    <div>
+                        <div style="font-size:15px;font-weight:800;color:var(--text-1)">@_appName</div>
+                        <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">@_appTagline</div>
+                    </div>
+                </div>
+            </div>
+            <div class="save-row">
+                <button class="btn btn-primary" @onclick="SaveBranding">Kaydet</button>
+                @if (!string.IsNullOrEmpty(_brandingSaveMsg))
+                { <span class="save-msg">@_brandingSaveMsg</span> }
+            </div>
+        </div>
+
+        @* ── Logo ── *@
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#fef3c7">🖼️</div>
+                <div>
+                    <div class="cfg-card-title">Logo</div>
+                    <div class="cfg-card-desc">Sidebar'da uygulama adının solunda görünür — PNG, JPG, SVG, maks. 2 MB</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
+                <div style="flex:1;min-width:200px">
+                    <InputFile OnChange="HandleLogoUpload" accept=".png,.jpg,.jpeg,.svg"
+                               style="display:block;margin-bottom:8px" />
+                    @if (!string.IsNullOrEmpty(_logoError))
+                    { <div style="font-size:12px;color:#dc2626;margin-top:4px">@_logoError</div> }
+                    <div class="field-info">Yüklenen logo sunucuda saklanır ve yeniden başlatmaya gerek kalmadan uygulanır.</div>
+                    @if (!string.IsNullOrEmpty(_logoPath))
+                    {
+                        <button class="btn btn-ghost-danger btn-sm" style="margin-top:8px" @onclick="RemoveLogo">
+                            Logoyu Kaldır
+                        </button>
+                    }
+                </div>
+                <div style="width:120px;height:80px;background:var(--gray-50);border:1px solid var(--border);
+                            border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                    @if (!string.IsNullOrEmpty(_logoPath))
+                    {
+                        <img src="@_logoPath" style="max-width:100px;max-height:70px;object-fit:contain" />
+                    }
+                    else
+                    {
+                        <span style="font-size:11px;color:var(--text-3)">Logo yok</span>
+                    }
                 </div>
             </div>
         </div>
-        <button class="btn btn-primary btn-sm" @onclick="SaveTheme">Kaydet</button>
-    </div>
-}
 
-@if (_tab == "companies")
-{
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-
-        @* ── Şirketler ── *@
-        <div>
-            <div class="card" style="margin-bottom:12px">
-                <div class="section-title">Yeni Şirket Ekle</div>
-                @if (!string.IsNullOrEmpty(_companyError)) { <div class="alert alert-error" style="margin-bottom:10px">@_companyError</div> }
-                <div class="form-group">
-                    <label class="form-label">Şirket Adı *</label>
-                    <input class="form-control" @bind="_newCompanyName" placeholder="örn. ABC Holding A.Ş." />
+        @* ── Renk Paleti ── *@
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#fef3c7">🎨</div>
+                <div>
+                    <div class="cfg-card-title">Renk Paleti</div>
+                    <div class="cfg-card-desc">Buton, bağlantı ve sidebar arka plan renklerini belirler</div>
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Açıklama</label>
-                    <input class="form-control" @bind="_newCompanyDesc" placeholder="İsteğe bağlı" />
-                </div>
-                <button class="btn btn-primary btn-sm" @onclick="AddCompany">Ekle</button>
             </div>
 
-            <div class="card" style="padding:0">
-                <table class="table">
-                    <thead><tr><th>Şirket</th><th>Açıklama</th><th></th></tr></thead>
-                    <tbody>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px">
+                <div>
+                    <label class="form-label">Birincil Renk</label>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                        <input type="color" @bind="_primaryColor" class="color-swatch" />
+                        <input class="form-control" @bind="_primaryColor" style="font-family:monospace" />
+                    </div>
+                    <div class="field-info">Butonlar, aktif öğeler</div>
+                </div>
+                <div>
+                    <label class="form-label">İkincil Renk</label>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                        <input type="color" @bind="_secondaryColor" class="color-swatch" />
+                        <input class="form-control" @bind="_secondaryColor" style="font-family:monospace" />
+                    </div>
+                    <div class="field-info">Başarı durumları</div>
+                </div>
+                <div>
+                    <label class="form-label">Sidebar Rengi</label>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                        <input type="color" @bind="_sidebarColor" class="color-swatch" />
+                        <input class="form-control" @bind="_sidebarColor" style="font-family:monospace" />
+                    </div>
+                    <div class="field-info">Sol panel arka planı</div>
+                </div>
+            </div>
+
+            <div style="margin-top:16px;padding:16px;background:var(--gray-50);border-radius:10px;border:1px solid var(--border)">
+                <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-3);margin-bottom:10px;letter-spacing:.05em">Önizleme</div>
+                <div style="display:flex;gap:16px;align-items:stretch;border-radius:8px;overflow:hidden;border:1px solid var(--border)">
+                    <div style="width:120px;background:@_sidebarColor;padding:12px 10px;flex-shrink:0">
+                        <div style="font-size:12px;font-weight:700;color:#fff;margin-bottom:6px">@_appName</div>
+                        <div style="background:rgba(255,255,255,.1);border-radius:6px;padding:5px 8px;font-size:11px;color:rgba(255,255,255,.9)">📊 Ana Panel</div>
+                    </div>
+                    <div style="flex:1;padding:12px;background:#fff;display:flex;flex-direction:column;gap:8px">
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+                            <button style="background:@_primaryColor;color:#fff;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:default">Birincil</button>
+                            <button style="background:transparent;color:@_primaryColor;border:1.5px solid @_primaryColor;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:default">Çerçeveli</button>
+                            <span style="background:@(_secondaryColor)20;color:@_secondaryColor;font-size:11px;font-weight:600;padding:3px 8px;border-radius:20px">✓ Başarılı</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="save-row">
+                <button class="btn btn-primary" @onclick="SaveTheme">Renkleri Kaydet</button>
+                @if (!string.IsNullOrEmpty(_themeSaveMsg))
+                { <span class="save-msg">@_themeSaveMsg</span> }
+            </div>
+        </div>
+    }
+
+    @* ════ ŞİRKETLER & ORGANİZASYONLAR ════════════════════════════════ *@
+    @if (_tab == "companies")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Şirketler & Organizasyonlar</h2>
+            <p>Kurumsal hiyerarşinin üst katmanları. Şirket → Organizasyon → Departman sırasıyla tanımlanır.</p>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            <div>
+                <div class="cfg-card">
+                    <div class="cfg-card-hdr">
+                        <div class="cfg-card-icon" style="background:#eff6ff">🏛️</div>
+                        <div>
+                            <div class="cfg-card-title">Yeni Şirket</div>
+                            <div class="cfg-card-desc">Holding veya bağımsız tüzel kişilik</div>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_companyError))
+                    { <div class="alert alert-error" style="margin-bottom:10px">@_companyError</div> }
+                    <div class="form-group">
+                        <label class="form-label">Şirket Adı *</label>
+                        <input class="form-control" @bind="_newCompanyName" placeholder="örn. ABC Holding A.Ş." />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Açıklama</label>
+                        <input class="form-control" @bind="_newCompanyDesc" placeholder="İsteğe bağlı" />
+                    </div>
+                    <button class="btn btn-primary btn-sm" @onclick="AddCompany">+ Şirket Ekle</button>
+                </div>
+
+                <div class="cfg-card" style="padding:0">
+                    @if (!_companies.Any())
+                    {
+                        <div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px">
+                            Henüz şirket tanımlanmamış.
+                        </div>
+                    }
+                    else
+                    {
                         @foreach (var c in _companies)
                         {
-                            <tr>
-                                <td style="font-weight:600">@c.Name</td>
-                                <td style="font-size:12px;color:var(--text-3)">@(c.Description ?? "—")</td>
-                                <td><button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteCompany(c.Id)">Sil</button></td>
-                            </tr>
+                            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)">
+                                <div style="width:34px;height:34px;background:#eff6ff;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🏛️</div>
+                                <div style="flex:1;min-width:0">
+                                    <div style="font-size:13px;font-weight:600;color:var(--text-1)">@c.Name</div>
+                                    @if (!string.IsNullOrEmpty(c.Description))
+                                    { <div style="font-size:11px;color:var(--text-3)">@c.Description</div> }
+                                </div>
+                                <button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteCompany(c.Id)">Sil</button>
+                            </div>
                         }
-                        @if (!_companies.Any())
-                        { <tr><td colspan="3" class="empty-state">Henüz şirket eklenmemiş.</td></tr> }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        @* ── Organizasyonlar ── *@
-        <div>
-            <div class="card" style="margin-bottom:12px">
-                <div class="section-title">Yeni Organizasyon Ekle</div>
-                @if (!string.IsNullOrEmpty(_orgError)) { <div class="alert alert-error" style="margin-bottom:10px">@_orgError</div> }
-                <div class="form-group">
-                    <label class="form-label">Organizasyon Adı *</label>
-                    <input class="form-control" @bind="_newOrgName" placeholder="örn. Finans & Muhasebe Genel Müdürlüğü" />
+                    }
                 </div>
-                <div class="form-group">
-                    <label class="form-label">Bağlı Şirket</label>
-                    <select class="form-control" @bind="_newOrgCompanyId">
-                        <option value="">— Şirket Seçin —</option>
-                        @foreach (var c in _companies)
-                        { <option value="@c.Id">@c.Name</option> }
-                    </select>
-                </div>
-                <button class="btn btn-primary btn-sm" @onclick="AddOrganization">Ekle</button>
             </div>
 
-            <div class="card" style="padding:0">
-                <table class="table">
-                    <thead><tr><th>Organizasyon</th><th>Şirket</th><th></th></tr></thead>
-                    <tbody>
+            <div>
+                <div class="cfg-card">
+                    <div class="cfg-card-hdr">
+                        <div class="cfg-card-icon" style="background:#f0fdf4">🏢</div>
+                        <div>
+                            <div class="cfg-card-title">Yeni Organizasyon</div>
+                            <div class="cfg-card-desc">Genel müdürlük, direktörlük vb.</div>
+                        </div>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_orgError))
+                    { <div class="alert alert-error" style="margin-bottom:10px">@_orgError</div> }
+                    <div class="form-group">
+                        <label class="form-label">Organizasyon Adı *</label>
+                        <input class="form-control" @bind="_newOrgName" placeholder="örn. Finans Genel Müdürlüğü" />
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Bağlı Şirket</label>
+                        <select class="form-control" @bind="_newOrgCompanyId">
+                            <option value="">— Şirket Seçin —</option>
+                            @foreach (var c in _companies)
+                            { <option value="@c.Id">@c.Name</option> }
+                        </select>
+                    </div>
+                    <button class="btn btn-primary btn-sm" @onclick="AddOrganization">+ Organizasyon Ekle</button>
+                </div>
+
+                <div class="cfg-card" style="padding:0">
+                    @if (!_organizations.Any())
+                    {
+                        <div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px">
+                            Henüz organizasyon tanımlanmamış.
+                        </div>
+                    }
+                    else
+                    {
                         @foreach (var o in _organizations)
                         {
-                            <tr>
-                                <td style="font-weight:600">@o.Name</td>
-                                <td style="font-size:12px;color:var(--text-3)">@(o.Company?.Name ?? "—")</td>
-                                <td><button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteOrganization(o.Id)">Sil</button></td>
-                            </tr>
+                            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--border)">
+                                <div style="width:34px;height:34px;background:#f0fdf4;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">🏢</div>
+                                <div style="flex:1;min-width:0">
+                                    <div style="font-size:13px;font-weight:600;color:var(--text-1)">@o.Name</div>
+                                    @if (o.Company != null)
+                                    { <div style="font-size:11px;color:var(--text-3)">@o.Company.Name</div> }
+                                </div>
+                                <button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteOrganization(o.Id)">Sil</button>
+                            </div>
                         }
-                        @if (!_organizations.Any())
-                        { <tr><td colspan="3" class="empty-state">Henüz organizasyon eklenmemiş.</td></tr> }
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-}
-
-@if (_tab == "departments")
-{
-    <div class="card" style="margin-bottom:16px">
-        <div class="section-title">Yeni Departman Ekle</div>
-        @if (!string.IsNullOrEmpty(_deptError)) { <div class="alert alert-error" style="margin-bottom:12px">@_deptError</div> }
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-            <div class="form-group" style="margin-bottom:0">
-                <label class="form-label">Departman Adı *</label>
-                <input class="form-control" @bind="_newDeptName" placeholder="örn. Finans Direktörlüğü" />
-            </div>
-            <div class="form-group" style="margin-bottom:0">
-                <label class="form-label">Bağlı Organizasyon</label>
-                <select class="form-control" @bind="_newDeptOrgId">
-                    <option value="">— Organizasyon Seçin —</option>
-                    @foreach (var o in _organizations)
-                    {
-                        <option value="@o.Id">@o.Name @(o.Company != null ? $"({o.Company.Name})" : "")</option>
                     }
-                </select>
+                </div>
             </div>
         </div>
-        <button class="btn btn-primary" @onclick="AddDepartment">Ekle</button>
-    </div>
+    }
 
-    <div class="card" style="padding:0">
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Departman</th>
-                    <th>Organizasyon</th>
-                    <th>Şirket</th>
-                    <th>Departman Yöneticisi</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var dept in _departments)
-                {
-                    var deptId = dept.Id;
-                    var deptManagerId = dept.ManagerUserId;
-                    <tr>
-                        <td style="font-weight:600">@dept.Name</td>
-                        <td>
-                            <select class="form-control" style="width:200px;font-size:12px"
-                                    value="@(dept.OrganizationId?.ToString() ?? string.Empty)"
-                                    @onchange="@(e => SetOrganization(deptId, e.Value?.ToString() ?? string.Empty))">
-                                <option value="">— Seçin —</option>
-                                @foreach (var o in _organizations)
-                                {
-                                    <option value="@o.Id" selected="@(dept.OrganizationId == o.Id)">@o.Name</option>
-                                }
-                            </select>
-                        </td>
-                        <td style="font-size:12px;color:var(--text-3)">
-                            @(dept.Organization?.Company?.Name ?? "—")
-                        </td>
-                        <td>
-                            <select class="form-control" style="width:200px;font-size:12px"
-                                    value="@(deptManagerId?.ToString() ?? string.Empty)"
-                                    @onchange="@(e => SetManager(deptId, e.Value?.ToString() ?? string.Empty))">
-                                <option value="">— Yönetici Seçin —</option>
-                                @foreach (var u in _allUsers)
-                                {
-                                    <option value="@u.Id" selected="@(deptManagerId == u.Id)">
-                                        @u.FullName (@u.Department)
-                                    </option>
-                                }
-                            </select>
-                        </td>
-                        <td>
-                            <button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteDepartment(deptId)">Sil</button>
-                        </td>
-                    </tr>
-                }
-                @if (!_departments.Any())
-                {
-                    <tr><td colspan="5" class="empty-state">Henüz departman tanımlanmamış.</td></tr>
-                }
-            </tbody>
-        </table>
-    </div>
-
-    <div style="margin-top:16px;padding:14px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:8px;font-size:12px;color:#1d4ed8">
-        <strong>ℹ️ Departman Yöneticisi:</strong> Seçilen kullanıcı, bu departmanın sorumlu birimi olarak atanmış tüm riskleri görebilir.
-        Risk envanterinde risk kaydının <em>Sorumlu Birim</em> alanı departman adıyla eşleştiğinde erişim sağlanır.
-    </div>
-}
-
-@if (_tab == "risk")
-{
-    <ListEditor Title="Risk Kategorileri" Items="_riskCategories" OnSave="SaveRiskCategories" />
-    <ListEditor Title="Risk Stratejileri" Items="_riskStrategies" OnSave="SaveRiskStrategies" />
-
-    <div class="card">
-        <div class="section-title">Periyodik İnceleme Eşiği</div>
-        <p style="font-size:13px;color:var(--text-2);margin-bottom:16px">
-            Bu süreyi aşan incelemesiz riskler "Bekleyen İşler" sayfasında uyarı olarak görünür.
-        </p>
-        <div class="form-group" style="max-width:200px">
-            <label class="form-label">Eşik (gün)</label>
-            <input type="number" class="form-control" @bind="_reviewThresholdDays" min="1" max="730" />
+    @* ════ DEPARTMANLAR ══════════════════════════════════════════════════ *@
+    @if (_tab == "departments")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Departmanlar</h2>
+            <p>Departmanlara organizasyon ve yönetici atayın. Yöneticiler kendi departmanlarının risklerini görebilir.</p>
         </div>
-        <button class="btn btn-primary btn-sm" @onclick="SaveReviewThreshold">Kaydet</button>
-    </div>
 
-    @* ── Risk Detayları Alan Görünürlüğü ── *@
-    <div class="card">
-        <div class="section-title">Risk Detayları — Alan Görünürlüğü</div>
-        <p style="font-size:13px;color:var(--text-2);margin-bottom:16px">
-            Risk detayı kartında hangi alanların görüneceğini seçin.
-            Kapatılan alanlar formdan ve görüntülemeden tamamen gizlenir.
-        </p>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
-            @foreach (var (key, label, hint) in _riskDetailFieldDefs)
-            {
-                var k = key;
-                <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;border:1px solid var(--border);border-radius:8px;cursor:pointer;background:@(_riskDetailFields.GetValueOrDefault(k,true)?"#f0fdf4":"#f9fafb")">
-                    <input type="checkbox"
-                           style="margin-top:2px;width:16px;height:16px;flex-shrink:0"
-                           checked="@_riskDetailFields.GetValueOrDefault(k, true)"
-                           @onchange="e => ToggleRiskField(k, (bool)(e.Value ?? true))" />
-                    <div>
-                        <div style="font-size:13px;font-weight:600;color:var(--text-1)">@label</div>
-                        <div style="font-size:11px;color:var(--text-3);margin-top:2px">@hint</div>
-                    </div>
+        <div class="cfg-card" style="margin-bottom:16px">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#faf5ff">➕</div>
+                <div>
+                    <div class="cfg-card-title">Yeni Departman Ekle</div>
+                </div>
+            </div>
+            @if (!string.IsNullOrEmpty(_deptError))
+            { <div class="alert alert-error" style="margin-bottom:10px">@_deptError</div> }
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">Departman Adı *</label>
+                    <input class="form-control" @bind="_newDeptName" placeholder="örn. Finans Direktörlüğü" />
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">Bağlı Organizasyon</label>
+                    <select class="form-control" @bind="_newDeptOrgId">
+                        <option value="">— Organizasyon Seçin —</option>
+                        @foreach (var o in _organizations)
+                        { <option value="@o.Id">@o.Name</option> }
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top:12px">
+                <button class="btn btn-primary" @onclick="AddDepartment">+ Departman Ekle</button>
+            </div>
+        </div>
+
+        <div class="cfg-card" style="padding:0;overflow-x:auto">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Departman</th>
+                        <th>Organizasyon</th>
+                        <th>Şirket</th>
+                        <th>Yönetici</th>
+                        <th style="width:60px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var dept in _departments)
+                    {
+                        var deptId = dept.Id;
+                        <tr>
+                            <td>
+                                <div style="display:flex;align-items:center;gap:8px">
+                                    <div style="width:28px;height:28px;background:#faf5ff;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">🏢</div>
+                                    <span style="font-weight:600;font-size:13px">@dept.Name</span>
+                                </div>
+                            </td>
+                            <td>
+                                <select class="form-control" style="font-size:12px;min-width:160px"
+                                        value="@(dept.OrganizationId?.ToString() ?? "")"
+                                        @onchange="@(e => SetOrganization(deptId, e.Value?.ToString() ?? ""))">
+                                    <option value="">— Seçin —</option>
+                                    @foreach (var o in _organizations)
+                                    { <option value="@o.Id" selected="@(dept.OrganizationId == o.Id)">@o.Name</option> }
+                                </select>
+                            </td>
+                            <td style="font-size:12px;color:var(--text-3)">@(dept.Organization?.Company?.Name ?? "—")</td>
+                            <td>
+                                <select class="form-control" style="font-size:12px;min-width:160px"
+                                        value="@(dept.ManagerUserId?.ToString() ?? "")"
+                                        @onchange="@(e => SetManager(deptId, e.Value?.ToString() ?? ""))">
+                                    <option value="">— Yönetici Seçin —</option>
+                                    @foreach (var u in _allUsers)
+                                    { <option value="@u.Id" selected="@(dept.ManagerUserId == u.Id)">@u.FullName</option> }
+                                </select>
+                            </td>
+                            <td>
+                                <button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteDepartment(deptId)">Sil</button>
+                            </td>
+                        </tr>
+                    }
+                    @if (!_departments.Any())
+                    { <tr><td colspan="5" class="empty-state">Henüz departman tanımlanmamış.</td></tr> }
+                </tbody>
+            </table>
+        </div>
+
+        <div style="padding:12px 16px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;font-size:12px;color:#1d4ed8">
+            <strong>Departman Yöneticisi:</strong> Atanan kullanıcı, bu departmana ait tüm riskleri görüntüleyebilir ve risk kayıt süreçlerine katılabilir.
+        </div>
+    }
+
+    @* ════ RİSK MODÜLÜ ══════════════════════════════════════════════════ *@
+    @if (_tab == "risk")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Risk Modülü Ayarları</h2>
+            <p>Risk kategorileri, stratejiler ve periyodik inceleme kuralları</p>
+        </div>
+
+        <ListEditor Title="Risk Kategorileri" Items="_riskCategories" OnSave="SaveRiskCategories" />
+        <ListEditor Title="Risk Stratejileri"  Items="_riskStrategies" OnSave="SaveRiskStrategies" />
+
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#fef3c7">⏱️</div>
+                <div>
+                    <div class="cfg-card-title">Periyodik İnceleme Eşiği</div>
+                    <div class="cfg-card-desc">Bu süreyi aşan incelemesiz riskler "Bekleyen İşler"de uyarı oluşturur</div>
+                </div>
+            </div>
+            <div class="form-group" style="max-width:160px">
+                <label class="form-label">Eşik (gün)</label>
+                <input type="number" class="form-control" @bind="_reviewThresholdDays" min="1" max="730" />
+            </div>
+            <div class="save-row">
+                <button class="btn btn-primary btn-sm" @onclick="SaveReviewThreshold">Kaydet</button>
+            </div>
+        </div>
+
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#f0fdf4">👁️</div>
+                <div>
+                    <div class="cfg-card-title">Risk Detayı — Alan Görünürlüğü</div>
+                    <div class="cfg-card-desc">Kapatılan alanlar formdan ve görüntülemeden tamamen gizlenir</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+                @foreach (var (key, label, hint) in _riskDetailFieldDefs)
+                {
+                    var k = key;
+                    var isOn = _riskDetailFields.GetValueOrDefault(k, true);
+                    <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;
+                                  border:1.5px solid @(isOn?"#86efac":"var(--border)");border-radius:10px;
+                                  cursor:pointer;background:@(isOn?"#f0fdf4":"var(--surface)");
+                                  transition:all .15s">
+                        <input type="checkbox" style="margin-top:2px;width:16px;height:16px;flex-shrink:0;accent-color:#16a34a"
+                               checked="@isOn"
+                               @onchange="e => ToggleRiskField(k, (bool)(e.Value ?? true))" />
+                        <div>
+                            <div style="font-size:13px;font-weight:600;color:var(--text-1)">@label</div>
+                            <div style="font-size:11px;color:var(--text-3);margin-top:2px">@hint</div>
+                        </div>
+                    </label>
+                }
+            </div>
+            <div class="save-row">
+                <button class="btn btn-primary btn-sm" @onclick="SaveRiskDetailFields">Kaydet</button>
+            </div>
+        </div>
+    }
+
+    @* ════ KONTROLLER ════════════════════════════════════════════════════ *@
+    @if (_tab == "controls")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Kontrol Ayarları</h2>
+            <p>Risk kontrolü türleri, etkinlik düzeyleri ve denetim sıklıkları</p>
+        </div>
+        <ListEditor Title="Kontrol Türleri"    Items="_controlTypes"         OnSave="SaveControlTypes" />
+        <ListEditor Title="Kontrol Etkinliği"  Items="_controlEffectiveness" OnSave="SaveControlEffectiveness" />
+        <ListEditor Title="Kontrol Sıklıkları" Items="_controlFrequencies"   OnSave="SaveControlFrequencies" />
+    }
+
+    @* ════ DENETİM MODÜLÜ ═══════════════════════════════════════════════ *@
+    @if (_tab == "audit")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Denetim Modülü Ayarları</h2>
+            <p>Bulgu kategorileri ve önem dereceleri</p>
+        </div>
+        <ListEditor Title="Bulgu Kategorileri"       Items="_auditCategories" OnSave="SaveAuditCategories" />
+        <ListEditor Title="Bulgu Şiddet Seviyeleri"  Items="_auditSeverities" OnSave="SaveAuditSeverities" />
+    }
+
+    @* ════ ETİK MODÜLÜ ══════════════════════════════════════════════════ *@
+    @if (_tab == "ethics")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Etik Modülü Ayarları</h2>
+            <p>Etik ihbar kategorileri</p>
+        </div>
+        <ListEditor Title="Etik Bildirim Kategorileri" Items="_ethicsCategories" OnSave="SaveEthicsCategories" />
+    }
+
+    @* ════ E-POSTA ═══════════════════════════════════════════════════════ *@
+    @if (_tab == "email")
+    {
+        var testAlertClass = _testOk ? "alert-success" : "alert-error";
+
+        <div class="cfg-section-hdr">
+            <h2>E-posta Bildirimleri</h2>
+            <p>Değişiklikler anında etki eder — sunucuyu yeniden başlatmaya gerek yok.</p>
+        </div>
+
+        @* Etkin / Devre dışı durumu *@
+        <div class="cfg-card" style="margin-bottom:16px">
+            <div class="toggle-row" style="margin-bottom:0">
+                <input type="checkbox" id="emailEnabled" @bind="_emailSettings.Enabled" />
+                <label for="emailEnabled">
+                    E-posta bildirimlerini etkinleştir
+                    <span class="toggle-sub">Risk önerisi, durum değişikliği, sahip ataması ve aksiyon hatırlatmaları gönderilir</span>
                 </label>
+                @if (_emailSettings.Enabled)
+                { <span class="status-pill pill-green">✓ Etkin</span> }
+                else
+                { <span class="status-pill pill-gray">Devre Dışı</span> }
+            </div>
+        </div>
+
+        @* SMTP Hızlı Şablonlar *@
+        <div class="cfg-card" style="margin-bottom:16px">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#f0f9ff">⚡</div>
+                <div>
+                    <div class="cfg-card-title">Hızlı Şablon Seç</div>
+                    <div class="cfg-card-desc">E-posta sağlayıcınızı seçin, sunucu ayarları otomatik dolar</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px">
+                <button class="preset-btn" @onclick='()=>ApplyPreset("m365")'>
+                    <span class="pb-icon">🔵</span>
+                    <div><div class="pb-name">Microsoft 365</div><div class="pb-host">smtp.office365.com:587</div></div>
+                </button>
+                <button class="preset-btn" @onclick='()=>ApplyPreset("gmail")'>
+                    <span class="pb-icon">🔴</span>
+                    <div><div class="pb-name">Gmail</div><div class="pb-host">smtp.gmail.com:587</div></div>
+                </button>
+                <button class="preset-btn" @onclick='()=>ApplyPreset("exchange")'>
+                    <span class="pb-icon">🟠</span>
+                    <div><div class="pb-name">Exchange On-Prem</div><div class="pb-host">Özel host:25</div></div>
+                </button>
+            </div>
+        </div>
+
+        @* SMTP Form *@
+        <div class="cfg-card" style="margin-bottom:16px">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#faf5ff">⚙️</div>
+                <div>
+                    <div class="cfg-card-title">SMTP Yapılandırması</div>
+                    <div class="cfg-card-desc">Sunucu bağlantı bilgileri</div>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div class="form-group">
+                    <label class="form-label">SMTP Sunucu *</label>
+                    <input class="form-control" @bind="_emailSettings.Host" placeholder="smtp.office365.com" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Port</label>
+                    <input class="form-control" type="number" @bind="_emailSettings.Port" />
+                    <div class="field-info">TLS/STARTTLS: 587 &nbsp;·&nbsp; SSL: 465 &nbsp;·&nbsp; Şifresiz: 25</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kullanıcı Adı</label>
+                    <input class="form-control" @bind="_emailSettings.Username"
+                           placeholder="redzone@sirketiniz.com" autocomplete="off" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Şifre</label>
+                    <input class="form-control" type="password" @bind="_emailSettings.Password"
+                           placeholder="••••••••" autocomplete="new-password" />
+                    <div class="field-info">Gmail için uygulama şifresi (App Password) kullanın</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Gönderen E-posta *</label>
+                    <input class="form-control" @bind="_emailSettings.FromAddress"
+                           placeholder="redzone@sirketiniz.com" />
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Gönderen Adı</label>
+                    <input class="form-control" @bind="_emailSettings.FromName"
+                           placeholder="RedZone Risk Sistemi" />
+                </div>
+                <div class="form-group" style="grid-column:1/-1">
+                    <label class="form-label">Sistem URL'i</label>
+                    <input class="form-control" @bind="_emailSettings.BaseUrl"
+                           placeholder="https://redzone.sirketiniz.com" />
+                    <div class="field-info">E-postalardaki bağlantılar bu adres üzerinden oluşturulur</div>
+                </div>
+                <div style="grid-column:1/-1">
+                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+                        <input type="checkbox" @bind="_emailSettings.UseSsl"
+                               style="width:16px;height:16px;accent-color:#0369a1" />
+                        <span style="font-size:13px;font-weight:600">SSL / TLS şifrelemesi kullan</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="save-row">
+                <button class="btn btn-primary" @onclick="SaveEmailSettings">Kaydet</button>
+                @if (!string.IsNullOrEmpty(_emailSaveMsg))
+                { <span class="save-msg">@_emailSaveMsg</span> }
+            </div>
+        </div>
+
+        @* Test E-postası *@
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#f0fdf4">✉️</div>
+                <div>
+                    <div class="cfg-card-title">Bağlantı Testi</div>
+                    <div class="cfg-card-desc">Kaydettiğiniz ayarlarla gerçek bir e-posta gönderir</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap">
+                <div class="form-group" style="flex:1;min-width:220px;margin-bottom:0">
+                    <label class="form-label">Test Alıcısı</label>
+                    <input class="form-control" @bind="_testEmail" type="email"
+                           placeholder="test@sirketiniz.com" />
+                </div>
+                <button class="btn btn-outline" @onclick="SendTestEmail" disabled="@_testSending"
+                        style="white-space:nowrap">
+                    @(_testSending ? "⏳ Gönderiliyor…" : "✉ Test Gönder")
+                </button>
+            </div>
+            @if (!string.IsNullOrEmpty(_testResult))
+            { <div class="alert @testAlertClass" style="margin-top:12px">@_testResult</div> }
+        </div>
+    }
+
+    @* ════ MODÜLLER ══════════════════════════════════════════════════════ *@
+    @if (_tab == "modules")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Modüller</h2>
+            <p>Kapalı modüllerin verileri silinmez; yalnızca arayüzden gizlenir.</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_moduleMsg))
+        { <div class="alert @(_moduleIsError ? "alert-error" : "alert-success")" style="margin-bottom:14px">@_moduleMsg</div> }
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
+            @foreach (var mod in new[]
+            {
+                (Icon:"🛡️", Name:"Risk Yönetimi",    Desc:"Risk envanteri, kontrol, aksiyon",  Bg:"#fff5f5", Border:"#fca5a5", Active:_riskActive,   Toggle:(Action)ToggleRisk),
+                (Icon:"🔍", Name:"İç Denetim",        Desc:"Denetim planları, bulgular",         Bg:"#f0fdf4", Border:"#86efac", Active:_auditActive,  Toggle:(Action)ToggleAudit),
+                (Icon:"⚖️", Name:"Etik Yönetimi",     Desc:"Etik bildirimler, kurul incelemeleri",Bg:"#faf5ff", Border:"#c4b5fd", Active:_ethicsActive, Toggle:(Action)ToggleEthics),
+                (Icon:"🏢", Name:"Active Directory",  Desc:"Kurumsal LDAP/AD kimlik doğrulama",  Bg:"#eff6ff", Border:"#bfdbfe", Active:_ldapEnabled,  Toggle:(Action)ToggleLdapModule),
+            })
+            {
+                var m = mod;
+                <div style="border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface)">
+                    <div style="background:@m.Bg;padding:16px 20px;border-bottom:1px solid @m.Border;display:flex;align-items:center;gap:12px">
+                        <span style="font-size:24px">@m.Icon</span>
+                        <div style="flex:1">
+                            <div style="font-size:14px;font-weight:700">@m.Name</div>
+                            <div style="font-size:11px;color:var(--text-3);margin-top:2px">@m.Desc</div>
+                        </div>
+                        <label style="position:relative;display:inline-flex;width:44px;height:24px;background:@(m.Active?"#16a34a":"#d1d5db");border-radius:12px;cursor:pointer;transition:background .2s;flex-shrink:0" @onclick="m.Toggle">
+                            <span style="position:absolute;top:3px;left:@(m.Active?"23px":"3px");width:18px;height:18px;background:#fff;border-radius:50%;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:left .2s"></span>
+                        </label>
+                    </div>
+                    <div style="padding:12px 20px">
+                        <span class="status-pill @(m.Active?"pill-green":"pill-red")" style="font-size:11px">
+                            @(m.Active ? "✅ Aktif" : "⛔ Kapalı")
+                        </span>
+                    </div>
+                </div>
             }
         </div>
-        <button class="btn btn-primary btn-sm" @onclick="SaveRiskDetailFields">Kaydet</button>
-    </div>
-}
+    }
 
-@if (_tab == "controls")
-{
-    <ListEditor Title="Kontrol Türleri"    Items="_controlTypes"         OnSave="SaveControlTypes" />
-    <ListEditor Title="Kontrol Etkinliği"  Items="_controlEffectiveness" OnSave="SaveControlEffectiveness" />
-    <ListEditor Title="Kontrol Sıklıkları" Items="_controlFrequencies"   OnSave="SaveControlFrequencies" />
-}
+    @* ════ ACTIVE DIRECTORY ══════════════════════════════════════════════ *@
+    @if (_tab == "ldap")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Active Directory / LDAP</h2>
+            <p>Kurumsal dizin entegrasyonu — çalışanlar AD şifresiyle giriş yapabilir.</p>
+        </div>
 
-@if (_tab == "audit")
-{
-    <ListEditor Title="Bulgu Kategorileri"      Items="_auditCategories" OnSave="SaveAuditCategories" />
-    <ListEditor Title="Bulgu Şiddet Seviyeleri" Items="_auditSeverities" OnSave="SaveAuditSeverities" />
-}
+        @if (_ldapSaved) { <div class="alert alert-success" style="margin-bottom:14px">Ayarlar kaydedildi.</div> }
+        @if (_ldapTestRunning) { <div class="alert" style="margin-bottom:14px;background:#f0f9ff;border:1px solid #bae6fd;color:#0369a1">⏳ Test çalışıyor…</div> }
+        @if (_ldapTestSteps.Count > 0)
+        {
+            <div class="alert @(_ldapTestSuccess ? "alert-success" : "alert-error")" style="margin-bottom:14px">
+                <div style="font-weight:700;margin-bottom:8px">@(_ldapTestSuccess ? "✅ Bağlantı başarılı" : "❌ Test başarısız")</div>
+                <ol style="margin:0;padding-left:20px;line-height:1.9;font-size:13px">
+                    @foreach (var s in _ldapTestSteps) { <li>@s</li> }
+                </ol>
+            </div>
+        }
 
-@if (_tab == "ethics")
-{
-    <ListEditor Title="Etik Bildirim Kategorileri" Items="_ethicsCategories" OnSave="SaveEthicsCategories" />
-}
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#eff6ff">🔌</div>
+                <div><div class="cfg-card-title">Bağlantı Ayarları</div></div>
+            </div>
+            <div class="toggle-row" style="margin-bottom:14px">
+                <input type="checkbox" id="ldapEnabled" @bind="_ldapCfg.Enabled" />
+                <label for="ldapEnabled">LDAP Entegrasyonunu Etkinleştir
+                    <span class="toggle-sub">Aktif edildiğinde giriş ekranına "Active Directory" sekmesi eklenir</span>
+                </label>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 120px;gap:12px;margin-bottom:12px">
+                <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">LDAP Sunucu</label>
+                    <input class="form-control" @bind="_ldapCfg.Server" placeholder="ldap.sirket.com" />
+                </div>
+                <div class="form-group" style="margin-bottom:0">
+                    <label class="form-label">Port</label>
+                    <input class="form-control" type="number" @bind="_ldapCfg.Port" />
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+                <label style="display:flex;gap:8px;align-items:center;padding:10px 14px;background:var(--gray-50);border-radius:8px;border:1px solid var(--border);cursor:pointer">
+                    <input type="checkbox" @bind="_ldapCfg.UseSsl" /> <span style="font-size:13px">SSL (LDAPS)</span>
+                </label>
+                <label style="display:flex;gap:8px;align-items:center;padding:10px 14px;background:var(--gray-50);border-radius:8px;border:1px solid var(--border);cursor:pointer">
+                    <input type="checkbox" @bind="_ldapCfg.UseTls" /> <span style="font-size:13px">StartTLS</span>
+                </label>
+            </div>
+            <div class="form-group"><label class="form-label">Bind DN</label>
+                <input class="form-control" @bind="_ldapCfg.BindDn" placeholder="CN=svc-ldap,OU=ServiceAccounts,DC=sirket,DC=com" />
+            </div>
+            <div class="form-group"><label class="form-label">Bind Şifresi</label>
+                <input class="form-control" type="password" @bind="_ldapCfg.BindPassword" placeholder="••••••••" />
+            </div>
+            <div class="form-group"><label class="form-label">Search Base</label>
+                <input class="form-control" @bind="_ldapCfg.UserSearchBase" placeholder="OU=Users,DC=sirket,DC=com" />
+            </div>
+            <div class="form-group"><label class="form-label">Search Filtresi</label>
+                <input class="form-control" @bind="_ldapCfg.UserSearchFilter" placeholder="(sAMAccountName={username})" />
+                <div class="field-info">{username} giriş yapan kullanıcı adıyla değiştirilir</div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:12px">
+                <div class="form-group" style="margin-bottom:0"><label class="form-label">Ad Soyad Alanı</label>
+                    <input class="form-control" @bind="_ldapCfg.AttrDisplayName" placeholder="displayName" /></div>
+                <div class="form-group" style="margin-bottom:0"><label class="form-label">E-posta Alanı</label>
+                    <input class="form-control" @bind="_ldapCfg.AttrEmail" placeholder="mail" /></div>
+                <div class="form-group" style="margin-bottom:0"><label class="form-label">Departman Alanı</label>
+                    <input class="form-control" @bind="_ldapCfg.AttrDepartment" placeholder="department" /></div>
+            </div>
+            <label style="display:flex;gap:8px;align-items:center;margin-bottom:12px;cursor:pointer">
+                <input type="checkbox" @bind="_ldapCfg.AutoCreateUsers" />
+                <span style="font-size:13px">İlk girişte otomatik kullanıcı oluştur</span>
+            </label>
+            <div class="form-group" style="max-width:200px"><label class="form-label">Varsayılan Rol</label>
+                <select class="form-control" @bind="_ldapCfg.DefaultRole">
+                    @foreach (var r in new[]{("user","Kullanıcı"),("risk_owner","Risk Sahibi"),("committee","Risk Komitesi"),("auditor","Denetçi"),("audit_manager","Denetim Müdürü"),("finding_owner","Bulgu Sahibi"),("ethics_board","Etik Kurul"),("admin","Yönetici")})
+                    { <option value="@r.Item1">@r.Item2</option> }
+                </select>
+            </div>
+            <div class="save-row">
+                <button class="btn btn-primary" @onclick="SaveLdap">Kaydet</button>
+                <button class="btn btn-outline" @onclick="TestLdapConnection" disabled="@_ldapTestRunning">
+                    @(_ldapTestRunning ? "⏳ Test ediliyor…" : "🔌 Bağlantıyı Test Et")
+                </button>
+            </div>
+        </div>
+    }
+
+    @* ════ VERİTABANI ════════════════════════════════════════════════════ *@
+    @if (_tab == "database")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Veritabanı Durumu</h2>
+            <p>Uygulama veritabanı bağlantısını test edin ve tablo yapısını inceleyin.</p>
+        </div>
+
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#fff7ed">🗄️</div>
+                <div>
+                    <div class="cfg-card-title">Uygulama Veritabanı</div>
+                    <div class="cfg-card-desc">@_appDbInfo.Host:@_appDbInfo.Port / @_appDbInfo.DatabaseName · @_appDbInfo.Username</div>
+                </div>
+                <button class="btn btn-outline btn-sm" @onclick="TestAppDb" disabled="@_testingAppDb" style="margin-left:auto">
+                    @(_testingAppDb ? "Test ediliyor…" : "🔌 Test Et")
+                </button>
+            </div>
+            <div style="background:#0f172a;border-radius:8px;padding:10px 14px;margin-bottom:12px">
+                <code style="font-size:11px;color:#7dd3fc;word-break:break-all">@_appDbConnStrMasked</code>
+            </div>
+            @if (_appDbTestResult != null)
+            {
+                <div style="font-size:12px;padding:8px 12px;border-radius:6px;margin-bottom:10px;
+                            background:@(_appDbTestOk?"#f0fdf4":"#fef2f2");color:@(_appDbTestOk?"#166534":"#991b1b")">
+                    @_appDbTestResult
+                    @if (_appDbDetail != null) { <span style="margin-left:6px;opacity:.8"> · @_appDbDetail</span> }
+                </div>
+            }
+            @if (_appDbTestOk)
+            {
+                <button class="btn btn-outline btn-sm" @onclick="BrowseAppDbTables">📋 Tabloları Göster</button>
+            }
+            @if (_appDbTables.Any())
+            {
+                <div style="margin-top:12px;display:flex;flex-wrap:wrap;gap:6px">
+                    @foreach (var t in _appDbTables)
+                    { <span style="padding:3px 10px;background:#f1f5f9;border-radius:6px;font-size:12px;font-family:monospace">@t</span> }
+                </div>
+            }
+        </div>
+    }
+
+    </div>@* / içerik *@
+</div>@* / layout *@
 
 @code {
     private string _tab = "theme";
     private string _success = "";
+
+    // E-posta
+    private EmailSettings _emailSettings = new();
+    private string _emailSaveMsg = "";
+    private string _testEmail = "", _testResult = "";
+    private bool   _testOk, _testSending;
 
     private static readonly (string key, string label)[] _tabs =
     [
         ("theme","🎨 Görsel Ayarlar"), ("companies","🏛️ Şirketler & Organizasyonlar"),
         ("departments","🏢 Departmanlar"),
         ("risk","🛡️ Risk Modülü"), ("controls","🔒 Kontroller"),
-        ("audit","🔍 Denetim Modülü"), ("ethics","⚖️ Etik Modülü")
+        ("audit","🔍 Denetim Modülü"), ("ethics","⚖️ Etik Modülü"),
+        ("email","✉️ E-posta")
     ];
 
-    private string _primaryColor = "#E1251B", _secondaryColor = "#16a34a";
-    private List<string> _riskCategories = [], _riskStrategies = [];
+    // Branding
+    private string _appName      = "RED";
+    private string _appTagline   = "Risk · Etik · Denetim";
+    private string _logoPath     = "";
+    private string _logoError    = "";
+    private string _brandingSaveMsg = "";
 
-    // Risk detay alanları
+    // Renkler
+    private string _primaryColor   = "#E1251B";
+    private string _secondaryColor = "#16a34a";
+    private string _sidebarColor   = "#0f1f33";
+    private string _themeSaveMsg   = "";
+    private List<string> _riskCategories = [], _riskStrategies = [];
     private Dictionary<string, bool> _riskDetailFields = [];
     private static readonly (string key, string label, string hint)[] _riskDetailFieldDefs =
     [
         ("source_type",          "Kaynak Türü",               "İç kaynak / Dış kaynak seçimi"),
         ("source",               "Kaynak",                    "Riskin hangi kaynaktan geldiği"),
-        ("hazard",               "Tehlike",                   "Tehlike/tehdit tanımı"),
+        ("hazard",               "Tehlike",                   "Tehlike / tehdit tanımı"),
         ("possible_impact",      "Olası Etki",                "Risk gerçekleşirse doğacak sonuçlar"),
         ("affected_persons",     "Etkilenecek Kişiler",       "Risk kapsamındaki paydaş grupları"),
         ("relevant_legislation", "İlgili Mevzuat / Doküman",  "Yasal düzenlemeler ve iç dokümanlar"),
@@ -305,53 +955,133 @@
     private List<string> _controlTypes = [], _controlEffectiveness = [], _controlFrequencies = [];
     private List<string> _auditCategories = [], _auditSeverities = [], _ethicsCategories = [];
 
-    // Companies & Organizations
-    private List<Company> _companies = [];
+    // Modüller
+    private bool   _riskActive, _auditActive, _ethicsActive, _ldapEnabled;
+    private string _moduleMsg    = "";
+    private bool   _moduleIsError;
+
+    // LDAP
+    private LdapConfiguration _ldapCfg        = new();
+    private bool               _ldapSaved;
+    private bool               _ldapTestRunning;
+    private bool               _ldapTestSuccess;
+    private List<string>       _ldapTestSteps  = [];
+
+    // Veritabanı (sadece durum kartı)
+    private AppDbInfo    _appDbInfo          = new();
+    private string       _appDbConnStrMasked = "";
+    private string?      _appDbTestResult, _appDbDetail;
+    private bool         _appDbTestOk, _testingAppDb;
+    private List<string> _appDbTables        = [];
+
+    private record AppDbInfo
+    {
+        public string Host { get; init; } = ""; public int Port { get; init; } = 3306;
+        public string DatabaseName { get; init; } = ""; public string Username { get; init; } = "";
+        public string RawConnStr { get; init; } = "";
+    }
+
+    private List<Company>      _companies     = [];
     private List<Organization> _organizations = [];
     private string _newCompanyName = "", _newCompanyDesc = "", _companyError = "";
     private string _newOrgName = "";
-    private int? _newOrgCompanyId;
+    private int?   _newOrgCompanyId;
     private string _orgError = "";
 
-    // Departments
     private List<Department> _departments = [];
-    private List<User> _allUsers = [];
+    private List<User>       _allUsers    = [];
     private string _newDeptName = "";
-    private int? _newDeptOrgId;
+    private int?   _newDeptOrgId;
     private string _deptError = "";
 
     protected override void OnInitialized()
     {
+        _emailSettings  = CfgSvc.GetEmailSettings();
+        _appName        = CfgSvc.Get<string>("app_name")      is { Length: > 0 } n  ? n  : "RED";
+        _appTagline     = CfgSvc.Get<string>("app_tagline")   is { Length: > 0 } tl ? tl : "Risk · Etik · Denetim";
+        _sidebarColor   = CfgSvc.Get<string>("sidebar_color") is { Length: > 0 } sc ? sc : "#0f1f33";
+        _logoPath       = CfgSvc.Get<string>("logo_path")     ?? "";
+        _riskActive     = CfgSvc.IsModuleActive("risk");
+        _auditActive    = CfgSvc.IsModuleActive("audit");
+        _ethicsActive   = CfgSvc.IsModuleActive("ethics");
+        _ldapEnabled    = Db.LdapConfigurations.FirstOrDefault()?.Enabled ?? false;
+        _ldapCfg        = Db.LdapConfigurations.FirstOrDefault() ?? new LdapConfiguration();
+        ParseAppDb();
         ReloadCompanies();
-        _departments = [.. Db.Departments.Include(d => d.Manager).Include(d => d.Organization).ThenInclude(o => o!.Company).OrderBy(d => d.Name)];
+        _departments = [.. Db.Departments.Include(d => d.Manager)
+            .Include(d => d.Organization).ThenInclude(o => o!.Company).OrderBy(d => d.Name)];
         _allUsers    = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
 
         var theme = CfgSvc.Get<JsonElement>("site_theme");
         _primaryColor   = theme.TryGetProperty("primary_color",   out var p) ? p.GetString()! : "#E1251B";
         _secondaryColor = theme.TryGetProperty("secondary_color", out var s) ? s.GetString()! : "#16a34a";
 
-        _riskCategories      = [.. CfgSvc.GetList("risk_categories")];
-        _riskStrategies      = [.. CfgSvc.GetList("risk_strategies")];
-        _controlTypes        = [.. CfgSvc.GetList("control_types")];
-        _controlEffectiveness= [.. CfgSvc.GetList("control_effectiveness")];
-        _controlFrequencies  = [.. CfgSvc.GetList("control_frequencies")];
-        _auditCategories     = [.. CfgSvc.GetList("audit_categories")];
-        _auditSeverities     = [.. CfgSvc.GetList("audit_severities")];
-        _ethicsCategories    = [.. CfgSvc.GetList("ethics_categories")];
-        _riskDetailFields    = CfgSvc.GetRiskDetailFields();
-        _reviewThresholdDays = CfgSvc.Get<int>("review_threshold_days") is var t && t > 0 ? t : 90;
+        _riskCategories       = [.. CfgSvc.GetList("risk_categories")];
+        _riskStrategies       = [.. CfgSvc.GetList("risk_strategies")];
+        _controlTypes         = [.. CfgSvc.GetList("control_types")];
+        _controlEffectiveness = [.. CfgSvc.GetList("control_effectiveness")];
+        _controlFrequencies   = [.. CfgSvc.GetList("control_frequencies")];
+        _auditCategories      = [.. CfgSvc.GetList("audit_categories")];
+        _auditSeverities      = [.. CfgSvc.GetList("audit_severities")];
+        _ethicsCategories     = [.. CfgSvc.GetList("ethics_categories")];
+        _riskDetailFields     = CfgSvc.GetRiskDetailFields();
+        _reviewThresholdDays  = CfgSvc.Get<int>("review_threshold_days") is var t && t > 0 ? t : 90;
     }
 
-    private void Save(string key, List<string> value) { CfgSvc.Set(key, value); _success = "Kaydedildi."; }
+    // ── E-posta ──────────────────────────────────────────────────────────────
+    private void ApplyPreset(string provider)
+    {
+        switch (provider)
+        {
+            case "m365":
+                _emailSettings.Host   = "smtp.office365.com";
+                _emailSettings.Port   = 587;
+                _emailSettings.UseSsl = true;
+                break;
+            case "gmail":
+                _emailSettings.Host   = "smtp.gmail.com";
+                _emailSettings.Port   = 587;
+                _emailSettings.UseSsl = true;
+                break;
+            case "exchange":
+                _emailSettings.Host   = "mail.sirketiniz.local";
+                _emailSettings.Port   = 25;
+                _emailSettings.UseSsl = false;
+                break;
+        }
+    }
 
-    private Task SaveRiskCategories(List<string> v) { Save("risk_categories", v); return Task.CompletedTask; }
-    private Task SaveRiskStrategies(List<string> v)  { Save("risk_strategies", v); return Task.CompletedTask; }
-    private Task SaveControlTypes(List<string> v)        { Save("control_types",         v); return Task.CompletedTask; }
-    private Task SaveControlEffectiveness(List<string> v){ Save("control_effectiveness", v); return Task.CompletedTask; }
-    private Task SaveControlFrequencies(List<string> v)  { Save("control_frequencies",   v); return Task.CompletedTask; }
-    private Task SaveAuditCategories(List<string> v)   { Save("audit_categories",  v); return Task.CompletedTask; }
-    private Task SaveAuditSeverities(List<string> v)   { Save("audit_severities",  v); return Task.CompletedTask; }
-    private Task SaveEthicsCategories(List<string> v)  { Save("ethics_categories", v); return Task.CompletedTask; }
+    private void SaveEmailSettings()
+    {
+        CfgSvc.SetEmailSettings(_emailSettings);
+        _emailSaveMsg = "✓ Kaydedildi";
+        _ = Task.Delay(3000).ContinueWith(_ => { _emailSaveMsg = ""; InvokeAsync(StateHasChanged); });
+    }
+
+    private async Task SendTestEmail()
+    {
+        if (string.IsNullOrWhiteSpace(_testEmail)) return;
+        _testSending = true; _testResult = "";
+        try
+        {
+            await EmailSvc.SendTestAsync(_testEmail, _testEmail);
+            _testResult = $"Test e-postası kuyruğa eklendi → {_testEmail}";
+            _testOk = true;
+        }
+        catch (Exception ex) { _testResult = $"Hata: {ex.Message}"; _testOk = false; }
+        finally { _testSending = false; }
+    }
+
+    // ── Genel ────────────────────────────────────────────────────────────────
+    private void Save(string key, List<string> value) { CfgSvc.Set(key, value); _success = "Kaydedildi."; }
+    private Task SaveRiskCategories(List<string> v)      { Save("risk_categories",      v); return Task.CompletedTask; }
+    private Task SaveRiskStrategies(List<string> v)      { Save("risk_strategies",      v); return Task.CompletedTask; }
+    private Task SaveControlTypes(List<string> v)        { Save("control_types",        v); return Task.CompletedTask; }
+    private Task SaveControlEffectiveness(List<string> v){ Save("control_effectiveness",v); return Task.CompletedTask; }
+    private Task SaveControlFrequencies(List<string> v)  { Save("control_frequencies",  v); return Task.CompletedTask; }
+    private Task SaveAuditCategories(List<string> v)     { Save("audit_categories",     v); return Task.CompletedTask; }
+    private Task SaveAuditSeverities(List<string> v)     { Save("audit_severities",     v); return Task.CompletedTask; }
+    private Task SaveEthicsCategories(List<string> v)    { Save("ethics_categories",    v); return Task.CompletedTask; }
 
     private void SaveReviewThreshold()
     {
@@ -370,20 +1100,178 @@
 
     private void SaveTheme()
     {
-        CfgSvc.Set("site_theme", new { primary_color=_primaryColor, secondary_color=_secondaryColor });
-        _success = "Tema kaydedildi.";
+        CfgSvc.Set("site_theme", new { primary_color = _primaryColor, secondary_color = _secondaryColor });
+        CfgSvc.Set("sidebar_color", _sidebarColor);
+        _themeSaveMsg = "✓ Kaydedildi";
+        _ = Task.Delay(3000).ContinueWith(_ => { _themeSaveMsg = ""; InvokeAsync(StateHasChanged); });
     }
 
+    // ── Şirket / Org / Dept ──────────────────────────────────────────────────
     void ReloadCompanies()
     {
-        _companies      = [.. Db.Companies.OrderBy(c => c.Name)];
-        _organizations  = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
+        _companies     = [.. Db.Companies.OrderBy(c => c.Name)];
+        _organizations = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
     }
+
+    // ── Branding ────────────────────────────────────────────────────────────────
+    private void SaveBranding()
+    {
+        CfgSvc.Set("app_name",    _appName.Trim().Length > 0 ? _appName.Trim() : "RED");
+        CfgSvc.Set("app_tagline", _appTagline.Trim());
+        _brandingSaveMsg = "✓ Kaydedildi";
+        _ = Task.Delay(3000).ContinueWith(_ => { _brandingSaveMsg = ""; InvokeAsync(StateHasChanged); });
+    }
+
+    private async Task HandleLogoUpload(InputFileChangeEventArgs e)
+    {
+        _logoError = "";
+        var file = e.File;
+        if (file.Size > 2_000_000) { _logoError = "Maksimum dosya boyutu 2 MB."; return; }
+        var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (ext is not ".png" and not ".jpg" and not ".jpeg" and not ".svg")
+        { _logoError = "Sadece PNG, JPG veya SVG yükleyebilirsiniz."; return; }
+
+        var dir = Path.Combine(Env.WebRootPath, "uploads");
+        Directory.CreateDirectory(dir);
+        var dest = Path.Combine(dir, $"logo{ext}");
+        await using var fs = File.Create(dest);
+        await using var stream = file.OpenReadStream(2_000_000);
+        await stream.CopyToAsync(fs);
+
+        _logoPath = $"/uploads/logo{ext}?v={DateTimeOffset.UtcNow.ToUnixTimeSeconds()}";
+        CfgSvc.Set("logo_path", _logoPath);
+    }
+
+    private void RemoveLogo()
+    {
+        _logoPath = "";
+        CfgSvc.Set("logo_path", "");
+    }
+
+    // ── Modüller ─────────────────────────────────────────────────────────────
+    private void ToggleRisk()   { _riskActive   = !_riskActive;   SaveModule("module_risk",   _riskActive,   "Risk Yönetimi"); }
+    private void ToggleAudit()  { _auditActive  = !_auditActive;  SaveModule("module_audit",  _auditActive,  "İç Denetim"); }
+    private void ToggleEthics() { _ethicsActive = !_ethicsActive; SaveModule("module_ethics", _ethicsActive, "Etik Yönetimi"); }
+
+    private void ToggleLdapModule()
+    {
+        _ldapEnabled = !_ldapEnabled;
+        try
+        {
+            var cfg = Db.LdapConfigurations.FirstOrDefault();
+            if (cfg == null) { cfg = new LdapConfiguration { Enabled = _ldapEnabled }; Db.LdapConfigurations.Add(cfg); }
+            else cfg.Enabled = _ldapEnabled;
+            Db.SaveChanges();
+            _moduleMsg = $"Active Directory girişi {(_ldapEnabled ? "etkinleştirildi" : "kapatıldı")}.";
+            _moduleIsError = false;
+        }
+        catch { _moduleMsg = "Kayıt sırasında hata oluştu."; _moduleIsError = true; _ldapEnabled = !_ldapEnabled; }
+    }
+
+    private void SaveModule(string key, bool value, string label)
+    {
+        try { CfgSvc.Set(key, value); _moduleMsg = $"{label} modülü {(value ? "etkinleştirildi" : "kapatıldı")}."; _moduleIsError = false; }
+        catch { _moduleMsg = "Kayıt sırasında hata oluştu."; _moduleIsError = true; }
+    }
+
+    // ── LDAP ─────────────────────────────────────────────────────────────────
+    private void SaveLdap()
+    {
+        _ldapSaved = false; _ldapTestSteps = [];
+        _ldapCfg.UpdatedAt = DateTime.UtcNow;
+        var existing = Db.LdapConfigurations.FirstOrDefault();
+        if (existing == null) { Db.LdapConfigurations.Add(_ldapCfg); }
+        else
+        {
+            existing.Enabled = _ldapCfg.Enabled; existing.Server = _ldapCfg.Server;
+            existing.Port = _ldapCfg.Port; existing.UseSsl = _ldapCfg.UseSsl; existing.UseTls = _ldapCfg.UseTls;
+            existing.Timeout = _ldapCfg.Timeout; existing.BindDn = _ldapCfg.BindDn;
+            existing.BindPassword = _ldapCfg.BindPassword; existing.UserSearchBase = _ldapCfg.UserSearchBase;
+            existing.UserSearchFilter = _ldapCfg.UserSearchFilter; existing.AttrDisplayName = _ldapCfg.AttrDisplayName;
+            existing.AttrEmail = _ldapCfg.AttrEmail; existing.AttrDepartment = _ldapCfg.AttrDepartment;
+            existing.AutoCreateUsers = _ldapCfg.AutoCreateUsers; existing.DefaultRole = _ldapCfg.DefaultRole;
+            existing.UpdatedAt = _ldapCfg.UpdatedAt;
+        }
+        Db.SaveChanges(); _ldapSaved = true;
+    }
+
+    private async Task TestLdapConnection()
+    {
+        if (string.IsNullOrWhiteSpace(_ldapCfg.Server)) return;
+        _ldapTestRunning = true; _ldapTestSteps = []; StateHasChanged();
+        await Task.Run(() =>
+        {
+            try
+            {
+                using var tcp = new System.Net.Sockets.TcpClient();
+                if (!tcp.ConnectAsync(_ldapCfg.Server!, _ldapCfg.Port).Wait(_ldapCfg.Timeout * 1000))
+                { _ldapTestSteps.Add($"❌ TCP: {_ldapCfg.Server}:{_ldapCfg.Port} erişilemiyor."); _ldapTestSuccess = false; return; }
+                _ldapTestSteps.Add($"✅ TCP: {_ldapCfg.Server}:{_ldapCfg.Port} erişilebilir.");
+
+                var conn = new LdapConnection { SecureSocketLayer = _ldapCfg.UseSsl };
+                conn.Connect(_ldapCfg.Server!, _ldapCfg.Port);
+                if (_ldapCfg.UseTls) conn.StartTls();
+                _ldapTestSteps.Add(_ldapCfg.UseSsl ? "✅ LDAPS bağlantısı kuruldu." : "✅ LDAP bağlantısı kuruldu.");
+                if (!string.IsNullOrEmpty(_ldapCfg.BindDn)) conn.Bind(_ldapCfg.BindDn, _ldapCfg.BindPassword ?? "");
+                _ldapTestSteps.Add("✅ Bind başarılı.");
+                conn.Disconnect();
+                _ldapTestSuccess = true;
+            }
+            catch (Exception ex) { _ldapTestSteps.Add($"❌ {ex.Message}"); _ldapTestSuccess = false; }
+        });
+        _ldapTestRunning = false; StateHasChanged();
+    }
+
+    // ── Veritabanı ───────────────────────────────────────────────────────────
+    private void ParseAppDb()
+    {
+        var raw = AppConfig.GetConnectionString("DefaultConnection") ?? "";
+        _appDbConnStrMasked = System.Text.RegularExpressions.Regex.Replace(
+            raw, @"(?i)(password|pwd)=([^;]+)", m => $"{m.Groups[1].Value}=••••••");
+        var parts = raw.Split(';', StringSplitOptions.RemoveEmptyEntries)
+            .Select(p => p.Split('=', 2)).Where(p => p.Length == 2)
+            .ToDictionary(p => p[0].Trim().ToLowerInvariant(), p => p[1].Trim());
+        _appDbInfo = new AppDbInfo
+        {
+            Host = parts.GetValueOrDefault("server") ?? "", Port = 3306,
+            DatabaseName = parts.GetValueOrDefault("database") ?? "",
+            Username = parts.GetValueOrDefault("user") ?? "", RawConnStr = raw,
+        };
+    }
+
+    private async Task TestAppDb()
+    {
+        _testingAppDb = true; _appDbTestResult = null; _appDbDetail = null; StateHasChanged();
+        try
+        {
+            using var conn = new MySqlConnection(_appDbInfo.RawConnStr);
+            await conn.OpenAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT VERSION(), (SELECT COUNT(*) FROM information_schema.tables WHERE table_schema=DATABASE())";
+            using var r = await cmd.ExecuteReaderAsync();
+            if (await r.ReadAsync()) { _appDbTestOk = true; _appDbTestResult = $"✅ MySQL {r.GetString(0)} · {r.GetInt32(1)} tablo"; }
+        }
+        catch (Exception ex) { _appDbTestOk = false; _appDbTestResult = $"❌ {ex.Message}"; }
+        _testingAppDb = false;
+    }
+
+    private async Task BrowseAppDbTables()
+    {
+        _appDbTables.Clear();
+        try
+        {
+            using var conn = new MySqlConnection(_appDbInfo.RawConnStr);
+            await conn.OpenAsync(); using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SHOW TABLES"; using var r = await cmd.ExecuteReaderAsync();
+            while (await r.ReadAsync()) _appDbTables.Add(r.GetString(0));
+        }
+        catch (Exception ex) { _appDbTables.Add($"Hata: {ex.Message}"); }
+    }
+
 
     void ReloadDepts() =>
         _departments = [.. Db.Departments.Include(d => d.Manager)
-            .Include(d => d.Organization).ThenInclude(o => o!.Company)
-            .OrderBy(d => d.Name)];
+            .Include(d => d.Organization).ThenInclude(o => o!.Company).OrderBy(d => d.Name)];
 
     private void AddCompany()
     {

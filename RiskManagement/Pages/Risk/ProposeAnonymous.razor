@@ -1,6 +1,8 @@
 @page "/risk/propose"
 @layout EmptyLayout
 @inject RiskService RiskSvc
+@inject AnonymousRateLimiter RateLimiter
+@inject IHttpContextAccessor HttpCtx
 
 <PageTitle>Risk Öner</PageTitle>
 
@@ -56,6 +58,13 @@
         _error = "";
         if (string.IsNullOrWhiteSpace(_title) || string.IsNullOrWhiteSpace(_description))
         { _error = "Başlık ve açıklama zorunludur."; return; }
+
+        var ip = HttpCtx.HttpContext?.Connection.RemoteIpAddress?.ToString();
+        if (!RateLimiter.IsAllowed(ip))
+        {
+            _error = "Çok fazla istek gönderdiniz. Lütfen 10 dakika bekleyin.";
+            return;
+        }
 
         _loading = true;
         try

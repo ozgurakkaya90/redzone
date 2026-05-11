@@ -1016,7 +1016,9 @@ else
         _=>0
     };
 
-    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private IEnumerable<string> UserRoles =>
+        HttpCtx.HttpContext?.User.FindAll(ClaimTypes.Role).Select(c => c.Value) ?? Enumerable.Empty<string>();
+    private string Role => UserRoles.FirstOrDefault() ?? "";
 
     private static string RelativeDate(DateTime dt)
     {
@@ -1031,17 +1033,18 @@ else
     }
 
     private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private bool IsCommittee   => Role is "committee" or "admin";
-    private bool IsRiskManager => Role is "risk_manager" or "admin";
-    private bool IsOwner       => Role is "risk_owner" or "admin";
+    private bool IsThisRiskOwner => _risk?.OwnerId == UserId && UserId > 0;
+    private bool IsCommittee   => UserRoles.Any(r => r == Roles.Committee || r == Roles.Admin);
+    private bool IsRiskManager => UserRoles.Any(r => r == Roles.RiskManager || r == Roles.Admin) || IsThisRiskOwner;
+    private bool IsOwner       => UserRoles.Any(r => r == Roles.RiskOwner   || r == Roles.Admin) || IsThisRiskOwner;
     private bool HasMeta     => (_risk?.OrganizationId != null || _risk?.DepartmentId != null) && !string.IsNullOrEmpty(_risk?.RiskStrategy);
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        Load();
-        _departments         = [.. Db.Departments.OrderBy(d => d.Name)];
-        _organizations       = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
-        _allUsers = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
+        await LoadAsync();
+        _departments         = await Db.Departments.OrderBy(d => d.Name).ToListAsync();
+        _organizations       = await Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name).ToListAsync();
+        _allUsers            = await Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName).ToListAsync();
         _riskStrategies      = CfgSvc.GetList("risk_strategies");
         _controlTypes        = CfgSvc.GetList("control_types");
         _controlEffectiveness= CfgSvc.GetList("control_effectiveness");
@@ -1049,12 +1052,24 @@ else
         _fieldVisible        = CfgSvc.GetRiskDetailFields();
     }
 
+    private async Task LoadAsync()
+    {
+        _risk = await RiskSvc.GetByIdForUserAsync(Id, UserId, Role);
+        ApplyLoadedRisk();
+    }
+
+    // Kaydet işlemleri sonrası sync yenileme için
     private void Load()
     {
         _risk = RiskSvc.GetByIdForUser(Id, UserId, Role);
+        ApplyLoadedRisk();
+    }
+
+    private void ApplyLoadedRisk()
+    {
         if (_risk == null) { Nav.NavigateTo("/risk"); return; }
-        _initial  = _risk.Evaluations.FirstOrDefault(e => e.EvalType == "initial");
-        _residual = _risk.Evaluations.FirstOrDefault(e => e.EvalType == "residual");
+        _initial  = _risk.Evaluations.FirstOrDefault(e => e.EvalType == EvalType.Initial);
+        _residual = _risk.Evaluations.FirstOrDefault(e => e.EvalType == EvalType.Residual);
         (_prevId, _nextId) = RiskSvc.GetAdjacentIds(Id, UserId, Role);
         _fCategory       = _risk.Category ?? "";
         _fSourceType     = _risk.SourceType ?? "internal";

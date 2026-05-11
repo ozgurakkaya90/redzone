@@ -4,6 +4,8 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 namespace RiskManagement.Migrations
 {
+    [Microsoft.EntityFrameworkCore.Infrastructure.DbContext(typeof(RiskManagement.Data.AppDbContext))]
+    [Migration("20260508100000_AddRiskLibrary")]
     public partial class AddRiskLibrary : Migration
     {
         protected override void Up(MigrationBuilder migrationBuilder)

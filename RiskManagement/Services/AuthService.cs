@@ -9,22 +9,21 @@ namespace RiskManagement.Services;
 
 public class AuthService(AppDbContext db)
 {
-    public static readonly string[] AllRoles =
-        ["user","risk_owner","risk_manager","committee","admin","auditor","audit_manager","finding_owner","ethics_board"];
+    public static readonly string[] AllRoles = Roles.All;
     public static readonly TimeSpan PasswordResetTokenLifetime = TimeSpan.FromMinutes(30);
     public static readonly TimeSpan PasswordResetRequestCooldown = TimeSpan.FromMinutes(2);
 
     public static readonly Dictionary<string, string> RoleLabels = new()
     {
-        ["admin"]         = "Yönetici",
-        ["committee"]     = "Risk Komitesi",
-        ["risk_manager"]  = "Risk Yöneticisi",
-        ["risk_owner"]    = "Risk Sahibi",
-        ["user"]          = "Kullanıcı",
-        ["auditor"]       = "Denetçi",
-        ["audit_manager"] = "Denetim Müdürü",
-        ["finding_owner"] = "Bulgu Sahibi",
-        ["ethics_board"]  = "Etik Kurul",
+        [Roles.Admin]        = "Yönetici",
+        [Roles.Committee]    = "Risk Komitesi",
+        [Roles.RiskManager]  = "Risk Yöneticisi",
+        [Roles.RiskOwner]    = "Risk Sahibi",
+        [Roles.User]         = "Kullanıcı",
+        [Roles.Auditor]      = "Denetçi",
+        [Roles.AuditManager] = "Denetim Müdürü",
+        [Roles.FindingOwner] = "Bulgu Sahibi",
+        [Roles.EthicsBoard]  = "Etik Kurul",
     };
 
     // Flat permission map (key → label) — used for HasPermission checks
@@ -89,15 +88,15 @@ public class AuthService(AppDbContext db)
 
     public static readonly Dictionary<string, string[]> DefaultPermissions = new()
     {
-        ["admin"]         = [.. Permissions.Keys],
-        ["committee"]     = ["risk.read","risk.modify"],
-        ["risk_manager"]  = ["risk.read","risk.write","risk.modify","control.read","control.write","control.modify","action.read","action.write","action.modify"],
-        ["risk_owner"]    = ["risk.read","risk.write","control.read","control.write","action.read","action.write","action.modify"],
-        ["user"]          = ["risk.read","risk.write"],
-        ["auditor"]       = ["risk.read","audit.read","audit.write","audit.modify","ethics.read"],
-        ["audit_manager"] = ["risk.read","risk.modify","audit.read","audit.write","audit.modify","audit.close_approve","ethics.read","ethics.audit_review"],
-        ["finding_owner"] = ["audit.read","audit.modify"],
-        ["ethics_board"]  = ["ethics.read","ethics.board_review"],
+        [Roles.Admin]        = [.. Permissions.Keys],
+        [Roles.Committee]    = ["risk.read","risk.modify"],
+        [Roles.RiskManager]  = ["risk.read","risk.write","risk.modify","control.read","control.write","control.modify","action.read","action.write","action.modify"],
+        [Roles.RiskOwner]    = ["risk.read","risk.write","control.read","control.write","action.read","action.write","action.modify"],
+        [Roles.User]         = ["risk.read","risk.write"],
+        [Roles.Auditor]      = ["risk.read","audit.read","audit.write","audit.modify","ethics.read"],
+        [Roles.AuditManager] = ["risk.read","risk.modify","audit.read","audit.write","audit.modify","audit.close_approve","ethics.read","ethics.audit_review"],
+        [Roles.FindingOwner] = ["audit.read","audit.modify"],
+        [Roles.EthicsBoard]  = ["ethics.read","ethics.board_review"],
     };
 
     public async Task<User?> ValidateAsync(string username, string password)

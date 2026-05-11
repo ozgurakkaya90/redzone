@@ -5,7 +5,8 @@ using RiskManagement.Models;
 
 namespace RiskManagement.Services;
 
-public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpContextAccessor? http = null)
+public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
+    IHttpContextAccessor? http = null, INotificationService? notifications = null)
 {
     // ── Kod üretimi ─────────────────────────────────────────────────────────
     public string GenerateCode()
@@ -67,6 +68,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
         .Include(r => r.AuditLogs).ThenInclude(l => l.User);
 
     public Risk? GetById(int id) => Query().FirstOrDefault(r => r.Id == id);
+    public async Task<Risk?> GetByIdAsync(int id) => await Query().FirstOrDefaultAsync(r => r.Id == id);
 
     public Risk? GetByIdForUser(int id, int userId, string role)
     {
@@ -74,17 +76,20 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
         return risk != null && CanAccessRisk(risk, userId, role) ? risk : null;
     }
 
+    public async Task<Risk?> GetByIdForUserAsync(int id, int userId, string role)
+    {
+        var risk = await GetByIdAsync(id);
+        return risk != null && CanAccessRisk(risk, userId, role) ? risk : null;
+    }
+
     public bool CanAccessRisk(Risk risk, int userId, string role)
     {
-        if (role is "admin" or "committee" or "risk_manager") return true;
-        if (db.UserRoles.Any(ur => ur.UserId == userId && new[]{"admin","committee","risk_manager"}.Contains(ur.RoleName)))
+        if (Roles.RiskManagers.Contains(role)) return true;
+        if (db.UserRoles.Any(ur => ur.UserId == userId && Roles.RiskManagers.Contains(ur.RoleName)))
             return true;
         if (risk.ProposedById == userId || risk.OwnerId == userId) return true;
 
-        // Kullanıcının departmanları
         var userDeptIds = GetUserDepartmentIds(userId);
-
-        // Departman atanmamışsa kısıtlı kullanıcıya gösterme
         if (!risk.DepartmentId.HasValue) return false;
         return userDeptIds.Contains(risk.DepartmentId.Value);
     }
@@ -114,34 +119,42 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
     }
 
     public List<Risk> GetAll(string? category = null, string? status = null, string? search = null)
-    {
-        var q = Query();
-        if (!string.IsNullOrEmpty(category)) q = q.Where(r => r.Category == category);
-        if (!string.IsNullOrEmpty(status))   q = q.Where(r => r.Status == status);
-        if (!string.IsNullOrEmpty(search))
-            q = q.Where(r => r.Title.Contains(search) || r.Code.Contains(search));
-        return [.. q.OrderByDescending(r => r.ProposedAt)];
-    }
+        => [.. BuildFilteredQuery(Query(), category, status, search).OrderByDescending(r => r.ProposedAt)];
+
+    public async Task<List<Risk>> GetAllAsync(string? category = null, string? status = null, string? search = null)
+        => await BuildFilteredQuery(Query(), category, status, search).OrderByDescending(r => r.ProposedAt).ToListAsync();
 
     public List<Risk> GetForUser(int userId, string role,
         string? category = null, string? status = null, string? search = null)
+        => [.. BuildUserQuery(userId, role, category, status, search).OrderByDescending(r => r.ProposedAt)];
+
+    public async Task<List<Risk>> GetForUserAsync(int userId, string role,
+        string? category = null, string? status = null, string? search = null)
+        => await BuildUserQuery(userId, role, category, status, search).OrderByDescending(r => r.ProposedAt).ToListAsync();
+
+    private IQueryable<Risk> BuildFilteredQuery(IQueryable<Risk> q,
+        string? category, string? status, string? search)
     {
-        var q = Query();
         if (!string.IsNullOrEmpty(category)) q = q.Where(r => r.Category == category);
         if (!string.IsNullOrEmpty(status))   q = q.Where(r => r.Status == status);
         if (!string.IsNullOrEmpty(search))
             q = q.Where(r => r.Title.Contains(search) || r.Code.Contains(search));
+        return q;
+    }
 
-        if (role is not ("admin" or "committee" or "risk_manager") &&
-            !db.UserRoles.Any(ur => ur.UserId == userId && new[]{"admin","committee","risk_manager"}.Contains(ur.RoleName)))
+    private IQueryable<Risk> BuildUserQuery(int userId, string role,
+        string? category, string? status, string? search)
+    {
+        var q = BuildFilteredQuery(Query(), category, status, search);
+        if (!Roles.RiskManagers.Contains(role) &&
+            !db.UserRoles.Any(ur => ur.UserId == userId && Roles.RiskManagers.Contains(ur.RoleName)))
         {
             var userDeptIds = GetUserDepartmentIds(userId);
-
             q = q.Where(r =>
                 r.ProposedById == userId || r.OwnerId == userId ||
                 (r.DepartmentId != null && userDeptIds.Contains(r.DepartmentId.Value)));
         }
-        return [.. q.OrderByDescending(r => r.ProposedAt)];
+        return q;
     }
 
     // ── CRUD ────────────────────────────────────────────────────────────────
@@ -163,21 +176,18 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
                 db.SaveChanges();
                 Log(risk.Id, proposedById, "Risk Önerildi", newVal: title);
 
-                // İlgili birim müdürlerini (ManagerUserId) bul ve bildirim kaydı oluştur
                 if (organizationId.HasValue)
                 {
                     var managers = db.Departments
                         .Where(d => d.OrganizationId == organizationId && d.ManagerUserId != null)
-                        .Select(d => d.ManagerUserId)
-                        .Distinct()
-                        .ToList();
-
+                        .Select(d => d.ManagerUserId).Distinct().ToList();
                     foreach (var mId in managers)
-                        if (mId != proposedById) // Öneriyi yapan zaten müdürse bildirim atma
+                        if (mId != proposedById)
                             Log(risk.Id, mId, "Bildirim", newVal: "Yeni risk önerisi birim müdürüne iletildi.");
                 }
 
                 db.SaveChanges();
+                _ = notifications?.NotifyRiskProposedAsync(risk.Id, risk.Code, title);
                 return risk;
             }
             catch (DbUpdateException)
@@ -214,25 +224,27 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
             return false;
 
         // Rol Bazlı Geçiş Yetkilendirmesi
-        if (!currentUser.HasRole("admin"))
+        if (!currentUser.HasRole(Roles.Admin))
         {
-            if (newStatus == "approved" && !currentUser.HasRole("committee"))
+            if (newStatus == RiskStatus.Approved && !currentUser.HasRole(Roles.Committee))
                 return false;
 
-            if (newStatus == "awaiting_approval" &&
-                !currentUser.HasAnyRole("risk_owner", "risk_manager", "audit_manager"))
+            if (newStatus == RiskStatus.AwaitingApproval &&
+                !currentUser.HasAnyRole(Roles.RiskOwner, Roles.RiskManager, Roles.AuditManager))
                 return false;
 
-            if (risk.Status == "proposed" && newStatus is "under_review" or "drafting" &&
-                !currentUser.HasAnyRole("risk_manager", "audit_manager"))
+            if (risk.Status == RiskStatus.Proposed && newStatus is RiskStatus.UnderReview or RiskStatus.Drafting &&
+                !currentUser.HasAnyRole(Roles.RiskManager, Roles.AuditManager) &&
+                risk.OwnerId != currentUser.Id)
                 return false;
         }
 
         var oldStatus = risk.Status;
         risk.Status = newStatus;
-        if (newStatus == "rejected") risk.RejectionReason = rejectionReason;
+        if (newStatus == RiskStatus.Rejected) risk.RejectionReason = rejectionReason;
         Log(id, currentUser?.Id, "Durum Değişikliği", "Durum", StatusLabel(oldStatus), StatusLabel(newStatus));
         db.SaveChanges();
+        _ = notifications?.NotifyStatusChangedAsync(id, risk.Code, oldStatus, newStatus, risk.OwnerId);
         return true;
     }
 
@@ -297,12 +309,13 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
 
     public bool AssignOwner(int id, int ownerId, User currentUser)
     {
-        if (!currentUser.HasAnyRole("admin", "risk_manager", "committee")) return false;
+        if (!currentUser.HasAnyRole(Roles.Admin, Roles.RiskManager, Roles.Committee)) return false;
         var risk = db.Risks.Find(id); if (risk == null) return false;
         Log(id, currentUser.Id, "Risk Sahibi Atandı", "OwnerId",
             risk.OwnerId?.ToString(), ownerId.ToString());
         risk.OwnerId = ownerId;
         db.SaveChanges();
+        _ = notifications?.NotifyOwnerAssignedAsync(id, risk.Code, risk.Title, ownerId);
         return true;
     }
 
@@ -324,17 +337,17 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
         db.Evaluations.Add(eval);
 
         var risk = db.Risks.Find(riskId);
-        if (risk != null && evalType == "initial")
+        if (risk != null && evalType == EvalType.Initial)
         {
-            if (risk.Status is "proposed" or "drafting" or "under_review")
+            if (risk.Status is RiskStatus.Proposed or RiskStatus.Drafting or RiskStatus.UnderReview)
             {
                 // Düşük riskler (<70) otomatik onaylanır; yüksek riskler (>=70) incelemeye alınır.
-                risk.Status = score < 70 ? "approved" : "under_review";
+                risk.Status = score < 70 ? RiskStatus.Approved : RiskStatus.UnderReview;
             }
         }
 
-        if (risk != null && evalType == "residual" && risk.Status == "controlled")
-            risk.Status = "residual_evaluated";
+        if (risk != null && evalType == EvalType.Residual && risk.Status == RiskStatus.Controlled)
+            risk.Status = RiskStatus.ResidualEvaluated;
 
         Log(riskId, evaluatedById,
             evalType == "initial" ? "İlk Değerlendirme Yapıldı" : "Kalan Risk Değerlendirmesi Yapıldı",
@@ -356,7 +369,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
         db.Controls.Add(ctrl);
 
         var risk = db.Risks.Find(riskId);
-        if (risk != null && risk.Status == "strategy_set") risk.Status = "controlled";
+        if (risk != null && risk.Status == RiskStatus.StrategySet) risk.Status = RiskStatus.Controlled;
 
         Log(riskId, enteredById, "Kontrol Eklendi", "Açıklama", null, description);
         db.SaveChanges();
@@ -406,7 +419,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
         db.ActionPlans.Add(action);
 
         var risk = db.Risks.Find(riskId);
-        if (risk != null && risk.Status == "residual_evaluated") risk.Status = "action_planned";
+        if (risk != null && risk.Status == RiskStatus.ResidualEvaluated) risk.Status = RiskStatus.ActionPlanned;
 
         Log(riskId, createdById, "Aksiyon Eklendi", "Açıklama", null, description);
         db.SaveChanges();
@@ -448,13 +461,14 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
         // Tüm aksiyonlar tamamlandıysa kalan riski yeniden değerlendirmeye gerek var
         db.SaveChanges();
 
-        var allDone = !db.ActionPlans.Any(a => a.RiskId == riskId && a.Status != "completed" && a.Status != "cancelled");
-        if (allDone && newStatus == "completed")
+        var allDone = !db.ActionPlans.Any(a => a.RiskId == riskId
+            && a.Status != ActionStatus.Completed && a.Status != ActionStatus.Cancelled);
+        if (allDone && newStatus == ActionStatus.Completed)
         {
             var risk = db.Risks.Find(riskId);
-            if (risk?.Status == "action_planned")
+            if (risk?.Status == RiskStatus.ActionPlanned)
             {
-                risk.Status = "residual_evaluated";
+                risk.Status = RiskStatus.ResidualEvaluated;
                 Log(riskId, userId, "Tüm Aksiyonlar Tamamlandı — Kalan Risk Yeniden Değerlendirilmeli",
                     "Durum", "Aksiyon Planlandı", "Kalan Risk");
                 db.SaveChanges();
@@ -540,6 +554,31 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
             .OrderByDescending(d => d.AvgInitial).ToList();
     }
 
+    public List<ActionPlan> GetOverdueActions(int userId, string role)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var q = db.ActionPlans
+            .Include(a => a.Risk)
+            .Include(a => a.CreatedBy)
+            .Include(a => a.OwnerDept)
+            .Where(a => a.DueDate.HasValue
+                     && a.DueDate < today
+                     && a.Status != ActionStatus.Completed
+                     && a.Status != ActionStatus.Cancelled);
+
+        if (!Roles.RiskManagers.Contains(role) &&
+            !db.UserRoles.Any(ur => ur.UserId == userId && Roles.RiskManagers.Contains(ur.RoleName)))
+        {
+            var deptIds = GetUserDepartmentIds(userId);
+            q = q.Where(a => a.Risk != null && (
+                a.Risk.ProposedById == userId ||
+                a.Risk.OwnerId == userId ||
+                (a.Risk.DepartmentId != null && deptIds.Contains(a.Risk.DepartmentId.Value))));
+        }
+
+        return [.. q.OrderBy(a => a.DueDate)];
+    }
+
     public DashboardStats GetDashboardStats()
     {
         var risks = db.Risks.ToList();
@@ -557,24 +596,8 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, IHttpC
         };
     }
 
-    private static string StatusLabel(string s) => s switch
-    {
-        "proposed" => "Risk Önerisi",
-        "under_review" => "İncelemede",
-        "drafting" => "İncelemede",
-        "awaiting_approval" => "İş Akışı: Onay Bekliyor",
-        "approved" => "Komite Onaylı",
-        "strategy_set" => "Strateji Belirlendi",
-        "controlled" => "Kontroller Tanımlandı",
-        "residual_evaluated" => "Kalan Risk Ölçüldü",
-        "action_planned" => "Aksiyon Planı Aktif",
-        "risk_accepted" => "Risk Kabul Edildi",
-        "rejected" => "Reddedildi",
-        _ => s
-    };
-
-    private static string ActionStatusLabel(string s) => s switch
-    { "planned"=>"Planlandı","in_progress"=>"Devam Ediyor","completed"=>"Tamamlandı","cancelled"=>"İptal",_=>s };
+    private static string StatusLabel(string s) => RiskStatus.Label(s);
+    private static string ActionStatusLabel(string s) => ActionStatus.Label(s);
 }
 
 public record CategoryRadarData

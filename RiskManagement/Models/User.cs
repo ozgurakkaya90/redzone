@@ -21,6 +21,9 @@ public class User
     public int? OrganizationId { get; set; }
     public int? CompanyId { get; set; }
 
+    [MaxLength(200)]
+    public string? Email { get; set; }
+
     [Required, MaxLength(30)]
     public string Role { get; set; } = "user";    // primary/display role
 

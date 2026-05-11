@@ -170,10 +170,17 @@ public class RiskLibraryService(AppDbContext db)
 
     public void SeedIfEmpty()
     {
-        if (db.RiskLibraryItems.Any()) return;
-        var items = RiskLibrarySeedData.GetItems();
-        db.RiskLibraryItems.AddRange(items);
-        db.SaveChanges();
+        try
+        {
+            if (db.RiskLibraryItems.Any()) return;
+            var items = RiskLibrarySeedData.GetItems();
+            db.RiskLibraryItems.AddRange(items);
+            db.SaveChanges();
+        }
+        catch
+        {
+            // Tablo henüz migrate edilmediyse sessizce geç
+        }
     }
 
     // ── Dışa Aktarma şablonu ─────────────────────────────────────────────────

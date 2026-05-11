@@ -6,8 +6,14 @@ using System.Threading.RateLimiting;
 using RiskManagement.Data;
 using RiskManagement.Models;
 using RiskManagement.Services;
+using RiskManagement.Services.Email;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Windows Service olarak çalışmayı destekle (intranet kurulumu için)
+builder.Host.UseWindowsService(opts => opts.ServiceName = "RedZone");
+// Linux'ta systemd servisi olarak çalışmayı destekle
+builder.Host.UseSystemd();
 
 // Güvenlik: production ortamında JWT anahtarı zorunlu olsun (uygulama şu an cookie auth kullansa da
 // konfigürasyonda gizli anahtar placeholder bırakılmamalı).
@@ -81,14 +87,30 @@ builder.Services.AddRateLimiter(opts =>
     opts.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
 });
 
+// Blazor Server anonim risk sayfası için IP tabanlı rate limiting (IMemoryCache)
+// Gerçek rate limiter middleware Blazor SignalR bağlantılarına uygulanamaz.
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<RiskManagement.Services.AnonymousRateLimiter>();
+
 // ─── Antiforgery ──────────────────────────────────────────────────────────────
 builder.Services.AddAntiforgery();
+
+// ─── Health Checks ────────────────────────────────────────────────────────────
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<AppDbContext>("database");
 
 // ─── Blazor Server ───────────────────────────────────────────────────────────
 builder.Services.AddRazorPages();
 builder.Services.AddServerSideBlazor();
 
 // ─── Services ─────────────────────────────────────────────────────────────────
+// ─── E-posta Servisi ─────────────────────────────────────────────────────────
+// Ayarlar DB'de saklanır (ConfigService), appsettings.json'a gerek kalmaz.
+// Admin paneli → Sistem Yapılandırması → E-posta üzerinden yönetilir.
+builder.Services.AddSingleton<EmailQueue>();
+builder.Services.AddHostedService<EmailWorker>();
+builder.Services.AddScoped<SmtpNotificationService>();
+builder.Services.AddScoped<INotificationService, SmtpNotificationService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<ConfigService>();
 builder.Services.AddScoped<IRiskCalculator, RiskCalculator>();
@@ -150,6 +172,7 @@ app.UseAntiforgery();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapHealthChecks("/healthz");
 app.MapRazorPages();
 app.MapBlazorHub();
 // ─── Export Endpoints ─────────────────────────────────────────────────────────

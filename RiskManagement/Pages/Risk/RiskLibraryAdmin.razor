@@ -129,9 +129,18 @@
         <tbody>
             @foreach (var item in PagedItems)
             {
-                <tr style="@(item.IsActive?"":"opacity:.5")">
+                var trStyle = (item.IsActive ? "" : "opacity:.5") + NewlyAddedStyle(item.Id);
+                <tr style="@trStyle">
                     <td>
-                        <div style="font-weight:600;font-size:13px">@item.Title</div>
+                        <div style="display:flex;align-items:center;gap:6px">
+                            <span style="font-weight:600;font-size:13px">@item.Title</span>
+                            @if (item.Id == _newlyAddedId)
+                            {
+                                <span style="display:inline-flex;align-items:center;gap:3px;background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:1px 7px;border-radius:20px;border:1px solid #86efac">
+                                    ✓ Eklendi
+                                </span>
+                            }
+                        </div>
                         @if (!string.IsNullOrEmpty(item.Hazard))
                         { <div style="font-size:11px;color:var(--text-3);margin-top:2px">⚠ @item.Hazard</div> }
                     </td>
@@ -185,6 +194,7 @@
     private const int _pageSize = 30;
     private bool _showAddForm, _showImport;
     private string _msg = ""; private bool _msgOk;
+    private int _newlyAddedId;
 
     // Form fields
     private string _fTitle="", _fCategory="", _fSubCat="", _fDesc="", _fSource="internal",
@@ -192,6 +202,7 @@
 
     private IEnumerable<RiskLibraryItem> PagedItems => _filtered.Skip((_page-1)*_pageSize).Take(_pageSize);
     private int TotalPages => (int)Math.Ceiling(_filtered.Count / (double)_pageSize);
+    private string NewlyAddedStyle(int id) => id == _newlyAddedId ? " background:#f0fdf4;" : "";
 
     protected override void OnInitialized() => Reload();
 
@@ -215,10 +226,10 @@
         _page = 1;
     }
 
-    private void SaveNew()
+    private async Task SaveNew()
     {
         if (string.IsNullOrWhiteSpace(_fTitle)) { _msg="Başlık zorunludur."; _msgOk=false; return; }
-        LibSvc.Add(new RiskLibraryItem
+        var added = LibSvc.Add(new RiskLibraryItem
         {
             Title=_fTitle, Description=_fDesc.NullIfEmpty(), Category=_fCategory.NullIfEmpty(),
             SubCategory=_fSubCat.NullIfEmpty(), SourceType=_fSource, RiskStrategy=_fStrategy.NullIfEmpty(),
@@ -226,10 +237,14 @@
             Tags=_fTags.NullIfEmpty(), ReferenceStandard=_fRef.NullIfEmpty(),
             IsActive=true, CreatedAt=DateTime.UtcNow, CreatedById=UserId
         });
+        _newlyAddedId = added.Id;
         _msg="Kayıt eklendi."; _msgOk=true;
         _fTitle=_fCategory=_fSubCat=_fDesc=_fSource="internal"; _fStrategy=_fHazard=_fImpact=_fTags=_fRef="";
         _showAddForm=false;
         Reload();
+        await Task.Delay(4000);
+        _newlyAddedId = 0;
+        await InvokeAsync(StateHasChanged);
     }
 
     private void ToggleActive(int id) { LibSvc.ToggleActive(id); Reload(); }

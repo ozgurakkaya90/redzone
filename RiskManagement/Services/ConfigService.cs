@@ -3,6 +3,7 @@ using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using RiskManagement.Data;
 using RiskManagement.Models;
+using RiskManagement.Services.Email;
 
 namespace RiskManagement.Services;
 
@@ -85,13 +86,19 @@ public class ConfigService(AppDbContext db, ILogger<ConfigService> logger)
                 new(0.0,   20.0,  "Kabul Edilebilir", "#16a34a", "Kabul edilebilir"),
             },
 
-            ["site_theme"] = new SiteThemeConfig(),
+            ["site_theme"]     = new SiteThemeConfig(),
+            ["app_name"]      = "RED",
+            ["app_tagline"]   = "Risk · Etik · Denetim",
+            ["sidebar_color"] = "#0f1f33",
+            ["logo_path"]     = "",
 
             ["module_risk"]   = true,
             ["module_audit"]  = true,
             ["module_ethics"] = true,
 
             ["review_threshold_days"] = 90,
+
+            ["email_settings"] = new EmailSettings(),
 
             ["risk_detail_fields"] = new Dictionary<string, bool>
             {
@@ -131,6 +138,15 @@ public class ConfigService(AppDbContext db, ILogger<ConfigService> logger)
     public Dictionary<string, bool> GetRiskDetailFields() =>
         Get<Dictionary<string, bool>>("risk_detail_fields")
         ?? new Dictionary<string, bool>();
+
+    public Email.EmailSettings GetEmailSettings() =>
+        Get<Email.EmailSettings>("email_settings") ?? new Email.EmailSettings();
+
+    public void SetEmailSettings(Email.EmailSettings settings)
+    {
+        Set("email_settings", settings);
+        _cache.TryRemove("email_settings", out _);
+    }
 
     /// <summary>Tüm konfigürasyon anahtarlarını DB'den ve varsayılanlardan birleştirerek döner.</summary>
     public Dictionary<string, object> GetAll()

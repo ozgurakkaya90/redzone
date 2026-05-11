@@ -9,13 +9,29 @@ public static class SeedData
         if (db.Users.Any()) return; // Zaten seed edilmiş
 
         // ─── Kullanıcılar ─────────────────────────────────────────────────────
-        // For local/dev convenience set admin password to a known value
-        // (override by setting SEED_ADMIN_PASSWORD env var if needed)
-        var adminPassword = Environment.GetEnvironmentVariable("SEED_ADMIN_PASSWORD");
-        if (string.IsNullOrEmpty(adminPassword))
+        // Tüm şifreler rastgele üretilir ve konsola yazdırılır.
+        // SEED_ADMIN_PASSWORD env var ile admin şifresi önceden belirlenebilir.
+        var adminPassword = Environment.GetEnvironmentVariable("SEED_ADMIN_PASSWORD")
+                            ?? GenerateRandomPassword();
+
+        var demoPasswords = new Dictionary<string, string>
         {
-            adminPassword = "admin123";
-        }
+            ["komite1"]    = GenerateRandomPassword(),
+            ["riskowner1"] = GenerateRandomPassword(),
+            ["riskymgr1"]  = GenerateRandomPassword(),
+            ["denetci1"]   = GenerateRandomPassword(),
+            ["denetimmgr"] = GenerateRandomPassword(),
+        };
+
+        Console.WriteLine("==========================================================");
+        Console.WriteLine("  İLK KURULUM — Seed kullanıcı şifreleri (bir kez gösterilir)");
+        Console.WriteLine("==========================================================");
+        Console.WriteLine($"  admin        : {adminPassword}");
+        foreach (var (user, pass) in demoPasswords)
+            Console.WriteLine($"  {user,-12} : {pass}");
+        Console.WriteLine("  Bu şifreler veritabanında saklanmaz; yalnızca burada gösterilir.");
+        Console.WriteLine("  Lütfen giriş yaptıktan sonra şifrenizi değiştirin.");
+        Console.WriteLine("==========================================================");
 
         var admin = new User
         {
@@ -27,31 +43,31 @@ public static class SeedData
         {
             Username = "komite1", FullName = "Ayşe Kaya",
             Department = "Risk Komitesi", Role = "committee",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("komite123"),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPasswords["komite1"]),
         };
         var owner = new User
         {
             Username = "riskowner1", FullName = "Mehmet Yılmaz",
             Department = "Operasyon", Role = "risk_owner",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("owner123"),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPasswords["riskowner1"]),
         };
         var riskMgr = new User
         {
             Username = "riskymgr1", FullName = "Fatma Arslan",
             Department = "Risk Yönetimi", Role = "risk_manager",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("riskymgr123"),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPasswords["riskymgr1"]),
         };
         var auditor = new User
         {
             Username = "denetci1", FullName = "Zeynep Demir",
             Department = "İç Denetim", Role = "auditor",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("denetci123"),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPasswords["denetci1"]),
         };
         var auditMgr = new User
         {
             Username = "denetimmgr", FullName = "Can Şahin",
             Department = "İç Denetim", Role = "audit_manager",
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword("manager123"),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPasswords["denetimmgr"]),
         };
 
         db.Users.AddRange(admin, committee, owner, riskMgr, auditor, auditMgr);

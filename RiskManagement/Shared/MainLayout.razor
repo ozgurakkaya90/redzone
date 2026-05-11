@@ -6,18 +6,27 @@
 @inject IJSRuntime JS
 @using System.Security.Claims
 
+<style>:root { --sidebar-bg: @_sidebarColor; }</style>
+
 <div class="app-shell @(_collapsed ? "sidebar-collapsed" : "")">
     <aside class="sidebar">
         <div class="sidebar-logo">
-            <div class="sidebar-logo-mark">
-                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
-                     stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-                </svg>
-            </div>
+            @if (!string.IsNullOrEmpty(_logoPath))
+            {
+                <img src="@_logoPath" style="height:32px;max-width:32px;object-fit:contain;border-radius:6px;flex-shrink:0" alt="Logo" />
+            }
+            else
+            {
+                <div class="sidebar-logo-mark">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                    </svg>
+                </div>
+            }
             <div class="sidebar-logo-text">
-                <span class="sidebar-logo-name">RED</span>
-                <span class="sidebar-logo-sub">Risk · Etik · Denetim</span>
+                <span class="sidebar-logo-name">@_appName</span>
+                <span class="sidebar-logo-sub">@_appTagline</span>
             </div>
             <button class="sidebar-toggle-btn" @onclick="ToggleCollapse"
                     title="@(_collapsed ? "Menüyü Genişlet" : "Menüyü Daralt")"
@@ -148,18 +157,6 @@
                     <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                     <span class="nav-label">Sistem Yapılandırması</span>
                 </NavLink>
-                <NavLink href="/admin/database"    class="nav-item" Match="NavLinkMatch.All" title="Veritabanı">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
-                    <span class="nav-label">Veritabanı</span>
-                </NavLink>
-                <NavLink href="/admin/ldap"        class="nav-item" Match="NavLinkMatch.All" title="Active Directory">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18"/><path d="M6 12H4a2 2 0 0 0-2 2v8"/><path d="M18 9h2a2 2 0 0 1 2 2v11"/></svg>
-                    <span class="nav-label">Active Directory</span>
-                </NavLink>
-                <NavLink href="/admin/modules"     class="nav-item" Match="NavLinkMatch.All" title="Modüller">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="9" height="9" rx="1"/><rect x="13" y="2" width="9" height="9" rx="1"/><rect x="2" y="13" width="9" height="9" rx="1"/><rect x="13" y="13" width="9" height="9" rx="1"/></svg>
-                    <span class="nav-label">Modüller</span>
-                </NavLink>
             }
         </nav>
 
@@ -190,8 +187,20 @@
 <ToastContainer />
 
 @code {
-    private bool _collapsed;
-    private int  _pendingCount;
+    private bool   _collapsed;
+    private int    _pendingCount;
+    private string _appName      = "RED";
+    private string _appTagline   = "Risk · Etik · Denetim";
+    private string _sidebarColor = "#0f1f33";
+    private string _logoPath     = "";
+
+    protected override void OnInitialized()
+    {
+        _appName      = CfgSvc.Get<string>("app_name")      is { Length: > 0 } n  ? n  : "RED";
+        _appTagline   = CfgSvc.Get<string>("app_tagline")   is { Length: > 0 } tl ? tl : "Risk · Etik · Denetim";
+        _sidebarColor = CfgSvc.Get<string>("sidebar_color") is { Length: > 0 } sc ? sc : "#0f1f33";
+        _logoPath     = CfgSvc.Get<string>("logo_path")     ?? "";
+    }
 
     private string FullName   => HttpCtx.HttpContext?.User.FindFirst("full_name")?.Value ?? "";
     private string Department => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Email)?.Value

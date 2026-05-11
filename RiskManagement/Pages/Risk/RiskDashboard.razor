@@ -5,6 +5,7 @@
 @inject IRiskCalculator RiskCalc
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
+@using RiskManagement.Models
 
 <PageTitle>Risk Yönetimi Paneli</PageTitle>
 
@@ -174,6 +175,52 @@ else
         </div>
     </div>
 
+    <!-- ── Vadesi Geçmiş Aksiyonlar ─────────────────────────────── -->
+    @if (_overdueActions.Any())
+    {
+        <div class="card" style="border-top:3px solid #dc2626;margin-bottom:16px">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+                <span style="font-size:18px">⚠</span>
+                <div>
+                    <div class="section-title" style="color:#dc2626;margin-bottom:1px">
+                        Vadesi Geçmiş Aksiyon Planları
+                    </div>
+                    <div style="font-size:11px;color:var(--text-3)">
+                        @_overdueActions.Count adet aksiyon planının hedef tarihi geçti
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:8px">
+                @foreach (var a in _overdueActions.Take(5))
+                {
+                    var daysLate = (DateOnly.FromDateTime(DateTime.Today).DayNumber - a.DueDate!.Value.DayNumber);
+                    <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#fef2f2;border-radius:8px;border:1px solid #fecaca">
+                        <div style="flex:1;min-width:0">
+                            <div style="font-size:13px;font-weight:600;color:#1e3a5f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                                <a href="/risk/@(a.RiskId)" style="color:#1e3a5f;text-decoration:none">
+                                    @(a.Risk?.Code ?? "") — @a.Description
+                                </a>
+                            </div>
+                            <div style="font-size:11px;color:var(--text-3);margin-top:2px;display:flex;gap:8px">
+                                @if (a.OwnerDept != null) { <span>🏢 @a.OwnerDept.Name</span> }
+                                <span>📅 @a.DueDate.Value.ToString("dd.MM.yyyy")</span>
+                            </div>
+                        </div>
+                        <span style="background:#dc2626;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:20px;white-space:nowrap;flex-shrink:0">
+                            @daysLate gün gecikme
+                        </span>
+                    </div>
+                }
+                @if (_overdueActions.Count > 5)
+                {
+                    <a href="/risk/actions?overdue=1" style="font-size:12px;color:#dc2626;padding:6px 0;display:block;text-align:center;font-weight:600">
+                        + @(_overdueActions.Count - 5) aksiyon daha →
+                    </a>
+                }
+            </div>
+        </div>
+    }
+
     <!-- ── Sorumlu Birim Tablosu ──────────────────────────────────── -->
     @if (_unitData.Any())
     {
@@ -228,6 +275,7 @@ else
     private DashboardStats? _stats;
     private List<RiskManagement.Models.Risk> _risks = [];
     private List<CategoryRadarData> _radar = [];
+    private List<ActionPlan> _overdueActions = [];
     private string[] _categories = [];
 
     private record StatCard(string Label, int Value, string Color);
@@ -246,21 +294,22 @@ else
         new("≥ 400",     "Çok Yüksek Risk",  "#fef2f2", "#7f1d1d"),
     ];
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _risks = RiskSvc.GetForUser(UserId, Role);
+        _risks = await RiskSvc.GetForUserAsync(UserId, Role);
         _stats = new DashboardStats
         {
             Total         = _risks.Count,
-            Proposed      = _risks.Count(r => r.Status == "proposed"),
-            UnderReview   = _risks.Count(r => r.Status == "under_review"),
-            Approved      = _risks.Count(r => r.Status is "approved" or "strategy_set"),
-            Rejected      = _risks.Count(r => r.Status == "rejected"),
-            Controlled    = _risks.Count(r => r.Status == "controlled"),
-            ActionPlanned = _risks.Count(r => r.Status == "action_planned"),
+            Proposed      = _risks.Count(r => r.Status == RiskStatus.Proposed),
+            UnderReview   = _risks.Count(r => r.Status == RiskStatus.UnderReview),
+            Approved      = _risks.Count(r => r.Status is RiskStatus.Approved or RiskStatus.StrategySet),
+            Rejected      = _risks.Count(r => r.Status == RiskStatus.Rejected),
+            Controlled    = _risks.Count(r => r.Status == RiskStatus.Controlled),
+            ActionPlanned = _risks.Count(r => r.Status == RiskStatus.ActionPlanned),
         };
-        _radar      = RiskSvc.GetRadarData();
-        _categories = CfgSvc.GetList("risk_categories");
+        _radar          = RiskSvc.GetRadarData();
+        _categories     = CfgSvc.GetList("risk_categories");
+        _overdueActions = RiskSvc.GetOverdueActions(UserId, Role);
 
         _statCards =
         [
