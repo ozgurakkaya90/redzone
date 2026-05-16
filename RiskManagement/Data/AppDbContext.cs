@@ -117,12 +117,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<InternalAudit>()
             .HasOne(a => a.LeadAuditor).WithMany().HasForeignKey(a => a.LeadAuditorId)
             .OnDelete(DeleteBehavior.Restrict);
-        mb.Entity<InternalAudit>()
-            .HasOne(a => a.Department).WithMany().HasForeignKey(a => a.DepartmentId)
-            .OnDelete(DeleteBehavior.SetNull);
-        mb.Entity<InternalAudit>()
-            .HasOne(a => a.AuditPlanItem).WithMany().HasForeignKey(a => a.AuditPlanItemId)
-            .OnDelete(DeleteBehavior.SetNull);
+        // DepartmentId ve AuditPlanItemId NotMapped — FK tanımı devre dışı
+        // Migration uygulandıktan sonra NotMapped kaldırılıp bu satırlar aktif edilecek
 
         // AuditFinding
         mb.Entity<AuditFinding>()

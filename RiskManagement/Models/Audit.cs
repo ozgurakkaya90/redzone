@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace RiskManagement.Models;
 
@@ -85,17 +86,17 @@ public class InternalAudit
     [Required, MaxLength(20)]
     public string Status { get; set; } = "planned"; // planned|in_progress|completed
 
-    public int? DepartmentId { get; set; }
-
-    /// <summary>Hangi plan maddesinden oluşturuldu (varsa)</summary>
-    public int? AuditPlanItemId { get; set; }
+    // [NotMapped]: Bu kolonlar MySQL'de henüz yoksa EF Core SELECT'e eklemez.
+    // Migration uygulandıktan sonra bu attribute'lar kaldırılacak.
+    [NotMapped] public int? DepartmentId { get; set; }
+    [NotMapped] public int? AuditPlanItemId { get; set; }
 
     public int LeadAuditorId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public User LeadAuditor { get; set; } = null!;
-    public Department? Department { get; set; }
-    public AuditPlanItem? AuditPlanItem { get; set; }
+    [NotMapped] public Department? Department { get; set; }
+    [NotMapped] public AuditPlanItem? AuditPlanItem { get; set; }
     public ICollection<AuditFinding> Findings { get; set; } = [];
 }
 
