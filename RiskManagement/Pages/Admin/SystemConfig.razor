@@ -12,6 +12,8 @@
 @using MySqlConnector
 @using Novell.Directory.Ldap
 @using Microsoft.AspNetCore.Components.Forms
+@inject ExternalAuditService ExtSvc
+@inject ILogger<SystemConfig> Logger
 
 <PageTitle>Sistem Yapılandırması</PageTitle>
 
@@ -143,6 +145,9 @@
         </button>
 
         <div class="cfg-nav-group">Sistem</div>
+        <button class="cfg-nav-item @(_tab=="external" ? "active" : "")" @onclick='()=>_tab="external"'>
+            <span class="cfg-icon">🏛️</span> Dış Denetim Ayarları
+        </button>
         <button class="cfg-nav-item @(_tab=="modules" ? "active" : "")" @onclick='()=>_tab="modules"'>
             <span class="cfg-icon">📦</span> Modüller
         </button>
@@ -864,6 +869,154 @@
         </div>
     }
 
+    @* ════ DIŞ DENETİM AYARLARI ════════════════════════════════════════════════ *@
+    @if (_tab == "external")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Dış Denetim Ayarları</h2>
+            <p>Denetleyici kurumları tanımla ve kullanıcı erişim yetkilerini yönet.</p>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1.4fr;gap:16px;align-items:start;flex-wrap:wrap">
+
+            <div class="cfg-card">
+                <div class="cfg-card-hdr">
+                    <div class="cfg-card-icon" style="background:#fffbeb">🏛️</div>
+                    <div><div class="cfg-card-title">Denetleyici Kurumlar</div></div>
+                    <button class="btn btn-primary btn-sm" style="margin-left:auto" @onclick="() => _extAddingBody = true">+ Kurum</button>
+                </div>
+
+                @if (_extAddingBody)
+                {
+                    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-bottom:12px">
+                        <input class="form-control" placeholder="Kurum adı (örn. BRC, JCI)"
+                               @bind="_extNewBodyName" maxlength="200" style="margin-bottom:6px" />
+                        <input class="form-control" placeholder="Açıklama (opsiyonel)"
+                               @bind="_extNewBodyDesc" maxlength="500" style="margin-bottom:8px" />
+                        @if (!string.IsNullOrEmpty(_extBodyError))
+                        { <div class="alert alert-error" style="margin-bottom:8px;font-size:12px">@_extBodyError</div> }
+                        <div style="display:flex;gap:6px">
+                            <button class="btn btn-primary btn-sm" @onclick="ExtAddBody">Ekle</button>
+                            <button class="btn btn-outline btn-sm" @onclick="ExtCancelAddBody">İptal</button>
+                        </div>
+                    </div>
+                }
+
+                <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer;margin-bottom:10px">
+                    <input type="checkbox" @bind="_extShowInactive" @bind:after="ExtReloadBodies" />
+                    Pasif kurumları da göster
+                </label>
+
+                @if (_extBodies.Count == 0)
+                {
+                    <div style="text-align:center;padding:24px;color:var(--text-3);font-size:13px">Henüz kurum eklenmemiş.</div>
+                }
+                else
+                {
+                    <table class="table" style="font-size:12px">
+                        <thead><tr>
+                            <th>Kurum</th>
+                            <th style="width:70px;text-align:center">Yetkili</th>
+                            <th style="width:70px;text-align:center">Denetim</th>
+                            <th style="width:110px;text-align:right">İşlemler</th>
+                        </tr></thead>
+                        <tbody>
+                        @foreach (var b in _extBodies)
+                        {
+                            var userCnt  = _extUserCountByBody.GetValueOrDefault(b.Name, 0);
+                            var auditCnt = _extAuditCountByBody.GetValueOrDefault(b.Name, 0);
+                            <tr style="@(b.IsActive ? "" : "opacity:0.55")">
+                                <td>
+                                    <div style="font-weight:600">@b.Name</div>
+                                    @if (!string.IsNullOrEmpty(b.Description))
+                                    { <div style="font-size:11px;color:var(--text-3)">@b.Description</div> }
+                                    @if (!b.IsActive)
+                                    { <span class="badge badge-gray" style="font-size:10px;margin-top:2px">Pasif</span> }
+                                </td>
+                                <td style="text-align:center">
+                                    <span style="color:#0369a1;font-weight:600;cursor:pointer" @onclick="() => ExtSelectBody(b.Name)">@userCnt</span>
+                                </td>
+                                <td style="text-align:center">@auditCnt</td>
+                                <td style="text-align:right">
+                                    @if (b.IsActive)
+                                    { <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" @onclick="() => ExtDeactivateBody(b.Id)">Pasifleştir</button> }
+                                    else
+                                    { <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px" @onclick="() => ExtActivateBody(b.Id)">Aktifleştir</button> }
+                                </td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                }
+            </div>
+
+            <div class="cfg-card">
+                <div class="cfg-card-hdr">
+                    <div class="cfg-card-icon" style="background:#fffbeb">🔑</div>
+                    <div><div class="cfg-card-title">Kurum Yetkileri</div>
+                        @if (!string.IsNullOrEmpty(_extSelectedBody))
+                        { <div class="cfg-card-desc">@_extSelectedBody</div> }
+                    </div>
+                    <select class="form-control" style="width:auto;font-size:12px;margin-left:auto" @bind="_extSelectedBody" @bind:after="ExtLoadAssignments">
+                        <option value="">— Kurum seçin —</option>
+                        @foreach (var b in _extBodies.Where(x => x.IsActive))
+                        { <option value="@b.Name">@b.Name</option> }
+                    </select>
+                </div>
+
+                @if (string.IsNullOrEmpty(_extSelectedBody))
+                {
+                    <div style="text-align:center;padding:32px;color:var(--text-3);font-size:13px">Yetki yönetmek için bir kurum seçin.</div>
+                }
+                else
+                {
+                    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px">
+                        <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">Kullanıcı Ekle</div>
+                        <div style="display:flex;gap:6px;flex-wrap:wrap">
+                            <select class="form-control" style="flex:1;min-width:160px" @bind="_extGrantUserId">
+                                <option value="">— Kullanıcı —</option>
+                                @foreach (var u in _extUsers.Where(u => !_extAssignments.Any(a => a.UserId == u.Id)))
+                                { <option value="@u.Id">@u.FullName (@u.Username)</option> }
+                            </select>
+                            <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px">
+                                <input type="checkbox" @bind="_extGrantCanEdit" /> Düzenleme
+                            </label>
+                            <button class="btn btn-primary btn-sm" @onclick="ExtGrantAccess">Ver</button>
+                        </div>
+                    </div>
+
+                    @if (_extAssignments.Count == 0)
+                    { <div style="text-align:center;padding:24px;color:var(--text-3);font-size:13px">Bu kuruma yetkili kullanıcı yok.</div> }
+                    else
+                    {
+                        <table class="table" style="font-size:12px">
+                            <thead><tr><th>Kullanıcı</th><th style="width:110px;text-align:center">Düzenleme</th><th style="width:70px"></th></tr></thead>
+                            <tbody>
+                            @foreach (var a in _extAssignments)
+                            {
+                                <tr>
+                                    <td>
+                                        <div style="font-weight:600">@(a.User?.FullName ?? "—")</div>
+                                        <div style="font-size:10px;color:var(--text-3)">@a.User?.Username</div>
+                                    </td>
+                                    <td style="text-align:center">
+                                        <input type="checkbox" checked="@a.CanEdit"
+                                               @onchange="@((ChangeEventArgs e) => ExtToggleCanEdit(a, e))" />
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;color:#dc2626"
+                                                @onclick="() => ExtRevoke(a)">Kaldır</button>
+                                    </td>
+                                </tr>
+                            }
+                            </tbody>
+                        </table>
+                    }
+                }
+            </div>
+        </div>
+    }
+
     @* ════ VERİTABANI ════════════════════════════════════════════════════ *@
     @if (_tab == "database")
     {
@@ -906,6 +1059,55 @@
                 </div>
             }
         </div>
+
+        <div class="cfg-card" style="margin-top:16px">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#fefce8">⚙️</div>
+                <div><div class="cfg-card-title">Veritabanı Migration</div>
+                    <div class="cfg-card-desc">Bekleyen migration'ları uygula</div>
+                </div>
+                <button class="btn btn-outline btn-sm" @onclick="MigrRefresh" disabled="@_migrRunning" style="margin-left:auto">🔄</button>
+            </div>
+
+            @if (_migrLoadError != null)
+            {
+                <div style="padding:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:12px;color:#991b1b;margin-bottom:10px">@_migrLoadError</div>
+            }
+            @if (_migrPending.Count == 0 && _migrApplied.Count > 0)
+            {
+                <div style="padding:10px 14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;font-size:13px;color:#166534;margin-bottom:10px">
+                    ✅ Tüm migration'lar uygulanmış (@_migrApplied.Count adet)
+                </div>
+            }
+            @if (_migrPending.Count > 0)
+            {
+                <div style="padding:10px 14px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;margin-bottom:10px">
+                    <div style="font-size:13px;font-weight:700;color:#92400e;margin-bottom:6px">⚠️ @_migrPending.Count bekleyen migration</div>
+                    @foreach (var m in _migrPending)
+                    { <div style="font-size:11px;font-family:monospace;color:#b45309;padding:2px 0">⏳ @m</div> }
+                </div>
+            }
+            @if (_migrResult != null)
+            {
+                var ok = !_migrResult.StartsWith("Hata");
+                <div style="padding:10px 14px;border-radius:8px;margin-bottom:10px;font-size:12px;
+                            background:@(ok?"#f0fdf4":"#fef2f2");border:1px solid @(ok?"#86efac":"#fca5a5");color:@(ok?"#166534":"#991b1b")">
+                    @(ok ? "✅ " : "❌ ") @_migrResult
+                </div>
+            }
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <button class="btn btn-primary btn-sm" @onclick="MigrRun" disabled="@_migrRunning">
+                    @(_migrRunning ? "⏳ Çalışıyor…" : "▶ Migration Çalıştır")
+                </button>
+                <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#fca5a5" @onclick="MigrRestartApp" disabled="@_migrRestarting">
+                    @(_migrRestarting ? "⏳ Yeniden başlatılıyor…" : "🔁 Uygulamayı Yeniden Başlat")
+                </button>
+            </div>
+            @if (!string.IsNullOrEmpty(_migrRestartMsg))
+            {
+                <div style="margin-top:8px;padding:8px 12px;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;font-size:12px;color:#92400e">@_migrRestartMsg</div>
+            }
+        </div>
     }
 
     </div>@* / içerik *@
@@ -914,6 +1116,25 @@
 @code {
     private string _tab = "theme";
     private string _success = "";
+
+    // Dış Denetim Ayarları sekmesi
+    private List<ExternalAuditBody> _extBodies = [];
+    private List<User> _extUsers = [];
+    private List<UserExternalAuditBody> _extAssignments = [];
+    private Dictionary<string, int> _extUserCountByBody = new();
+    private Dictionary<string, int> _extAuditCountByBody = new();
+    private bool _extShowInactive;
+    private bool _extAddingBody;
+    private string _extNewBodyName = "", _extNewBodyDesc = "", _extBodyError = "";
+    private string _extSelectedBody = "";
+    private int? _extGrantUserId;
+    private bool _extGrantCanEdit = true;
+
+    // Migration
+    private List<string> _migrPending = [], _migrApplied = [];
+    private string? _migrLoadError, _migrResult;
+    private bool _migrRunning, _migrRestarting;
+    private string _migrRestartMsg = "";
 
     // E-posta
     private EmailSettings _emailSettings = new();
@@ -1030,6 +1251,9 @@
         _ethicsCategories     = [.. CfgSvc.GetList("ethics_categories")];
         _riskDetailFields     = CfgSvc.GetRiskDetailFields();
         _reviewThresholdDays  = CfgSvc.Get<int>("review_threshold_days") is var t && t > 0 ? t : 90;
+        ExtReloadBodies();
+        _extUsers = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
+        MigrRefresh();
     }
 
     // ── E-posta ──────────────────────────────────────────────────────────────
@@ -1344,5 +1568,71 @@
         var dept = Db.Departments.Find(deptId); if (dept == null) return;
         dept.OrganizationId = int.TryParse(orgIdStr, out var oid) && oid > 0 ? oid : null;
         Db.SaveChanges(); ReloadDepts(); _success = "Organizasyon güncellendi.";
+    }
+
+    // ── Dış Denetim Ayarları ──────────────────────────────────────────────────
+    private void ExtReloadBodies()
+    {
+        _extBodies = ExtSvc.GetBodies(includeInactive: _extShowInactive);
+        _extUserCountByBody = Db.UserExternalAuditBodies
+            .GroupBy(u => u.AuditingBody).Select(g => new { Body = g.Key, Cnt = g.Count() })
+            .ToDictionary(x => x.Body, x => x.Cnt);
+        try { _extAuditCountByBody = Db.ExternalAudits.GroupBy(a => a.AuditingBody)
+            .Select(g => new { Body = g.Key, Cnt = g.Count() }).ToDictionary(x => x.Body, x => x.Cnt); }
+        catch { _extAuditCountByBody = new(); }
+    }
+    private void ExtAddBody()
+    {
+        _extBodyError = "";
+        if (string.IsNullOrWhiteSpace(_extNewBodyName)) { _extBodyError = "Kurum adı zorunludur."; return; }
+        try { ExtSvc.AddBody(_extNewBodyName.Trim(), string.IsNullOrWhiteSpace(_extNewBodyDesc) ? null : _extNewBodyDesc.Trim()); ExtCancelAddBody(); ExtReloadBodies(); }
+        catch (Exception ex) { _extBodyError = "Hata: " + ex.Message; }
+    }
+    private void ExtCancelAddBody() { _extAddingBody = false; _extNewBodyName = ""; _extNewBodyDesc = ""; _extBodyError = ""; }
+    private void ExtDeactivateBody(int id) { ExtSvc.DeactivateBody(id); ExtReloadBodies(); }
+    private void ExtActivateBody(int id)   { ExtSvc.ActivateBody(id);   ExtReloadBodies(); }
+    private void ExtSelectBody(string name) { _extSelectedBody = name; ExtLoadAssignments(); }
+    private void ExtLoadAssignments()
+    {
+        if (string.IsNullOrEmpty(_extSelectedBody)) { _extAssignments = []; return; }
+        _extAssignments = ExtSvc.GetBodyUsers(_extSelectedBody);
+        _extGrantUserId = null; _extGrantCanEdit = true;
+    }
+    private void ExtGrantAccess()
+    {
+        if (!_extGrantUserId.HasValue || string.IsNullOrEmpty(_extSelectedBody)) return;
+        ExtSvc.GrantBody(_extGrantUserId.Value, _extSelectedBody, _extGrantCanEdit);
+        ExtLoadAssignments(); ExtReloadBodies();
+    }
+    private void ExtToggleCanEdit(UserExternalAuditBody a, ChangeEventArgs e)
+    {
+        var v = bool.TryParse(e.Value?.ToString(), out var b) && b;
+        ExtSvc.GrantBody(a.UserId, a.AuditingBody, v); ExtLoadAssignments();
+    }
+    private void ExtRevoke(UserExternalAuditBody a)
+    {
+        ExtSvc.RevokeBody(a.UserId, a.AuditingBody); ExtLoadAssignments(); ExtReloadBodies();
+    }
+
+    // ── Migration ─────────────────────────────────────────────────────────────
+    private void MigrRefresh()
+    {
+        _migrLoadError = null;
+        try { _migrApplied = [.. Db.Database.GetAppliedMigrations()]; _migrPending = [.. Db.Database.GetPendingMigrations()]; }
+        catch (Exception ex) { _migrLoadError = ex.Message; _migrApplied = []; _migrPending = []; }
+    }
+    private async Task MigrRun()
+    {
+        _migrRunning = true; _migrResult = null; StateHasChanged();
+        try { await Task.Run(() => Db.Database.Migrate()); MigrRefresh();
+            _migrResult = _migrPending.Count == 0 ? "Migration'lar başarıyla uygulandı." : $"Tamamlandı. Hâlâ {_migrPending.Count} bekleyen var."; }
+        catch (Exception ex) { Logger.LogError(ex, "Migration hatası"); _migrResult = "Hata: " + ex.Message; MigrRefresh(); }
+        finally { _migrRunning = false; }
+    }
+    private async Task MigrRestartApp()
+    {
+        _migrRestarting = true; _migrRestartMsg = "✅ Yeniden başlatma komutu verildi. 10 saniye içinde site tekrar açılacak…"; StateHasChanged();
+        await Task.Delay(300);
+        _ = Task.Run(async () => { await Task.Delay(500); Environment.Exit(0); });
     }
 }

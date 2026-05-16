@@ -8,7 +8,7 @@
 @using RiskManagement.Models
 @using Microsoft.EntityFrameworkCore
 
-<PageTitle>Dış Denetim Aksiyonları</PageTitle>
+<PageTitle>Dış Denetim Bulguları</PageTitle>
 
 @if (!_canRead)
 {
@@ -21,7 +21,7 @@ else
 {
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
         <div>
-            <h1 style="margin:0;font-size:22px;font-weight:800">📋 Dış Denetim Bulgu & Aksiyonları</h1>
+            <h1 style="margin:0;font-size:22px;font-weight:800">📋 Dış Denetim Bulguları</h1>
             <div style="font-size:12px;color:var(--text-3);margin-top:2px">
                 @_filtered.Count bulgu — toplam @_actionCount aksiyon
             </div>
