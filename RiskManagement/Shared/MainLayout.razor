@@ -6,7 +6,12 @@
 @inject IJSRuntime JS
 @using System.Security.Claims
 
-<style>:root { --sidebar-bg: @_sidebarColor; }</style>
+<style>:root {
+  --sidebar-bg:        @_sidebarColor;
+  --sidebar-text:      @_sidebarTextColor;
+  --sidebar-font-size: @(_sidebarFontSize)px;
+  --sidebar-font:      @_sidebarFont, 'Inter', system-ui, sans-serif;
+}</style>
 
 <div class="app-shell @(_collapsed ? "sidebar-collapsed" : "")">
     <aside class="sidebar">
@@ -242,15 +247,21 @@
     private int    _pendingCount;
     private string _appName      = "RED";
     private string _appTagline   = "Risk · Etik · Denetim";
-    private string _sidebarColor = "#0f1f33";
-    private string _logoPath     = "";
+    private string _sidebarColor     = "#0f1f33";
+    private string _sidebarTextColor = "#94A3B8";
+    private int    _sidebarFontSize  = 13;
+    private string _sidebarFont      = "Inter";
+    private string _logoPath         = "";
 
     protected override void OnInitialized()
     {
-        _appName      = CfgSvc.Get<string>("app_name")      is { Length: > 0 } n  ? n  : "RED";
-        _appTagline   = CfgSvc.Get<string>("app_tagline")   is { Length: > 0 } tl ? tl : "Risk · Etik · Denetim";
-        _sidebarColor = CfgSvc.Get<string>("sidebar_color") is { Length: > 0 } sc ? sc : "#0f1f33";
-        _logoPath     = CfgSvc.Get<string>("logo_path")     ?? "";
+        _appName          = CfgSvc.Get<string>("app_name")            is { Length: > 0 } n  ? n  : "RED";
+        _appTagline       = CfgSvc.Get<string>("app_tagline")         is { Length: > 0 } tl ? tl : "Risk · Etik · Denetim";
+        _sidebarColor     = CfgSvc.Get<string>("sidebar_color")       is { Length: > 0 } sc ? sc : "#0f1f33";
+        _sidebarTextColor = CfgSvc.Get<string>("sidebar_text_color") is { Length: > 0 } tc ? tc : "#94A3B8";
+        _sidebarFontSize  = int.TryParse(CfgSvc.Get<string>("sidebar_font_size"), out var fs) ? fs : 13;
+        _sidebarFont      = CfgSvc.Get<string>("sidebar_font")       is { Length: > 0 } sf ? sf : "Inter";
+        _logoPath         = CfgSvc.Get<string>("logo_path")           ?? "";
 
         // Aktif sayfaya göre otomatik açılır
         var uri = Nav.Uri ?? "";

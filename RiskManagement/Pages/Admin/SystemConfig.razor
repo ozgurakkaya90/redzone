@@ -300,6 +300,72 @@
                 { <span class="save-msg">@_themeSaveMsg</span> }
             </div>
         </div>
+
+        @* ── Menü Yazı Tipi ── *@
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#f5f3ff">🔤</div>
+                <div>
+                    <div class="cfg-card-title">Sol Menü Yazı Tipi</div>
+                    <div class="cfg-card-desc">Sidebar menü öğelerinin yazı rengi, boyutu ve karakteri</div>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">
+                <div>
+                    <label class="form-label">Yazı Rengi</label>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                        <input type="color" @bind="_sidebarTextColor" class="color-swatch" />
+                        <input class="form-control" @bind="_sidebarTextColor" style="font-family:monospace" />
+                    </div>
+                    <div class="field-info">Menü öğelerinin normal rengi</div>
+                </div>
+                <div>
+                    <label class="form-label">Yazı Boyutu — @_sidebarFontSize px</label>
+                    <div style="margin-top:8px;padding:0 4px">
+                        <input type="range" min="11" max="16" step="1"
+                               @bind="_sidebarFontSize" @bind:event="oninput"
+                               style="width:100%;accent-color:#0369a1" />
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);margin-top:2px">
+                        <span>11px</span><span>16px</span>
+                    </div>
+                </div>
+                <div>
+                    <label class="form-label">Yazı Karakteri</label>
+                    <select class="form-control" style="margin-top:4px" @bind="_sidebarFont">
+                        @foreach (var (name, label) in _fontOptions)
+                        { <option value="@name">@label</option> }
+                    </select>
+                </div>
+            </div>
+
+            @* Önizleme *@
+            <div style="padding:14px 16px;background:@_sidebarColor;border-radius:10px;display:flex;flex-direction:column;gap:4px">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,.4);letter-spacing:.05em;margin-bottom:6px">Önizleme</div>
+                @foreach (var item in new[]{("📊","Ana Panel"),("🛡️","Risk Yönetimi"),("🔍","İç Denetim")})
+                {
+                    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;
+                                font-size:@(_sidebarFontSize)px;font-family:@_sidebarFont,Inter,system-ui,sans-serif;
+                                color:@_sidebarTextColor">
+                        <span>@item.Item1</span>
+                        <span>@item.Item2</span>
+                    </div>
+                }
+                <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;
+                            background:rgba(30,58,95,.35);
+                            font-size:@(_sidebarFontSize)px;font-family:@_sidebarFont,Inter,system-ui,sans-serif;
+                            color:#93c5fd">
+                    <span>🏛️</span><span>Dış Denetim</span>
+                </div>
+            </div>
+
+            <div class="save-row">
+                <button class="btn btn-primary" @onclick="SaveTheme">Kaydet</button>
+                @if (!string.IsNullOrEmpty(_themeSaveMsg))
+                { <span class="save-msg">@_themeSaveMsg</span> }
+            </div>
+        </div>
     }
 
     @* ════ ŞİRKETLER & ORGANİZASYONLAR ════════════════════════════════ *@
@@ -1159,10 +1225,27 @@
     private string _brandingSaveMsg = "";
 
     // Renkler
-    private string _primaryColor   = "#E1251B";
-    private string _secondaryColor = "#16a34a";
-    private string _sidebarColor   = "#0f1f33";
-    private string _themeSaveMsg   = "";
+    private string _primaryColor     = "#E1251B";
+    private string _secondaryColor   = "#16a34a";
+    private string _sidebarColor     = "#0f1f33";
+    private string _sidebarTextColor = "#94A3B8";
+    private int    _sidebarFontSize  = 13;
+    private string _sidebarFont      = "Inter";
+    private string _themeSaveMsg     = "";
+
+    private static readonly (string Name, string Label)[] _fontOptions =
+    [
+        ("Inter",        "Inter (Varsayılan)"),
+        ("system-ui",    "Sistem Yazı Tipi"),
+        ("Roboto",       "Roboto"),
+        ("'Open Sans'",  "Open Sans"),
+        ("Lato",         "Lato"),
+        ("Nunito",       "Nunito"),
+        ("Poppins",      "Poppins"),
+        ("'DM Sans'",    "DM Sans"),
+        ("Georgia",      "Georgia (Serif)"),
+        ("'Courier New'","Courier New (Mono)"),
+    ];
     private List<string> _riskCategories = [], _riskStrategies = [];
     private Dictionary<string, bool> _riskDetailFields = [];
     private static readonly (string key, string label, string hint)[] _riskDetailFieldDefs =
@@ -1222,8 +1305,11 @@
         _emailSettings  = CfgSvc.GetEmailSettings();
         _appName        = CfgSvc.Get<string>("app_name")      is { Length: > 0 } n  ? n  : "RED";
         _appTagline     = CfgSvc.Get<string>("app_tagline")   is { Length: > 0 } tl ? tl : "Risk · Etik · Denetim";
-        _sidebarColor   = CfgSvc.Get<string>("sidebar_color") is { Length: > 0 } sc ? sc : "#0f1f33";
-        _logoPath       = CfgSvc.Get<string>("logo_path")     ?? "";
+        _sidebarColor     = CfgSvc.Get<string>("sidebar_color")      is { Length: > 0 } sc ? sc : "#0f1f33";
+        _sidebarTextColor = CfgSvc.Get<string>("sidebar_text_color") is { Length: > 0 } tc ? tc : "#94A3B8";
+        _sidebarFontSize  = int.TryParse(CfgSvc.Get<string>("sidebar_font_size"), out var fs) ? fs : 13;
+        _sidebarFont      = CfgSvc.Get<string>("sidebar_font")       is { Length: > 0 } sf ? sf : "Inter";
+        _logoPath         = CfgSvc.Get<string>("logo_path")          ?? "";
         _riskActive     = CfgSvc.IsModuleActive("risk");
         _auditActive    = CfgSvc.IsModuleActive("audit");
         _externalActive = CfgSvc.IsModuleActive("external");
@@ -1330,7 +1416,10 @@
     private void SaveTheme()
     {
         CfgSvc.Set("site_theme", new { primary_color = _primaryColor, secondary_color = _secondaryColor });
-        CfgSvc.Set("sidebar_color", _sidebarColor);
+        CfgSvc.Set("sidebar_color",      _sidebarColor);
+        CfgSvc.Set("sidebar_text_color", _sidebarTextColor);
+        CfgSvc.Set("sidebar_font_size",  _sidebarFontSize.ToString());
+        CfgSvc.Set("sidebar_font",       _sidebarFont);
         _themeSaveMsg = "✓ Kaydedildi";
         _ = Task.Delay(3000).ContinueWith(_ => { _themeSaveMsg = ""; InvokeAsync(StateHasChanged); });
     }

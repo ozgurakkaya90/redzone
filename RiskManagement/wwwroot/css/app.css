@@ -65,13 +65,15 @@
   --blue-100:  #DBEAFE;
 
   /* Sidebar */
-  --sidebar-bg:       #0f1f33;
-  --sidebar-surface:  rgba(255,255,255,.05);
-  --sidebar-border:   rgba(255,255,255,.07);
-  --sidebar-text:     #94A3B8;
+  --sidebar-bg:         #0f1f33;
+  --sidebar-surface:    rgba(255,255,255,.05);
+  --sidebar-border:     rgba(255,255,255,.07);
+  --sidebar-text:       #94A3B8;
   --sidebar-text-hover: #E2E8F0;
-  --sidebar-accent:   var(--navy-700);
-  --sidebar-w:        240px;
+  --sidebar-accent:     var(--navy-700);
+  --sidebar-w:          240px;
+  --sidebar-font-size:  13px;
+  --sidebar-font:       'Inter', system-ui, -apple-system, sans-serif;
 
   /* Spacing */
   --r-sm:  6px;
@@ -169,7 +171,8 @@ body {
   gap: 8px;
   padding: 7px 10px;
   border-radius: var(--r-md);
-  font-size: 13px;
+  font-size: var(--sidebar-font-size);
+  font-family: var(--sidebar-font);
   font-weight: 500;
   color: var(--sidebar-text);
   text-decoration: none;
