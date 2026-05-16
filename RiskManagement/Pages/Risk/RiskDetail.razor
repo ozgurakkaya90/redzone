@@ -906,7 +906,7 @@ else
     private string _fCategory = "", _fSourceType = "internal", _fSource = "", _fHazard = "", _fPossibleImpact = "", _fLegislation = "";
 
     // Accordion
-    private bool[] _expanded = new bool[9];
+    private bool[] _expanded = new bool[9]; // Clone pattern ile güncelleniyor — Blazor değişimi algılasın
 
     // Gözden geçirme
     private DateTime? _reviewMeetingDate;
@@ -944,7 +944,10 @@ else
 
     private void ToggleCard(int i)
     {
-        _expanded[i] = !_expanded[i];
+        // Yeni array oluştur — Blazor array mutation'ını her zaman algılamaz
+        var arr = (bool[])_expanded.Clone();
+        arr[i] = !arr[i];
+        _expanded = arr;
         if (_expanded[i]) OnCardExpanded(i);
     }
 

@@ -2,6 +2,7 @@
 @inject ImportService ImportSvc
 @inject IHttpContextAccessor HttpCtx
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 @if (Visible)
 {
@@ -109,6 +110,15 @@
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public string Title { get; set; } = "";
     [Parameter] public string Module { get; set; } = "";
+
+    private bool _prevVisible;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Visible && !_prevVisible)
+            await JS.InvokeVoidAsync("window.scrollTo", 0, 0);
+        _prevVisible = Visible;
+    }
 
     private IBrowserFile? _file;
     private string _fileSizeLabel = "";
