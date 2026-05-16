@@ -78,7 +78,7 @@
         <div>
             <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em">Organizasyon</div>
             <select class="form-control" @bind="_filterOrg">
-                <option value="">Tümü</option>
+                <option value="0">Tümü</option>
                 @foreach (var o in _organizations) { <option value="@o.Id">@o.Name</option> }
             </select>
         </div>

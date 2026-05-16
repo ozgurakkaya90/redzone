@@ -11,6 +11,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Evaluation> Evaluations => Set<Evaluation>();
     public DbSet<Control> Controls => Set<Control>();
     public DbSet<ActionPlan> ActionPlans => Set<ActionPlan>();
+    public DbSet<AuditPlan> AuditPlans => Set<AuditPlan>();
+    public DbSet<AuditPlanItem> AuditPlanItems => Set<AuditPlanItem>();
     public DbSet<InternalAudit> InternalAudits => Set<InternalAudit>();
     public DbSet<AuditFinding> AuditFindings => Set<AuditFinding>();
     public DbSet<ClosureRequest> ClosureRequests => Set<ClosureRequest>();
@@ -95,10 +97,32 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(a => a.OwnerDept).WithMany().HasForeignKey(a => a.OwnerDeptId)
             .OnDelete(DeleteBehavior.SetNull);
 
+        // AuditPlan
+        mb.Entity<AuditPlan>()
+            .HasOne(p => p.CreatedBy).WithMany().HasForeignKey(p => p.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<AuditPlan>()
+            .HasIndex(p => p.Year);
+        mb.Entity<AuditPlanItem>()
+            .HasOne(i => i.Plan).WithMany(p => p.Items).HasForeignKey(i => i.AuditPlanId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<AuditPlanItem>()
+            .HasOne(i => i.Responsible).WithMany().HasForeignKey(i => i.ResponsibleId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<AuditPlanItem>()
+            .HasOne(i => i.Department).WithMany().HasForeignKey(i => i.DepartmentId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // InternalAudit
         mb.Entity<InternalAudit>()
             .HasOne(a => a.LeadAuditor).WithMany().HasForeignKey(a => a.LeadAuditorId)
             .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<InternalAudit>()
+            .HasOne(a => a.Department).WithMany().HasForeignKey(a => a.DepartmentId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<InternalAudit>()
+            .HasOne(a => a.AuditPlanItem).WithMany().HasForeignKey(a => a.AuditPlanItemId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // AuditFinding
         mb.Entity<AuditFinding>()

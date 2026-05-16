@@ -260,7 +260,7 @@
 @code {
     private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
     private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private bool IsCommitteeOrOwner => Role is "admin" or "committee" or "risk_owner";
+    private bool IsCommitteeOrOwner => Role is "admin" or "committee" or "risk_owner" or "risk_manager";
     private bool _showImport;
 
     private List<Control> _allControls = [];

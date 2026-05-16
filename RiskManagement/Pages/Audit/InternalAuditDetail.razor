@@ -37,6 +37,15 @@ else
                         @if (_audit.EndDate.HasValue) { <span> – @_audit.EndDate.Value.ToString("dd.MM.yyyy")</span> }
                         </span>
                     }
+                    @if (_audit.AuditPlanItem != null)
+                    {
+                        <span> &nbsp;•
+                            <a href="/audit/plan"
+                               style="color:#0369a1;font-size:12px">
+                                📅 @_audit.AuditPlanItem.Plan.Year Denetim Planı'ndan
+                            </a>
+                        </span>
+                    }
                 </div>
             </div>
             <a href="/audit/internal" class="btn btn-outline btn-sm">← Listeye Dön</a>
@@ -45,14 +54,29 @@ else
         @if (!string.IsNullOrEmpty(_error))   { <div class="alert alert-error">@_error</div> }
         @if (!string.IsNullOrEmpty(_success)) { <div class="alert alert-success">@_success</div> }
 
-        @if (!string.IsNullOrEmpty(_audit.Scope) || _audit.AuditedUnit != null)
+        @if (!string.IsNullOrEmpty(_audit.Scope) || _audit.AuditedUnit != null || _audit.Department != null)
         {
             <div class="card">
-                @if (_audit.AuditedUnit != null)
+                @if (_audit.Department != null || _audit.AuditedUnit != null)
                 {
                     <div style="margin-bottom:10px">
                         <div class="form-label">Denetlenen Birim</div>
-                        <span class="badge badge-blue" style="font-size:13px">🏢 @_audit.AuditedUnit</span>
+                        @if (_audit.Department != null)
+                        {
+                            <span class="badge badge-blue" style="font-size:13px">🏢 @_audit.Department.Name</span>
+                            @if (_audit.Department.Organization != null)
+                            {
+                                <span style="font-size:11px;color:var(--text-3);margin-left:6px">
+                                    @_audit.Department.Organization.Name
+                                    @if (_audit.Department.Organization.Company != null)
+                                    { <span> · @_audit.Department.Organization.Company.Name</span> }
+                                </span>
+                            }
+                        }
+                        else
+                        {
+                            <span class="badge badge-blue" style="font-size:13px">🏢 @_audit.AuditedUnit</span>
+                        }
                     </div>
                 }
                 @if (!string.IsNullOrEmpty(_audit.Scope))
@@ -95,7 +119,7 @@ else
                         <select class="form-control" @bind="_editType">
                             <option value="">— Seçiniz —</option>
                             @foreach (var t in _auditTypes)
-                            { <option value="@t.Value">@t.Label</option> }
+                            { <option value="@t">@t</option> }
                         </select>
                     </div>
                     <div class="form-group">
@@ -207,7 +231,7 @@ else
     private string _error = "", _success = "";
     private string _editTitle = "", _editType = "", _editUnit = "", _editScope = "", _editPeriod = "";
     private DateTime? _editStart, _editEnd;
-    private AuditTypeOption[] _auditTypes = [];
+    private List<string> _auditTypes = [];
     private List<RiskManagement.Models.Department> _departments = [];
 
     private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
@@ -218,7 +242,7 @@ else
     protected override void OnInitialized()
     {
         Load();
-        _auditTypes = CfgSvc.Get<AuditTypeOption[]>("audit_types") ?? [];
+        _auditTypes = [.. CfgSvc.GetList("audit_types")];
         _departments = [.. Db.Departments.OrderBy(d => d.Name)];
     }
 
@@ -288,7 +312,4 @@ else
         "Orta" => "badge-yellow", "Düşük" => "badge-blue", _ => ""
     };
 
-    private record AuditTypeOption(
-        [property: JsonPropertyName("value")] string Value,
-        [property: JsonPropertyName("label")] string Label);
 }

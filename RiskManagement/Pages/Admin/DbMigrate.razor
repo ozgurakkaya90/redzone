@@ -1,0 +1,253 @@
+@page "/admin/db-migrate"
+@attribute [Authorize(Roles = "admin")]
+@inject AppDbContext Db
+@inject ILogger<DbMigrate> Logger
+@inject NavigationManager Nav
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Veritabanı Migration</PageTitle>
+
+<div style="max-width:760px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+        <a href="/admin/config" class="btn btn-outline btn-sm">← Yapılandırma</a>
+        <div>
+            <h1 style="margin:0;font-size:22px;font-weight:800">Veritabanı Migration</h1>
+            <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+                Bekleyen migration'ları uygula ve tablo durumunu kontrol et
+            </div>
+        </div>
+    </div>
+
+    @* ── Durum ── *@
+    <div class="card" style="padding:20px;margin-bottom:16px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:14px">📊 Migration Durumu</div>
+
+        @if (_pending.Count == 0 && _applied.Count > 0)
+        {
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
+                        background:#f0fdf4;border:1px solid #86efac;border-radius:8px;margin-bottom:12px">
+                <span style="font-size:20px">✅</span>
+                <div>
+                    <div style="font-size:13px;font-weight:700;color:#166534">Tüm migration'lar uygulanmış</div>
+                    <div style="font-size:12px;color:#16a34a">@_applied.Count migration uygulandı.</div>
+                </div>
+            </div>
+        }
+
+        @if (_pending.Count > 0)
+        {
+            <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
+                        background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;margin-bottom:12px">
+                <span style="font-size:20px">⚠️</span>
+                <div>
+                    <div style="font-size:13px;font-weight:700;color:#92400e">@_pending.Count bekleyen migration</div>
+                    <div style="font-size:12px;color:#b45309">Bu migration'lar henüz uygulanmadı.</div>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px">
+                @foreach (var m in _pending)
+                {
+                    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;
+                                background:#fffbeb;border-radius:6px;margin-bottom:4px;font-size:12px">
+                        <span style="color:#f59e0b">⏳</span>
+                        <code style="font-family:monospace">@m</code>
+                    </div>
+                }
+            </div>
+        }
+
+        @if (_applied.Count > 0)
+        {
+            <details>
+                <summary style="font-size:12px;color:var(--text-3);cursor:pointer;margin-bottom:8px">
+                    Uygulanmış migration'ları göster (@_applied.Count)
+                </summary>
+                <div style="margin-top:8px">
+                    @foreach (var m in _applied)
+                    {
+                        <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;
+                                    font-size:11px;font-family:monospace;color:var(--text-3)">
+                            <span style="color:#22c55e">✓</span> @m
+                        </div>
+                    }
+                </div>
+            </details>
+        }
+
+        @if (_loadError != null)
+        {
+            <div style="padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;
+                        font-size:12px;color:#991b1b;margin-bottom:12px">
+                <strong>Durum okunamadı:</strong> @_loadError
+            </div>
+        }
+
+        <div style="display:flex;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+            <button class="btn btn-primary" @onclick="RunMigrations" disabled="@_running">
+                @(_running ? "⏳ Çalışıyor…" : "▶ Migration Çalıştır")
+            </button>
+            <button class="btn btn-outline" @onclick="Refresh" disabled="@_running">
+                🔄 Yenile
+            </button>
+            <button class="btn btn-outline" style="color:#dc2626;border-color:#fca5a5"
+                    @onclick="RestartApp" disabled="@_restarting">
+                @(_restarting ? "⏳ Yeniden başlatılıyor…" : "🔁 Uygulamayı Yeniden Başlat")
+            </button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_restartMsg))
+        {
+            <div style="margin-top:10px;padding:10px 14px;background:#fef3c7;border:1px solid #fcd34d;
+                        border-radius:8px;font-size:13px;color:#92400e">
+                @_restartMsg
+            </div>
+        }
+    </div>
+
+    @* ── Sonuç ── *@
+    @if (_result != null)
+    {
+        var isOk = !_result.StartsWith("Hata");
+        <div style="padding:14px 16px;border-radius:8px;margin-bottom:16px;
+                    background:@(isOk?"#f0fdf4":"#fef2f2");border:1px solid @(isOk?"#86efac":"#fca5a5")">
+            <div style="font-size:13px;font-weight:700;color:@(isOk?"#166534":"#991b1b");margin-bottom:4px">
+                @(isOk ? "✅ Başarılı" : "❌ Hata")
+            </div>
+            <div style="font-size:12px;white-space:pre-wrap;font-family:monospace;color:@(isOk?"#16a34a":"#b91c1c")">@_result</div>
+        </div>
+    }
+
+    @* ── Tablo kontrol ── *@
+    <div class="card" style="padding:20px">
+        <div style="font-size:13px;font-weight:700;margin-bottom:14px">🔍 Kritik Tablo Kontrolü</div>
+
+        @if (_tableChecks.Count == 0)
+        {
+            <button class="btn btn-outline btn-sm" @onclick="CheckTables">Tabloları Kontrol Et</button>
+        }
+        else
+        {
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+                @foreach (var (table, ok, detail) in _tableChecks)
+                {
+                    <div style="padding:10px 12px;border-radius:6px;
+                                background:@(ok?"#f0fdf4":"#fef2f2");border:1px solid @(ok?"#86efac":"#fca5a5")">
+                        <div style="display:flex;gap:6px;align-items:center">
+                            <span>@(ok?"✅":"❌")</span>
+                            <code style="font-size:12px">@table</code>
+                        </div>
+                        @if (!string.IsNullOrEmpty(detail))
+                        { <div style="font-size:11px;color:@(ok?"#16a34a":"#b91c1c");margin-top:4px">@detail</div> }
+                    </div>
+                }
+            </div>
+            <button class="btn btn-outline btn-sm" @onclick="CheckTables">Tekrar Kontrol Et</button>
+        }
+    </div>
+</div>
+
+@code {
+    private List<string> _pending  = [];
+    private List<string> _applied  = [];
+    private string?      _loadError;
+    private string?      _result;
+    private bool         _running;
+    private bool         _restarting;
+    private string       _restartMsg = "";
+    private List<(string Table, bool Ok, string Detail)> _tableChecks = [];
+
+    protected override void OnInitialized() => Refresh();
+
+    private void Refresh()
+    {
+        _loadError = null;
+        try
+        {
+            _applied = [.. Db.Database.GetAppliedMigrations()];
+            _pending = [.. Db.Database.GetPendingMigrations()];
+        }
+        catch (Exception ex)
+        {
+            _loadError = ex.Message;
+            _applied   = [];
+            _pending   = [];
+        }
+    }
+
+    private async Task RunMigrations()
+    {
+        _running = true;
+        _result  = null;
+        StateHasChanged();
+
+        try
+        {
+            await Task.Run(() => Db.Database.Migrate());
+            Refresh();
+            _result = _pending.Count == 0
+                ? "Migration'lar başarıyla uygulandı."
+                : $"Tamamlandı. Hâlâ {_pending.Count} bekleyen migration var.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Migration hatası");
+            _result = $"Hata: {ex.Message}";
+            Refresh();
+        }
+        finally
+        {
+            _running = false;
+        }
+    }
+
+    private async Task RestartApp()
+    {
+        _restarting = true;
+        _restartMsg = "✅ Yeniden başlatma komutu verildi. 10 saniye içinde site tekrar açılacak, lütfen bekleyin…";
+        StateHasChanged();
+
+        // Kısa gecikme — Blazor mesajı render etsin
+        await Task.Delay(300);
+
+        // Systemd Restart=on-failure veya Restart=always ile otomatik yeniden başlar
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(500);
+            Environment.Exit(0);
+        });
+    }
+
+    private void CheckTables()
+    {
+        _tableChecks.Clear();
+        var checks = new[]
+        {
+            ("AuditPlans",     "SELECT COUNT(*) FROM AuditPlans"),
+            ("AuditPlanItems", "SELECT COUNT(*) FROM AuditPlanItems"),
+            ("InternalAudits", "SELECT DepartmentId FROM InternalAudits LIMIT 1"),
+            ("Users",          "SELECT COUNT(*) FROM Users"),
+            ("Departments",    "SELECT COUNT(*) FROM Departments"),
+            ("RiskLibraryItems","SELECT COUNT(*) FROM RiskLibraryItems"),
+        };
+
+        foreach (var (table, sql) in checks)
+        {
+            try
+            {
+                var conn = Db.Database.GetDbConnection();
+                if (conn.State != System.Data.ConnectionState.Open)
+                    conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
+                var val = cmd.ExecuteScalar();
+                _tableChecks.Add((table, true, val?.ToString() is { } v && long.TryParse(v, out var n) ? $"{n} kayıt" : "OK"));
+            }
+            catch (Exception ex)
+            {
+                _tableChecks.Add((table, false, ex.Message.Length > 80 ? ex.Message[..80] + "…" : ex.Message));
+            }
+        }
+        StateHasChanged();
+    }
+}

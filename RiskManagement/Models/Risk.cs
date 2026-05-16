@@ -52,6 +52,8 @@ public class Risk
     public string? LastReviewerName { get; set; }
     public string? LastReviewerTitle { get; set; }
 
+    public int? SourceLibraryItemId { get; set; }
+
     public int? ProposedById { get; set; }
 
     [MaxLength(200)]

@@ -6,47 +6,97 @@
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
-@using System.Text.Json
-@using System.Text.Json.Serialization
 @using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
 
 <PageTitle>Yeni İç Denetim</PageTitle>
 
-<div class="page-header"><h1>Yeni İç Denetim</h1></div>
-<div style="max-width:680px">
-    <div class="card">
-        @if (!string.IsNullOrEmpty(_error)) { <div class="alert alert-error" style="margin-bottom:16px">@_error</div> }
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+    <a href="/audit/internal" class="btn btn-outline btn-sm">← Geri</a>
+    <div>
+        <h1 style="margin:0;font-size:22px;font-weight:800">Yeni İç Denetim</h1>
+        <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+            Plandan bağımsız manuel denetim oluştur
+        </div>
+    </div>
+</div>
 
+<div style="max-width:740px">
+    <div class="card" style="padding:24px">
+        @if (!string.IsNullOrEmpty(_error))
+        { <div class="alert alert-error" style="margin-bottom:16px">@_error</div> }
+
+        @* ── Başlık ── *@
         <div class="form-group">
             <label class="form-label">Denetim Başlığı *</label>
-            <input class="form-control" @bind="_title" maxlength="200" placeholder="örn. 2026 Yılı Mali İşlemler Denetimi" />
+            <input class="form-control" @bind="_title" maxlength="200"
+                   placeholder="örn. 2026 Yılı Mali İşlemler Denetimi" />
         </div>
+
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            @* ── Denetim Türü (config'den) ── *@
             <div class="form-group">
-                <label class="form-label">Denetim Türü *</label>
+                <label class="form-label">Denetim Türü</label>
                 <select class="form-control" @bind="_auditType">
                     <option value="">— Seçiniz —</option>
                     @foreach (var t in _auditTypes)
-                    { <option value="@t.Value">@t.Label</option> }
+                    { <option value="@t">@t</option> }
                 </select>
             </div>
+
+            @* ── Dönem ── *@
             <div class="form-group">
-                <label class="form-label">Denetlenen Birim</label>
-                <select class="form-control" @bind="_auditedUnit">
-                    <option value="">— Seçiniz —</option>
-                    @foreach (var d in _departments)
-                    { <option value="@d.Name">@d.Name</option> }
-                </select>
+                <label class="form-label">Denetim Dönemi *</label>
+                <input class="form-control" @bind="_period" placeholder="örn. @DateTime.Today.Year Q1" />
             </div>
         </div>
-        <div class="form-group">
-            <label class="form-label">Kapsam</label>
-            <textarea class="form-control" rows="3" @bind="_scope" placeholder="Denetimin kapsamını açıklayın."></textarea>
+
+        @* ── Denetlenen Birim — cascading ── *@
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px">
+            <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:10px">
+                Denetlenen Birim
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+                <div>
+                    <label class="form-label">Şirket</label>
+                    <select class="form-control" value="@_companyId" @onchange="OnCompanyChange">
+                        <option value="">— Tümü —</option>
+                        @foreach (var c in _companies)
+                        { <option value="@c.Id">@c.Name</option> }
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Organizasyon</label>
+                    <select class="form-control" value="@_orgId" @onchange="OnOrgChange">
+                        <option value="">— Tümü —</option>
+                        @foreach (var o in FilteredOrgs)
+                        { <option value="@o.Id">@o.Name</option> }
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Departman</label>
+                    <select class="form-control" @bind="_departmentId">
+                        <option value="">— Seçin —</option>
+                        @foreach (var d in FilteredDepts)
+                        {
+                            var hint = d.Organization != null ? $" ({d.Organization.Name})" : "";
+                            <option value="@d.Id">@d.Name@hint</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            @if (_departmentId == null)
+            {
+                <div style="margin-top:8px">
+                    <label class="form-label">veya serbest metin girin</label>
+                    <input class="form-control" @bind="_auditedUnit"
+                           placeholder="Departman seçilmezse buraya girin…"
+                           style="font-size:12px" />
+                </div>
+            }
         </div>
-        <div class="form-group">
-            <label class="form-label">Denetim Dönemi *</label>
-            <input class="form-control" @bind="_period" placeholder="örn. 2026 Q1" />
-        </div>
+
+        @* ── Tarihler ── *@
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <div class="form-group">
                 <label class="form-label">Başlangıç Tarihi</label>
@@ -57,7 +107,15 @@
                 <input type="date" class="form-control" @bind="_endDate" />
             </div>
         </div>
-        <div style="display:flex;gap:10px;margin-top:8px">
+
+        @* ── Kapsam ── *@
+        <div class="form-group">
+            <label class="form-label">Kapsam</label>
+            <textarea class="form-control" rows="3" @bind="_scope"
+                      placeholder="Denetimin kapsamını açıklayın…"></textarea>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:4px">
             <button class="btn btn-primary" @onclick="Submit" disabled="@_loading">
                 @(_loading ? "Kaydediliyor…" : "Denetimi Oluştur")
             </button>
@@ -66,36 +124,71 @@
     </div>
 </div>
 
+<style>
+    .form-label { font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;display:block;margin-bottom:4px }
+</style>
+
 @code {
-    private string _title = "", _auditType = "", _auditedUnit = "", _scope = "", _period = "";
+    private string    _title = "", _auditType = "", _auditedUnit = "", _scope = "", _period = "";
     private DateTime? _startDate, _endDate;
-    private AuditTypeOption[] _auditTypes = [];
-    private List<Department> _departments = [];
-    private bool _loading;
+    private int?      _departmentId, _companyId, _orgId;
+
+    private List<string>       _auditTypes    = [];
+    private List<Company>      _companies     = [];
+    private List<Organization> _organizations = [];
+    private List<Department>   _departments   = [];
+    private bool   _loading;
     private string _error = "";
+
+    private int UserId => int.TryParse(
+        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    private IEnumerable<Organization> FilteredOrgs =>
+        _companyId.HasValue ? _organizations.Where(o => o.CompanyId == _companyId) : _organizations;
+
+    private IEnumerable<Department> FilteredDepts =>
+        _orgId.HasValue      ? _departments.Where(d => d.OrganizationId == _orgId)
+        : _companyId.HasValue ? _departments.Where(d => d.Organization?.CompanyId == _companyId)
+        : _departments;
 
     protected override void OnInitialized()
     {
-        _auditTypes = CfgSvc.Get<AuditTypeOption[]>("audit_types") ?? [];
-        _departments = [.. Db.Departments.OrderBy(d => d.Name)];
+        _auditTypes   = [.. CfgSvc.GetList("audit_types")];
+        _companies    = [.. Db.Companies.OrderBy(c => c.Name)];
+        _organizations= [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
+        _departments  = [.. Db.Departments
+            .Include(d => d.Organization).ThenInclude(o => o!.Company)
+            .OrderBy(d => d.Name)];
+        _period = DateTime.Today.Year.ToString();
+    }
+
+    private void OnCompanyChange(ChangeEventArgs e)
+    {
+        _companyId    = int.TryParse(e.Value?.ToString(), out var cid) && cid > 0 ? cid : (int?)null;
+        _orgId        = null;
+        _departmentId = null;
+    }
+
+    private void OnOrgChange(ChangeEventArgs e)
+    {
+        _orgId        = int.TryParse(e.Value?.ToString(), out var oid) && oid > 0 ? oid : (int?)null;
+        _departmentId = null;
     }
 
     private void Submit()
     {
-        if (string.IsNullOrWhiteSpace(_title)) { _error = "Başlık zorunludur."; return; }
+        if (string.IsNullOrWhiteSpace(_title))  { _error = "Başlık zorunludur."; return; }
         if (string.IsNullOrWhiteSpace(_period)) { _error = "Dönem zorunludur."; return; }
         _loading = true;
-        var userId = int.TryParse(
-            HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
         var start = _startDate.HasValue ? DateOnly.FromDateTime(_startDate.Value) : (DateOnly?)null;
         var end   = _endDate.HasValue   ? DateOnly.FromDateTime(_endDate.Value)   : (DateOnly?)null;
-        var audit = AuditSvc.CreateAudit(_title, _auditType,
-            string.IsNullOrEmpty(_auditedUnit) ? null : _auditedUnit,
-            _scope, _period, start, end, userId);
+        var unit  = _departmentId.HasValue
+            ? _departments.FirstOrDefault(d => d.Id == _departmentId)?.Name
+            : (_auditedUnit.NullIfEmpty());
+        var audit = AuditSvc.CreateAudit(
+            _title, _auditType.NullIfEmpty(), unit,
+            _scope.NullIfEmpty(), _period, start, end, UserId,
+            departmentId: _departmentId);
         Nav.NavigateTo($"/audit/internal/{audit.Id}");
     }
-
-    private record AuditTypeOption(
-        [property: JsonPropertyName("value")] string Value,
-        [property: JsonPropertyName("label")] string Label);
 }

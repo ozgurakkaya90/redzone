@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using RiskManagement.Data;
 
@@ -10,9 +11,11 @@ using RiskManagement.Data;
 namespace RiskManagement.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260514184823_AddAuditPlan")]
+    partial class AddAuditPlan
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "8.0.2");
@@ -256,9 +259,6 @@ namespace RiskManagement.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
-                    b.Property<int?>("DepartmentId")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("Description")
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
@@ -287,8 +287,6 @@ namespace RiskManagement.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("AuditPlanId");
-
-                    b.HasIndex("DepartmentId");
 
                     b.HasIndex("ResponsibleId");
 
@@ -699,9 +697,6 @@ namespace RiskManagement.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
-                    b.Property<int?>("AuditPlanItemId")
-                        .HasColumnType("INTEGER");
-
                     b.Property<string>("AuditType")
                         .HasMaxLength(50)
                         .HasColumnType("TEXT");
@@ -717,9 +712,6 @@ namespace RiskManagement.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
-
-                    b.Property<int?>("DepartmentId")
-                        .HasColumnType("INTEGER");
 
                     b.Property<DateOnly?>("EndDate")
                         .HasColumnType("TEXT");
@@ -750,10 +742,6 @@ namespace RiskManagement.Migrations
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("AuditPlanItemId");
-
-                    b.HasIndex("DepartmentId");
 
                     b.HasIndex("LeadAuditorId");
 
@@ -1399,17 +1387,10 @@ namespace RiskManagement.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("RiskManagement.Models.Department", "Department")
-                        .WithMany()
-                        .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("RiskManagement.Models.User", "Responsible")
                         .WithMany()
                         .HasForeignKey("ResponsibleId")
                         .OnDelete(DeleteBehavior.SetNull);
-
-                    b.Navigation("Department");
 
                     b.Navigation("Plan");
 
@@ -1553,25 +1534,11 @@ namespace RiskManagement.Migrations
 
             modelBuilder.Entity("RiskManagement.Models.InternalAudit", b =>
                 {
-                    b.HasOne("RiskManagement.Models.AuditPlanItem", "AuditPlanItem")
-                        .WithMany()
-                        .HasForeignKey("AuditPlanItemId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("RiskManagement.Models.Department", "Department")
-                        .WithMany()
-                        .HasForeignKey("DepartmentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("RiskManagement.Models.User", "LeadAuditor")
                         .WithMany()
                         .HasForeignKey("LeadAuditorId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("AuditPlanItem");
-
-                    b.Navigation("Department");
 
                     b.Navigation("LeadAuditor");
                 });

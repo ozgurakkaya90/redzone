@@ -6,6 +6,7 @@
 @inject IHttpContextAccessor HttpCtx
 @inject IWebHostEnvironment Env
 @inject AppDbContext Db
+@inject IJSRuntime JS
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Components.Forms
 @using RiskManagement.Models
@@ -183,10 +184,10 @@ else
                 <div class="section-title" style="margin-bottom:0">Ekler</div>
                 @if (HasRole("auditor","admin"))
                 {
-                    <label style="cursor:pointer" class="btn btn-outline btn-sm">
-                        📎 Dosya Ekle
-                        <InputFile OnChange="UploadFiles" multiple style="display:none" />
-                    </label>
+                    <button class="btn btn-outline btn-sm"
+                            @onclick="TriggerFileInput">📎 Dosya Ekle</button>
+                    <InputFile id="finding-file-input" OnChange="UploadFiles"
+                               multiple style="display:none" />
                 }
             </div>
             @if (_uploading) { <div style="font-size:13px;color:#6b7280">Yükleniyor…</div> }
@@ -319,6 +320,11 @@ else
 
     private AuditFinding? _finding;
     private bool _loading, _uploading;
+    private async Task TriggerFileInput()
+    {
+        try { await JS.InvokeVoidAsync("document.getElementById('finding-file-input').click"); }
+        catch { /* dosya seçici açılamadı — sessizce geç */ }
+    }
     private string _error = "", _success = "";
     private string _closureDesc = "", _reviewNote = "";
     private List<IBrowserFile> _closureFiles = [];

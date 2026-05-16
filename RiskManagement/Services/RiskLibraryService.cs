@@ -59,17 +59,18 @@ public class RiskLibraryService(AppDbContext db)
         var year = DateTime.UtcNow.Year;
         var risk = new Risk
         {
-            Code           = $"R-{year}-{CounterHelper.GetNext(db, $"risk-{year}"):D3}",
-            Title          = item.Title,
-            Description    = item.Description,
-            Category       = item.Category,
-            SourceType     = item.SourceType,
-            Hazard         = item.Hazard,
-            PossibleImpact = item.PossibleImpact,
-            RiskStrategy   = item.RiskStrategy,
-            Status         = "proposed",
-            ProposedById   = proposedById,
-            ProposedAt     = DateTime.UtcNow,
+            Code                = $"R-{year}-{CounterHelper.GetNext(db, $"risk-{year}"):D3}",
+            Title               = item.Title,
+            Description         = item.Description,
+            Category            = item.Category,
+            SourceType          = item.SourceType,
+            Hazard              = item.Hazard,
+            PossibleImpact      = item.PossibleImpact,
+            RiskStrategy        = item.RiskStrategy,
+            Status              = "proposed",
+            ProposedById        = proposedById,
+            ProposedAt          = DateTime.UtcNow,
+            SourceLibraryItemId = libraryItemId,
         };
 
         db.Risks.Add(risk);
@@ -79,6 +80,11 @@ public class RiskLibraryService(AppDbContext db)
 
         return risk;
     }
+
+    public HashSet<int> GetProposedLibraryItemIds(int userId) =>
+        [.. db.Risks
+            .Where(r => r.ProposedById == userId && r.SourceLibraryItemId != null)
+            .Select(r => r.SourceLibraryItemId!.Value)];
 
     // ── CRUD ──────────────────────────────────────────────────────────────────
 

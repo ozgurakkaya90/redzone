@@ -193,8 +193,7 @@ else
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if ((IsOwner || IsRiskManager) && HasRiskDetailData)
                     { <button class="btn btn-outline btn-sm" @onclick="() => _showFields = !_showFields">@(_showFields ? "İptal" : "Düzenle")</button> }
-                    <span class="card-chevron" style="transform:rotate(@(_expanded[1]?"180deg":"0deg"))">▼</span>
-                </div>
+                    </div><span class="card-chevron" style="transform:rotate(@(_expanded[1]?"180deg":"0deg"))">▼</span>
             </div>
             @if (_expanded[1]) { <div style="margin-top:14px">
             @if (_showFields)
@@ -315,8 +314,7 @@ else
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if (IsRiskManager && _initial != null)
                     { <button class="btn btn-outline btn-sm" @onclick="ToggleEvalForm">Güncelle</button> }
-                    <span class="card-chevron" style="transform:rotate(@(_expanded[2]?"180deg":"0deg"))">▼</span>
-                </div>
+                    </div><span class="card-chevron" style="transform:rotate(@(_expanded[2]?"180deg":"0deg"))">▼</span>
             </div>
             @if (_expanded[2]) { <div style="margin-top:14px">
 
@@ -345,8 +343,7 @@ else
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if (IsRiskManager && HasMeta)
                     { <button class="btn btn-outline btn-sm" @onclick="ToggleMeta">Güncelle</button> }
-                    <span class="card-chevron" style="transform:rotate(@(_expanded[3]?"180deg":"0deg"))">▼</span>
-                </div>
+                    </div><span class="card-chevron" style="transform:rotate(@(_expanded[3]?"180deg":"0deg"))">▼</span>
             </div>
             @if (_expanded[3]) { <div style="margin-top:14px">
 
@@ -428,8 +425,7 @@ else
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if (IsOwner || IsRiskManager)
                     { <button class="btn btn-outline btn-sm" @onclick="ToggleControlForm">@(_showControl ? "İptal" : "+ Kontrol Ekle")</button> }
-                    <span class="card-chevron" style="transform:rotate(@(_expanded[4]?"180deg":"0deg"))">▼</span>
-                </div>
+                    </div><span class="card-chevron" style="transform:rotate(@(_expanded[4]?"180deg":"0deg"))">▼</span>
             </div>
             @if (_expanded[4]) { <div style="margin-top:14px">
 
@@ -560,8 +556,7 @@ else
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if (IsRiskManager && _residual != null)
                     { <button class="btn btn-outline btn-sm" @onclick="ToggleResidualForm">Güncelle</button> }
-                    <span class="card-chevron" style="transform:rotate(@(_expanded[5]?"180deg":"0deg"))">▼</span>
-                </div>
+                    </div><span class="card-chevron" style="transform:rotate(@(_expanded[5]?"180deg":"0deg"))">▼</span>
             </div>
             @if (_expanded[5]) { <div style="margin-top:14px">
 
@@ -590,8 +585,7 @@ else
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if ((IsOwner || IsRiskManager) && _risk?.Status != "risk_accepted")
                     { <button class="btn btn-outline btn-sm" @onclick="() => _showAction = !_showAction">@(_showAction ? "İptal" : "+ Aksiyon Ekle")</button> }
-                    <span class="card-chevron" style="transform:rotate(@(_expanded[6]?"180deg":"0deg"))">▼</span>
-                </div>
+                    </div><span class="card-chevron" style="transform:rotate(@(_expanded[6]?"180deg":"0deg"))">▼</span>
             </div>
             @if (_expanded[6]) { <div style="margin-top:14px">
 
@@ -730,8 +724,7 @@ else
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if (IsCommittee)
                     { <button class="btn btn-outline btn-sm" @onclick="() => _showReview = !_showReview">@(_showReview ? "İptal" : "+ Ekle")</button> }
-                    <span class="card-chevron" style="transform:rotate(@(_expanded[7]?"180deg":"0deg"))">▼</span>
-                </div>
+                    </div><span class="card-chevron" style="transform:rotate(@(_expanded[7]?"180deg":"0deg"))">▼</span>
             </div>
             @if (_expanded[7]) { <div style="margin-top:14px">
             @if (_showReview)

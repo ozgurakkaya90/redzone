@@ -1,0 +1,897 @@
+@page "/audit/plan"
+@attribute [Authorize(Roles = "auditor,audit_manager,admin")]
+@inject AuditService AuditSvc
+@inject ConfigService CfgSvc
+@inject AppDbContext Db
+@inject IHttpContextAccessor HttpCtx
+@inject NavigationManager Nav
+@using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Denetim Planı</PageTitle>
+
+@* ── Üst başlık ── *@
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+    <div>
+        <h1 style="margin:0;font-size:22px;font-weight:800">Denetim Planı</h1>
+        <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+            Yıllık denetim programı · planlanan ve gerçekleşen tarihler
+        </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-outline btn-sm" @onclick="PrevYear" disabled="@(_year <= DateTime.Today.Year - 5)">‹</button>
+        <span style="font-size:16px;font-weight:700;min-width:50px;text-align:center">@_year</span>
+        <button class="btn btn-outline btn-sm" @onclick="NextYear" disabled="@(_year >= DateTime.Today.Year + 3)">›</button>
+        @if (_plan == null)
+        {
+            <button class="btn btn-primary btn-sm" @onclick="ShowCreatePlan">+ Plan Oluştur</button>
+        }
+        else
+        {
+            <button class="btn btn-primary btn-sm" @onclick="() => { _showItemForm=true; _editItem=null; ResetForm(); }">
+                + Denetim Ekle
+            </button>
+        }
+    </div>
+</div>
+
+@* ── Sayfa düzeyinde hata (migration eksikse burada görünür) ── *@
+@if (!string.IsNullOrEmpty(_pageError))
+{
+    <div class="alert alert-error" style="margin-bottom:16px;display:flex;gap:12px;align-items:flex-start">
+        <span style="font-size:18px">⚠️</span>
+        <div>
+            <div style="font-weight:700;margin-bottom:4px">Veritabanı Hatası</div>
+            <div style="font-size:13px">@_pageError</div>
+            <div style="font-size:12px;margin-top:6px;color:#7f1d1d">
+                Çözüm: Admin panelinden <a href="/admin/db-migrate" style="color:#dc2626;font-weight:600">Veritabanı Migration</a> sayfasını açın ve "Migration Çalıştır" butonuna tıklayın.
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Plan oluşturma formu ── *@
+@if (_showCreatePlan)
+{
+    <div class="card" style="padding:20px;margin-bottom:20px;border:2px solid var(--primary)">
+        <div style="font-size:14px;font-weight:700;margin-bottom:14px">@_year Yılı Denetim Planı Oluştur</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
+            <div style="flex:1;min-width:260px">
+                <label class="form-label">Plan Adı</label>
+                <input class="form-control" @bind="_planTitle" placeholder="örn. 2026 Yıllık Denetim Programı" />
+            </div>
+            <div style="flex:2;min-width:260px">
+                <label class="form-label">Açıklama (isteğe bağlı)</label>
+                <input class="form-control" @bind="_planDesc" placeholder="Kısa açıklama…" />
+            </div>
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-primary btn-sm" @onclick="CreatePlan">Oluştur</button>
+                <button class="btn btn-outline btn-sm" @onclick="() => _showCreatePlan=false">İptal</button>
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(_formError))
+        { <div style="color:#dc2626;font-size:12px;margin-top:8px">@_formError</div> }
+    </div>
+}
+
+@if (_plan == null && !_showCreatePlan)
+{
+    <div class="card" style="padding:60px;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">📅</div>
+        <div style="font-size:15px;font-weight:700;color:var(--text-2)">@_year için denetim planı bulunamadı</div>
+        <div style="font-size:13px;color:var(--text-3);margin-top:6px;margin-bottom:20px">
+            Yıllık denetim programınızı oluşturarak başlayın.
+        </div>
+        <button class="btn btn-primary btn-sm" @onclick="ShowCreatePlan">+ @_year Planı Oluştur</button>
+    </div>
+}
+
+@if (_plan != null)
+{
+    @* ── Özet kartlar ── *@
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+        @foreach (var (label, count, color, icon) in SummaryCards())
+        {
+            <div class="card" style="padding:14px 16px;border-top:3px solid @color">
+                <div style="font-size:22px;font-weight:800;color:@color">@count</div>
+                <div style="font-size:11px;color:var(--text-3);margin-top:2px">@icon @label</div>
+            </div>
+        }
+    </div>
+
+    @* ── Gantt çizelgesi ── *@
+    <div class="card" style="padding:16px;margin-bottom:20px;overflow-x:auto">
+        <div style="font-size:13px;font-weight:700;margin-bottom:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
+            <span>📊 Zaman Çizelgesi — @_year</span>
+            <span style="font-size:11px;font-weight:400;color:var(--text-3);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+                <span><span style="display:inline-block;width:12px;height:4px;background:#c7d2fe;border-radius:2px;vertical-align:middle"></span> Planlanan</span>
+                <span><span style="display:inline-block;width:12px;height:4px;background:#22c55e;border-radius:2px;vertical-align:middle"></span> Tamamlandı</span>
+                <span><span style="display:inline-block;width:12px;height:4px;background:#3b82f6;border-radius:2px;vertical-align:middle"></span> Devam Ediyor</span>
+                <span><span style="display:inline-block;width:12px;height:4px;background:#f59e0b;border-radius:2px;vertical-align:middle"></span> Gecikmeli Tamam</span>
+                <span><span style="display:inline-block;width:12px;height:4px;background:#ef4444;border-radius:2px;vertical-align:middle"></span> Gecikmiş</span>
+            </span>
+        </div>
+
+        <div style="min-width:700px">
+            @* Ay başlıkları *@
+            <div style="display:grid;grid-template-columns:200px 1fr;margin-bottom:4px">
+                <div></div>
+                <div style="display:grid;grid-template-columns:repeat(12,1fr);border-left:1px solid #e2e8f0">
+                    @foreach (var m in _months)
+                    {
+                        <div style="text-align:center;font-size:10px;font-weight:600;color:var(--text-3);
+                                    padding:2px 0;border-right:1px solid #e2e8f0;
+                                    @(m.Num==DateTime.Today.Month&&_year==DateTime.Today.Year?"background:#eff6ff":"")">
+                            @m.Short
+                        </div>
+                    }
+                </div>
+            </div>
+
+            @if (!_plan.Items.Any())
+            {
+                <div style="text-align:center;padding:30px;color:var(--text-3);font-size:13px">
+                    Henüz denetim planlanmadı.
+                </div>
+            }
+            @foreach (var item in _plan.Items)
+            {
+                var status = AuditService.GetItemStatus(item);
+                var barColor = StatusBarColor(status);
+                var plannedLeft  = DayPct(item.PlannedStartDate);
+                var plannedWidth = DayPct(item.PlannedEndDate) - plannedLeft;
+                var actualLeft   = item.ActualStartDate.HasValue ? DayPct(item.ActualStartDate.Value) : (double?)null;
+                var actualEnd    = item.ActualEndDate ?? DateOnly.FromDateTime(DateTime.Today);
+                var actualWidth  = actualLeft.HasValue ? DayPct(actualEnd) - actualLeft.Value : (double?)null;
+                var unitLabel    = UnitLabel(item);
+
+                <div style="display:grid;grid-template-columns:200px 1fr;margin-bottom:2px">
+                    <div style="font-size:12px;font-weight:500;padding:4px 8px 4px 0;line-height:24px;
+                                overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="@item.Title @unitLabel">
+                        @StatusDot(status) @item.Title
+                        @if (!string.IsNullOrEmpty(unitLabel))
+                        { <span style="font-size:10px;color:var(--text-3)"> · @unitLabel</span> }
+                        @if (_linkedAudits.ContainsKey(item.Id))
+                        { <span style="font-size:9px;background:#dbeafe;color:#1d4ed8;padding:1px 4px;border-radius:3px;margin-left:2px">ID</span> }
+                    </div>
+                    <div style="position:relative;height:24px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0"
+                         @onmouseenter="() => _hoveredItem=item.Id"
+                         @onmouseleave="() => _hoveredItem=0">
+                        @for (int m = 1; m <= 12; m++)
+                        {
+                            var ml = (m-1)*(100.0/12);
+                            <div style="position:absolute;left:@Pct(ml)%;top:0;bottom:0;width:1px;background:#e2e8f0;"></div>
+                        }
+                        @if (_year == DateTime.Today.Year)
+                        {
+                            <div style="position:absolute;left:@Pct(TodayPct())%;top:0;bottom:0;width:1px;background:#f97316;z-index:2;"></div>
+                        }
+                        @* Planlanan bar *@
+                        <div style="position:absolute;left:@Pct(plannedLeft)%;width:@Pct(Math.Max(plannedWidth,0.5))%;
+                                    top:4px;height:8px;background:#c7d2fe;border-radius:4px;z-index:1;
+                                    title='Plan: @item.PlannedStartDate.ToString("dd.MM") – @item.PlannedEndDate.ToString("dd.MM")'">
+                        </div>
+                        @* Gerçekleşen bar *@
+                        @if (actualLeft.HasValue)
+                        {
+                            <div style="position:absolute;left:@Pct(actualLeft.Value)%;width:@Pct(Math.Max(actualWidth!.Value,0.5))%;
+                                        top:13px;height:8px;background:@barColor;border-radius:4px;z-index:1;opacity:.9">
+                            </div>
+                        }
+                        <div style="position:absolute;inset:0;cursor:pointer;z-index:3" @onclick="() => StartEdit(item)"></div>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    @* ── Madde listesi ── *@
+    <div class="card" style="padding:0;overflow-x:auto;margin-bottom:20px">
+        <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid #f1f5f9;
+                    display:flex;justify-content:space-between;align-items:center">
+            <span>📋 Planlanan Denetimler</span>
+            <span style="font-size:11px;font-weight:400;color:var(--text-3)">@_plan.Items.Count denetim</span>
+        </div>
+        @if (!_plan.Items.Any())
+        {
+            <div style="padding:30px;text-align:center;color:var(--text-3);font-size:13px">Henüz denetim planlanmadı.</div>
+        }
+        else
+        {
+            <table class="table" style="font-size:12px">
+                <thead>
+                    <tr>
+                        <th style="width:24px">#</th>
+                        <th>Başlık</th>
+                        <th style="width:130px">Tür</th>
+                        <th style="width:170px">Denetlenen Birim</th>
+                        <th style="width:86px;text-align:center">Plan Baş.</th>
+                        <th style="width:86px;text-align:center">Plan Bit.</th>
+                        <th style="width:64px;text-align:right">Plan (gün)</th>
+                        <th style="width:86px;text-align:center">Gerç. Baş.</th>
+                        <th style="width:86px;text-align:center">Gerç. Bit.</th>
+                        <th style="width:64px;text-align:right">Gerç. (gün)</th>
+                        <th style="width:90px;text-align:center">Durum</th>
+                        <th style="width:84px"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in _plan.Items)
+                    {
+                        var itemId = item.Id;   // closure için açıkça yakala
+                        var st   = AuditService.GetItemStatus(item);
+                        var pDays = item.PlannedEndDate.DayNumber - item.PlannedStartDate.DayNumber + 1;
+                        var aDays = (item.ActualStartDate.HasValue && item.ActualEndDate.HasValue)
+                            ? item.ActualEndDate.Value.DayNumber - item.ActualStartDate.Value.DayNumber + 1
+                            : (int?)null;
+                        var daysColor = aDays.HasValue
+                            ? (aDays.Value > pDays ? "#dc2626" : aDays.Value < pDays ? "#16a34a" : "var(--text-1)")
+                            : "var(--text-3)";
+                        <tr>
+                            <td style="color:var(--text-3);font-size:11px">@item.SortOrder</td>
+                            <td style="font-weight:600;max-width:180px">
+                                @item.Title
+                                @if (!string.IsNullOrEmpty(item.Notes))
+                                { <div style="font-size:11px;font-weight:400;color:var(--text-3)">@item.Notes</div> }
+                            </td>
+                            <td style="color:var(--text-3)">@(item.AuditType ?? "—")</td>
+                            <td>
+                                @if (item.Department != null)
+                                {
+                                    <div style="font-size:12px;font-weight:500">@item.Department.Name</div>
+                                    @if (item.Department.Organization != null)
+                                    {
+                                        <div style="font-size:10px;color:var(--text-3)">
+                                            @item.Department.Organization.Name
+                                            @if (item.Department.Organization.Company != null)
+                                            { <span> · @item.Department.Organization.Company.Name</span> }
+                                        </div>
+                                    }
+                                }
+                                else if (!string.IsNullOrEmpty(item.AuditedUnit))
+                                { <span style="color:var(--text-3)">@item.AuditedUnit</span> }
+                                else
+                                { <span style="color:var(--text-3)">—</span> }
+                            </td>
+                            <td style="text-align:center">@item.PlannedStartDate.ToString("dd.MM")</td>
+                            <td style="text-align:center">@item.PlannedEndDate.ToString("dd.MM")</td>
+                            <td style="text-align:right;font-weight:600">@pDays</td>
+                            <td style="text-align:center;color:@(item.ActualStartDate.HasValue?"var(--text-1)":"var(--text-3)")">
+                                @(item.ActualStartDate?.ToString("dd.MM") ?? "—")
+                            </td>
+                            <td style="text-align:center;color:@(item.ActualEndDate.HasValue?"var(--text-1)":"var(--text-3)")">
+                                @(item.ActualEndDate?.ToString("dd.MM") ?? "—")
+                            </td>
+                            <td style="text-align:right;font-weight:600;color:@daysColor">
+                                @(aDays.HasValue ? aDays.Value.ToString() : "—")
+                                @if (aDays.HasValue && aDays.Value != pDays)
+                                {
+                                    var diff = aDays.Value - pDays;
+                                    <span style="font-size:10px;font-weight:400">
+                                        @(diff > 0 ? $" +{diff}" : $" {diff}")
+                                    </span>
+                                }
+                            </td>
+                            <td style="text-align:center">@StatusBadge(st)</td>
+                            <td style="text-align:right">
+                                <div style="display:flex;gap:4px;justify-content:flex-end;flex-wrap:wrap">
+                                    @{
+                                        var linkedAudit = _linkedAudits.GetValueOrDefault(item.Id);
+                                    }
+                                    @if (linkedAudit != null)
+                                    {
+                                        @* Bağlı iç denetim var — linke tıklayınca detaya gider *@
+                                        <a href="/audit/internal/@linkedAudit.Id"
+                                           class="btn btn-outline btn-sm"
+                                           style="padding:2px 8px;font-size:11px;color:#0369a1;border-color:#bae6fd"
+                                           title="Bağlı denetim: @linkedAudit.Code">
+                                            📋 @linkedAudit.Code
+                                        </a>
+                                    }
+                                    else if (st is "planned" or "late")
+                                    {
+                                        @* Henüz başlatılmamış — Denetimi Başlat butonu *@
+                                        <button class="btn btn-sm"
+                                                style="padding:2px 8px;font-size:11px;
+                                                       background:@(st=="late"?"#fef3c7":"#f0fdf4");
+                                                       color:@(st=="late"?"#92400e":"#16a34a");
+                                                       border:1px solid @(st=="late"?"#fcd34d":"#86efac")"
+                                                @onclick="() => PromptConvert(item)">
+                                            ▶ Denetimi Başlat
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        @* Devam ediyor veya tamamlandı — başlat butonu gösterilmez *@
+                                        <span></span>
+                                    }
+                                    <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px"
+                                            @onclick="() => StartEdit(item)">Düzenle</button>
+                                    <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;color:#dc2626"
+                                            @onclick="() => RequestDelete(itemId)">Sil</button>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@* ── Madde ekleme/düzenleme formu ── *@
+@if (_showItemForm && _plan != null)
+{
+    <div class="card" style="padding:20px;border:2px solid var(--primary);margin-bottom:20px">
+        <div style="font-size:14px;font-weight:700;margin-bottom:16px">
+            @(_editItem == null ? "Yeni Denetim Planla" : "Denetimi Düzenle")
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+
+            @* Başlık — tam satır *@
+            <div style="grid-column:1/-1">
+                <label class="form-label">Başlık *</label>
+                <input class="form-control" @bind="_fTitle" placeholder="Denetim konusu…" />
+            </div>
+
+            @* Denetim Türü — config'den *@
+            <div>
+                <label class="form-label">Denetim Türü</label>
+                <select class="form-control" @bind="_fAuditType">
+                    <option value="">— Seçiniz —</option>
+                    @foreach (var t in _auditPlanTypes)
+                    { <option value="@t">@t</option> }
+                </select>
+            </div>
+
+            @* Şirket filtresi *@
+            <div>
+                <label class="form-label">Şirket</label>
+                <select class="form-control" value="@_fCompanyId" @onchange="OnCompanyChange">
+                    <option value="">— Tüm Şirketler —</option>
+                    @foreach (var c in _companies)
+                    { <option value="@c.Id">@c.Name</option> }
+                </select>
+            </div>
+
+            @* Organizasyon filtresi *@
+            <div>
+                <label class="form-label">Organizasyon</label>
+                <select class="form-control" value="@_fOrgId" @onchange="OnOrgChange">
+                    <option value="">— Tüm Organizasyonlar —</option>
+                    @foreach (var o in FilteredOrgs)
+                    { <option value="@o.Id">@o.Name</option> }
+                </select>
+            </div>
+
+            @* Denetlenen Birim (Departman) *@
+            <div>
+                <label class="form-label">Denetlenen Birim (Departman)</label>
+                <select class="form-control" @bind="_fDepartmentId">
+                    <option value="">— Departman Seçin —</option>
+                    @foreach (var d in FilteredDepts)
+                    {
+                        var hint = d.Organization != null ? $" ({d.Organization.Name})" : "";
+                        <option value="@d.Id">@d.Name@hint</option>
+                    }
+                </select>
+                @if (_fDepartmentId == null)
+                {
+                    <div style="margin-top:4px">
+                        <input class="form-control" @bind="_fAuditedUnit" placeholder="veya serbest metin girin…"
+                               style="font-size:12px;padding:5px 8px" />
+                    </div>
+                }
+            </div>
+
+            @* Planlanan tarihler *@
+            <div>
+                <label class="form-label">Planlanan Başlangıç *</label>
+                <input type="date" class="form-control" @bind="_fPlannedStart" />
+            </div>
+            <div>
+                <label class="form-label">Planlanan Bitiş *</label>
+                <input type="date" class="form-control" @bind="_fPlannedEnd" />
+            </div>
+
+            @* Planlanan süre özeti *@
+            @if (_fPlannedStart.HasValue && _fPlannedEnd.HasValue && _fPlannedEnd >= _fPlannedStart)
+            {
+                var pDays = (int)(_fPlannedEnd.Value - _fPlannedStart.Value).TotalDays + 1;
+                <div style="grid-column:1/-1">
+                    <span style="font-size:12px;background:#eff6ff;color:#1d4ed8;padding:4px 10px;border-radius:6px">
+                        📅 Planlanan süre: <strong>@pDays gün</strong>
+                    </span>
+                </div>
+            }
+
+            @* Gerçekleşen tarihler *@
+            <div>
+                <label class="form-label">Gerçekleşen Başlangıç</label>
+                <input type="date" class="form-control" @bind="_fActualStart" />
+            </div>
+            <div>
+                <label class="form-label">Gerçekleşen Bitiş</label>
+                <input type="date" class="form-control" @bind="_fActualEnd" />
+            </div>
+
+            @* Gerçekleşen süre özeti *@
+            @if (_fActualStart.HasValue && _fActualEnd.HasValue && _fActualEnd >= _fActualStart)
+            {
+                var aDays = (int)(_fActualEnd.Value - _fActualStart.Value).TotalDays + 1;
+                var pDays2 = (_fPlannedStart.HasValue && _fPlannedEnd.HasValue && _fPlannedEnd >= _fPlannedStart)
+                    ? (int)(_fPlannedEnd.Value - _fPlannedStart.Value).TotalDays + 1 : (int?)null;
+                var diff   = pDays2.HasValue ? aDays - pDays2.Value : (int?)null;
+                var diffColor = diff.HasValue ? (diff.Value > 0 ? "#dc2626" : diff.Value < 0 ? "#16a34a" : "#1d4ed8") : "#1d4ed8";
+                <div style="grid-column:1/-1">
+                    <span style="font-size:12px;background:#f0fdf4;color:#166534;padding:4px 10px;border-radius:6px">
+                        ✅ Gerçekleşen süre: <strong>@aDays gün</strong>
+                        @if (diff.HasValue && diff.Value != 0)
+                        {
+                            <span style="color:@diffColor;margin-left:6px">
+                                (@(diff.Value > 0 ? $"+{diff.Value}" : diff.Value.ToString()) gün @(diff.Value > 0 ? "fazla" : "az"))
+                            </span>
+                        }
+                    </span>
+                </div>
+            }
+
+            @* Notlar *@
+            <div style="grid-column:1/-1">
+                <label class="form-label">Notlar</label>
+                <input class="form-control" @bind="_fNotes" placeholder="İsteğe bağlı not…" />
+            </div>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_formError))
+        { <div style="color:#dc2626;font-size:12px;margin-top:8px">@_formError</div> }
+        <div style="display:flex;gap:8px;margin-top:16px">
+            <button class="btn btn-primary btn-sm" @onclick="SaveItem">
+                @(_editItem == null ? "Plana Ekle" : "Kaydet")
+            </button>
+            <button class="btn btn-outline btn-sm" @onclick="CancelItemForm">İptal</button>
+        </div>
+    </div>
+}
+
+@* ── Denetime Dönüştür modalı ── *@
+@if (_convertItem != null)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;
+                display:flex;align-items:center;justify-content:center">
+        <div class="card" style="padding:24px;max-width:460px;width:92%">
+            <div style="font-size:15px;font-weight:700;margin-bottom:4px">İç Denetim Oluştur</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:16px">
+                <strong>@_convertItem.Title</strong> plan maddesinden otomatik iç denetim oluşturulacak.
+                Denetim bilgileri plandan alınacak; daha sonra düzenleyebilirsiniz.
+            </div>
+
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:16px;font-size:12px">
+                <div style="display:grid;grid-template-columns:auto 1fr;gap:4px 10px">
+                    <span style="color:var(--text-3)">Başlık:</span>    <strong>@_convertItem.Title</strong>
+                    <span style="color:var(--text-3)">Tür:</span>       <span>@(_convertItem.AuditType ?? "—")</span>
+                    <span style="color:var(--text-3)">Birim:</span>     <span>@UnitLabel(_convertItem)</span>
+                    <span style="color:var(--text-3)">Plan tarihi:</span>
+                    <span>@_convertItem.PlannedStartDate.ToString("dd.MM.yyyy") – @_convertItem.PlannedEndDate.ToString("dd.MM.yyyy")</span>
+                </div>
+            </div>
+
+            <div style="margin-bottom:14px">
+                <label class="form-label">Baş Denetçi</label>
+                <select class="form-control" @bind="_convertLeadId">
+                    @foreach (var u in _auditorUsers)
+                    { <option value="@u.Id">@u.FullName</option> }
+                </select>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_convertError))
+            { <div style="color:#dc2626;font-size:12px;margin-bottom:10px">@_convertError</div> }
+
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-primary btn-sm" @onclick="ConfirmConvert">Denetim Oluştur</button>
+                <button class="btn btn-outline btn-sm" @onclick="CancelConvert">İptal</button>
+            </div>
+        </div>
+    </div>
+}
+
+@* ── Silme onayı ── *@
+@if (_deleteItemId > 0)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;
+                display:flex;align-items:center;justify-content:center">
+        <div class="card" style="padding:24px;max-width:380px;width:92%">
+            <div style="font-size:14px;font-weight:700;margin-bottom:8px">🗑 Denetimi Sil</div>
+            <div style="font-size:13px;color:var(--text-3);margin-bottom:16px">
+                Bu planlanan denetim kaydı silinecek. Bu işlem geri alınamaz.
+            </div>
+            @if (!string.IsNullOrEmpty(_deleteError))
+            {
+                <div style="font-size:12px;color:#dc2626;background:#fef2f2;padding:8px 10px;
+                            border-radius:6px;margin-bottom:12px">@_deleteError</div>
+            }
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-sm" style="background:#dc2626;color:#fff;border:none"
+                        @onclick="ConfirmDelete">Sil</button>
+                <button class="btn btn-outline btn-sm" @onclick="CancelDelete">İptal</button>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .form-label { font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;display:block;margin-bottom:4px }
+</style>
+
+@code {
+    private int UserId => int.TryParse(
+        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    // ── Sayfa durumu ──────────────────────────────────────────────────────────
+    private int          _year         = DateTime.Today.Year;
+    private AuditPlan?   _plan;
+    private bool         _showCreatePlan;
+    private bool         _showItemForm;
+    private AuditPlanItem? _editItem;
+    private int          _hoveredItem;
+    private int          _deleteItemId;
+
+    // ── Yapılandırma & referans veriler ──────────────────────────────────────
+    private List<string>          _auditPlanTypes = [];
+    private List<Company>         _companies      = [];
+    private List<Organization>    _organizations  = [];
+    private List<Department>      _departments    = [];
+    private List<User>            _auditorUsers   = [];
+    // planItemId → bağlı InternalAudit (varsa)
+    private Dictionary<int, InternalAudit> _linkedAudits = [];
+
+    // ── Dönüştürme modalı ────────────────────────────────────────────────────
+    private AuditPlanItem? _convertItem;
+    private int            _convertLeadId;
+    private string         _convertError = "";
+
+    // ── Plan oluşturma formu ──────────────────────────────────────────────────
+    private string _planTitle = "";
+    private string _planDesc  = "";
+
+    // ── Madde formu ───────────────────────────────────────────────────────────
+    private string    _fTitle        = "";
+    private string    _fAuditType    = "";
+    private int?      _fDepartmentId;
+    private string    _fAuditedUnit  = "";   // serbest metin fallback
+    private int?      _fCompanyId;
+    private int?      _fOrgId;
+    private DateTime? _fPlannedStart;
+    private DateTime? _fPlannedEnd;
+    private DateTime? _fActualStart;
+    private DateTime? _fActualEnd;
+    private string    _fNotes        = "";
+    private string    _formError     = "";
+    private string    _pageError     = "";
+    private string    _deleteError   = "";
+
+    // ── Cascading filtre yardımcıları ─────────────────────────────────────────
+    private IEnumerable<Organization> FilteredOrgs =>
+        _fCompanyId.HasValue
+            ? _organizations.Where(o => o.CompanyId == _fCompanyId)
+            : _organizations;
+
+    private IEnumerable<Department> FilteredDepts =>
+        _fOrgId.HasValue   ? _departments.Where(d => d.OrganizationId == _fOrgId)
+        : _fCompanyId.HasValue
+            ? _departments.Where(d => d.Organization?.CompanyId == _fCompanyId)
+            : _departments;
+
+    // ── Ay başlıkları ─────────────────────────────────────────────────────────
+    private static readonly (int Num, string Short)[] _months =
+        Enumerable.Range(1, 12)
+            .Select(m => (m, new DateTime(2000, m, 1).ToString("MMM",
+                new System.Globalization.CultureInfo("tr-TR"))))
+            .ToArray();
+
+    // ── Lifecycle ────────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        // audit_types artık birleşik kaynak; audit_plan_types legacy alias
+        _auditPlanTypes = [.. CfgSvc.GetList("audit_types")];
+        if (_auditPlanTypes.Count == 0)
+            _auditPlanTypes = [.. CfgSvc.GetList("audit_plan_types")];
+
+        _companies     = [.. Db.Companies.OrderBy(c => c.Name)];
+        _organizations = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
+        _departments   = [.. Db.Departments
+            .Include(d => d.Organization).ThenInclude(o => o!.Company)
+            .OrderBy(d => d.Name)];
+        // Denetçi kullanıcıları — UserRoles tablosu yoksa tüm aktif kullanıcıları al
+        try
+        {
+            var auditorIds = Db.UserRoles
+                .Where(ur => ur.RoleName == "auditor" || ur.RoleName == "audit_manager")
+                .Select(ur => ur.UserId)
+                .Distinct()
+                .ToHashSet();
+            _auditorUsers = auditorIds.Count > 0
+                ? [.. Db.Users.Where(u => auditorIds.Contains(u.Id) && u.IsActive).OrderBy(u => u.FullName)]
+                : [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
+        }
+        catch
+        {
+            _auditorUsers = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
+        }
+        _convertLeadId = UserId;
+        Load();
+    }
+
+    private void Load()
+    {
+        _pageError    = "";
+        _showItemForm = false;
+        _editItem     = null;
+        try
+        {
+            _plan = AuditSvc.GetPlan(_year);
+        }
+        catch (Exception ex)
+        {
+            _plan      = null;
+            _pageError = $"Denetim planı yüklenemedi: {ex.Message}";
+            return;
+        }
+
+        if (_plan != null)
+        {
+            try
+            {
+                var itemIds = _plan.Items.Select(i => i.Id).ToHashSet();
+                _linkedAudits = Db.InternalAudits
+                    .Where(a => a.AuditPlanItemId != null && itemIds.Contains(a.AuditPlanItemId!.Value))
+                    .ToDictionary(a => a.AuditPlanItemId!.Value, a => a);
+            }
+            catch { _linkedAudits = []; }
+        }
+        else
+        {
+            _linkedAudits = [];
+        }
+    }
+
+    // ── Yıl navigasyonu ───────────────────────────────────────────────────────
+    private void PrevYear() { _year--; Load(); }
+    private void NextYear() { _year++; Load(); }
+
+    // ── Plan oluşturma ────────────────────────────────────────────────────────
+    private void ShowCreatePlan()
+    {
+        _planTitle = $"{_year} Yılı Denetim Planı";
+        _planDesc  = "";
+        _showCreatePlan = true;
+    }
+
+    private void CreatePlan()
+    {
+        _formError = "";
+        if (string.IsNullOrWhiteSpace(_planTitle)) { _formError = "Plan adı zorunludur."; return; }
+        try
+        {
+            var plan = AuditSvc.EnsurePlan(_year, _planTitle.Trim(), UserId);
+            if (!string.IsNullOrWhiteSpace(_planDesc))
+            { plan.Description = _planDesc.Trim(); AuditSvc.UpdatePlan(plan); }
+            _showCreatePlan = false;
+            Load();
+        }
+        catch (Exception ex)
+        {
+            _formError = $"Plan oluşturulamadı — {ex.Message}";
+        }
+    }
+
+    // ── Madde formu ───────────────────────────────────────────────────────────
+    private void ResetForm()
+    {
+        _fTitle = ""; _fAuditType = ""; _fAuditedUnit = ""; _fNotes = "";
+        _fDepartmentId = null; _fCompanyId = null; _fOrgId = null;
+        _fPlannedStart = new DateTime(_year, 1, 1);
+        _fPlannedEnd   = new DateTime(_year, 1, 31);
+        _fActualStart  = null; _fActualEnd = null;
+        _formError     = "";
+    }
+
+    private void StartEdit(AuditPlanItem item)
+    {
+        _editItem      = item;
+        _fTitle        = item.Title;
+        _fAuditType    = item.AuditType ?? "";
+        _fDepartmentId = item.DepartmentId;
+        _fAuditedUnit  = item.AuditedUnit ?? "";
+        _fNotes        = item.Notes ?? "";
+        _fPlannedStart = item.PlannedStartDate.ToDateTime(TimeOnly.MinValue);
+        _fPlannedEnd   = item.PlannedEndDate.ToDateTime(TimeOnly.MinValue);
+        _fActualStart  = item.ActualStartDate?.ToDateTime(TimeOnly.MinValue);
+        _fActualEnd    = item.ActualEndDate?.ToDateTime(TimeOnly.MinValue);
+        _formError     = "";
+
+        // Cascading filtreler: dept'in org ve company'sinden geri türet
+        if (item.DepartmentId.HasValue)
+        {
+            var dept = _departments.FirstOrDefault(d => d.Id == item.DepartmentId);
+            _fOrgId     = dept?.OrganizationId;
+            _fCompanyId = dept?.Organization?.CompanyId;
+        }
+        else { _fOrgId = null; _fCompanyId = null; }
+
+        _showItemForm = true;
+    }
+
+    private void CancelItemForm() { _showItemForm = false; _editItem = null; _formError = ""; }
+
+    private void OnCompanyChange(ChangeEventArgs e)
+    {
+        _fCompanyId    = int.TryParse(e.Value?.ToString(), out var cid) && cid > 0 ? cid : (int?)null;
+        _fOrgId        = null;
+        _fDepartmentId = null;
+    }
+
+    private void OnOrgChange(ChangeEventArgs e)
+    {
+        _fOrgId        = int.TryParse(e.Value?.ToString(), out var oid) && oid > 0 ? oid : (int?)null;
+        _fDepartmentId = null;
+    }
+
+    private void SaveItem()
+    {
+        _formError = "";
+        if (string.IsNullOrWhiteSpace(_fTitle))    { _formError = "Başlık zorunludur."; return; }
+        if (_fPlannedStart == null)                 { _formError = "Planlanan başlangıç tarihi zorunludur."; return; }
+        if (_fPlannedEnd   == null)                 { _formError = "Planlanan bitiş tarihi zorunludur."; return; }
+        if (_fPlannedEnd   < _fPlannedStart)        { _formError = "Planlanan bitiş, başlangıçtan önce olamaz."; return; }
+        if (_fActualEnd != null && _fActualStart == null)
+            { _formError = "Gerçekleşen bitiş için başlangıç tarihi de gerekli."; return; }
+        if (_fActualEnd < _fActualStart)            { _formError = "Gerçekleşen bitiş, başlangıçtan önce olamaz."; return; }
+
+        try
+        {
+            if (_editItem == null)
+            {
+                AuditSvc.AddPlanItem(new AuditPlanItem
+                {
+                    AuditPlanId      = _plan!.Id,
+                    Title            = _fTitle.Trim(),
+                    AuditType        = _fAuditType.NullIfEmpty(),
+                    DepartmentId     = _fDepartmentId,
+                    AuditedUnit      = _fDepartmentId == null ? _fAuditedUnit.NullIfEmpty() : null,
+                    Notes            = _fNotes.NullIfEmpty(),
+                    PlannedStartDate = DateOnly.FromDateTime(_fPlannedStart!.Value),
+                    PlannedEndDate   = DateOnly.FromDateTime(_fPlannedEnd!.Value),
+                    ActualStartDate  = _fActualStart.HasValue ? DateOnly.FromDateTime(_fActualStart.Value) : null,
+                    ActualEndDate    = _fActualEnd.HasValue   ? DateOnly.FromDateTime(_fActualEnd.Value)   : null,
+                });
+            }
+            else
+            {
+                _editItem.Title            = _fTitle.Trim();
+                _editItem.AuditType        = _fAuditType.NullIfEmpty();
+                _editItem.DepartmentId     = _fDepartmentId;
+                _editItem.AuditedUnit      = _fDepartmentId == null ? _fAuditedUnit.NullIfEmpty() : null;
+                _editItem.Notes            = _fNotes.NullIfEmpty();
+                _editItem.PlannedStartDate = DateOnly.FromDateTime(_fPlannedStart!.Value);
+                _editItem.PlannedEndDate   = DateOnly.FromDateTime(_fPlannedEnd!.Value);
+                _editItem.ActualStartDate  = _fActualStart.HasValue ? DateOnly.FromDateTime(_fActualStart.Value) : null;
+                _editItem.ActualEndDate    = _fActualEnd.HasValue   ? DateOnly.FromDateTime(_fActualEnd.Value)   : null;
+                AuditSvc.UpdatePlanItem(_editItem);
+            }
+            Load();
+        }
+        catch (Exception ex)
+        {
+            _formError = $"Kayıt hatası: {ex.Message}";
+        }
+    }
+
+    private void RequestDelete(int id) { _deleteItemId = id; _deleteError = ""; }
+    private void CancelDelete()        { _deleteItemId = 0;  _deleteError = ""; }
+
+    private void ConfirmDelete()
+    {
+        _deleteError = "";
+        try
+        {
+            AuditSvc.DeletePlanItem(_deleteItemId);
+            _deleteItemId = 0;
+            Load();
+        }
+        catch (Exception ex)
+        {
+            _deleteError = $"Silinemedi: {ex.Message}";
+        }
+    }
+
+    private void PromptConvert(AuditPlanItem item)
+    {
+        _convertItem  = item;
+        _convertError = "";
+        _convertLeadId = UserId > 0 ? UserId : (_auditorUsers.FirstOrDefault()?.Id ?? 0);
+    }
+
+    private void CancelConvert() { _convertItem = null; _convertError = ""; }
+
+    private void ConfirmConvert()
+    {
+        _convertError = "";
+        if (_convertLeadId <= 0) { _convertError = "Lütfen bir baş denetçi seçin."; return; }
+        try
+        {
+            var audit    = AuditSvc.CreateAuditFromPlanItem(_convertItem!.Id, _convertLeadId);
+            _convertItem = null;
+            Load();
+            Nav.NavigateTo($"/audit/internal/{audit.Id}");
+        }
+        catch (Exception ex) { _convertError = $"Hata: {ex.Message}"; }
+    }
+
+    // ── Görsel yardımcılar ────────────────────────────────────────────────────
+    private double DayPct(DateOnly d)
+    {
+        var start = new DateOnly(_year, 1, 1);
+        var end   = new DateOnly(_year, 12, 31);
+        var total = end.DayNumber - start.DayNumber + 1;
+        return (double)Math.Clamp(d.DayNumber - start.DayNumber, 0, total) / total * 100.0;
+    }
+    private double TodayPct() => DayPct(DateOnly.FromDateTime(DateTime.Today));
+
+    // InvariantCulture ile % string'e çevir — Razor interpolasyonu için
+    private static string Pct(double v) =>
+        v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string StatusBarColor(string status) => status switch
+    {
+        "completed"      => "#22c55e",
+        "completed_late" => "#f59e0b",
+        "in_progress"    => "#3b82f6",
+        "late"           => "#ef4444",
+        _                => ""
+    };
+
+    private string UnitLabel(AuditPlanItem item)
+    {
+        if (item.Department != null) return item.Department.Name;
+        return item.AuditedUnit ?? "";
+    }
+
+    private IEnumerable<(string Label, int Count, string Color, string Icon)> SummaryCards()
+    {
+        if (_plan == null) yield break;
+        var items    = _plan.Items.ToList();
+        var comp     = items.Count(i => AuditService.GetItemStatus(i) == "completed");
+        var compLate = items.Count(i => AuditService.GetItemStatus(i) == "completed_late");
+        var inProg   = items.Count(i => AuditService.GetItemStatus(i) == "in_progress");
+        var late     = items.Count(i => AuditService.GetItemStatus(i) == "late");
+        var planned  = items.Count(i => AuditService.GetItemStatus(i) == "planned");
+
+        yield return ("Toplam",      items.Count, "#64748b", "📋");
+        yield return ("Tamamlandı",  comp,        "#22c55e", "✅");
+        yield return ("Devam Ediyor",inProg,       "#3b82f6", "🔄");
+        yield return ("Planlandı",   planned,      "#8b5cf6", "📅");
+        yield return ("Gecikmiş",    late,         "#ef4444", "⚠️");
+        if (compLate > 0)
+            yield return ("Gecikmeli Tamam", compLate, "#f59e0b", "⏱️");
+    }
+
+    private static RenderFragment StatusDot(string status) => status switch
+    {
+        "completed"      => @<span style="color:#22c55e;font-size:10px">●</span>,
+        "completed_late" => @<span style="color:#f59e0b;font-size:10px">●</span>,
+        "in_progress"    => @<span style="color:#3b82f6;font-size:10px">●</span>,
+        "late"           => @<span style="color:#ef4444;font-size:10px">●</span>,
+        _                => @<span style="color:#cbd5e1;font-size:10px">●</span>,
+    };
+
+    private static RenderFragment StatusBadge(string status) => status switch
+    {
+        "completed"      => @<span class="badge" style="background:#dcfce7;color:#15803d;font-size:10px">Tamamlandı</span>,
+        "completed_late" => @<span class="badge" style="background:#fef3c7;color:#92400e;font-size:10px">Gecikmeli Tamam</span>,
+        "in_progress"    => @<span class="badge badge-blue" style="font-size:10px">Devam Ediyor</span>,
+        "late"           => @<span class="badge" style="background:#fee2e2;color:#991b1b;font-size:10px">Gecikmiş</span>,
+        _                => @<span class="badge badge-gray" style="font-size:10px">Planlandı</span>,
+    };
+}

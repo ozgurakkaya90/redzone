@@ -33,16 +33,11 @@ public class ConfigService(AppDbContext db, ILogger<ConfigService> logger)
             ["ethics_categories"]     = new[] { "Yolsuzluk / Rüşvet","Taciz / Mobbing","Ayrımcılık","Mali Usulsüzlük","Bilgi Güvenliği İhlali","Çıkar Çatışması","Diğer" },
             ["audit_categories"]      = new[] { "Mali","Operasyonel","Uyum","Bilgi Teknolojileri","İnsan Kaynakları","Satın Alma","Diğer" },
             ["audit_severities"]      = new[] { "Kritik","Yüksek","Orta","Düşük" },
+            // audit_plan_types artık audit_types ile birleşti — bu key legacy uyum için korunuyor
+            ["audit_plan_types"]      = new[] { "Olağan Denetim","Olağan Dışı Denetim","Takip Denetimi","Danışmanlık Görevi","İnceleme","Soruşturma" },
 
-            ["audit_types"] = new LabeledOption[]
-            {
-                new("ordinary",       "Olağan Denetim"),
-                new("extraordinary",  "Olağan Dışı Denetim"),
-                new("follow_up",      "Takip Denetimi"),
-                new("advisory",       "Danışmanlık Görevi"),
-                new("review",         "İnceleme"),
-                new("investigation",  "Soruşturma"),
-            },
+            // Hem plan hem iç denetim tarafında ortak kullanılan tür listesi (string[])
+            ["audit_types"] = new[] { "Olağan Denetim","Olağan Dışı Denetim","Takip Denetimi","Danışmanlık Görevi","İnceleme","Soruşturma" },
 
             ["fk_probability"] = new ScoredOption[]
             {

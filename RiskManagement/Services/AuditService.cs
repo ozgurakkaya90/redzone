@@ -7,6 +7,73 @@ namespace RiskManagement.Services;
 
 public class AuditService(AppDbContext db)
 {
+    // ─── Audit Plan ───────────────────────────────────────────────────────────
+
+    public AuditPlan? GetPlan(int year) =>
+        db.AuditPlans
+            .Include(p => p.CreatedBy)
+            .Include(p => p.Items.OrderBy(i => i.SortOrder).ThenBy(i => i.PlannedStartDate))
+                .ThenInclude(i => i.Responsible)
+            .Include(p => p.Items)
+                .ThenInclude(i => i.Department)
+                    .ThenInclude(d => d!.Organization)
+                        .ThenInclude(o => o!.Company)
+            .FirstOrDefault(p => p.Year == year);
+
+    public List<int> GetPlanYears() =>
+        [.. db.AuditPlans.Select(p => p.Year).Distinct().OrderByDescending(y => y)];
+
+    public AuditPlan EnsurePlan(int year, string title, int userId)
+    {
+        var plan = db.AuditPlans.FirstOrDefault(p => p.Year == year);
+        if (plan != null) return plan;
+        plan = new AuditPlan { Year = year, Title = title, CreatedById = userId };
+        db.AuditPlans.Add(plan);
+        db.SaveChanges();
+        return plan;
+    }
+
+    public void UpdatePlan(AuditPlan plan)
+    {
+        db.AuditPlans.Update(plan);
+        db.SaveChanges();
+    }
+
+    public AuditPlanItem AddPlanItem(AuditPlanItem item)
+    {
+        var maxOrder = db.AuditPlanItems
+            .Where(i => i.AuditPlanId == item.AuditPlanId)
+            .Select(i => (int?)i.SortOrder).Max() ?? 0;
+        item.SortOrder = maxOrder + 1;
+        db.AuditPlanItems.Add(item);
+        db.SaveChanges();
+        return item;
+    }
+
+    public void UpdatePlanItem(AuditPlanItem item)
+    {
+        db.AuditPlanItems.Update(item);
+        db.SaveChanges();
+    }
+
+    public void DeletePlanItem(int itemId)
+    {
+        var item = db.AuditPlanItems.Find(itemId);
+        if (item is null) return;
+        db.AuditPlanItems.Remove(item);
+        db.SaveChanges();
+    }
+
+    public static string GetItemStatus(AuditPlanItem item)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (item.ActualEndDate.HasValue)
+            return item.ActualEndDate.Value <= item.PlannedEndDate ? "completed" : "completed_late";
+        if (item.ActualStartDate.HasValue) return "in_progress";
+        if (today > item.PlannedEndDate) return "late";
+        return "planned";
+    }
+
     // ─── Internal Audits ──────────────────────────────────────────────────────
 
     // ─── Dosya yükleme sabitleri (tek kaynak) ────────────────────────────────
@@ -20,8 +87,16 @@ public class AuditService(AppDbContext db)
         return $"ID-{year}-{CounterHelper.GetNext(db, $"audit-{year}"):D3}";
     }
 
+    // Temel sorgu — sadece her zaman var olan kolonları içerir
     public IQueryable<InternalAudit> AuditQuery() => db.InternalAudits
         .Include(a => a.LeadAuditor)
+        .Include(a => a.Findings);
+
+    // Yeni kolonları içeren genişletilmiş sorgu — sadece migration uygulandıktan sonra kullanılır
+    public IQueryable<InternalAudit> AuditQueryFull() => db.InternalAudits
+        .Include(a => a.LeadAuditor)
+        .Include(a => a.Department).ThenInclude(d => d!.Organization).ThenInclude(o => o!.Company)
+        .Include(a => a.AuditPlanItem).ThenInclude(i => i!.Plan)
         .Include(a => a.Findings);
 
     public List<InternalAudit> GetAudits(string? statusFilter = null)
@@ -39,8 +114,11 @@ public class AuditService(AppDbContext db)
         return [.. q.OrderByDescending(a => a.CreatedAt)];
     }
 
-    public InternalAudit? GetAudit(int id) =>
-        AuditQuery().FirstOrDefault(a => a.Id == id);
+    public InternalAudit? GetAudit(int id)
+    {
+        try   { return AuditQueryFull().FirstOrDefault(a => a.Id == id); }
+        catch { return AuditQuery().FirstOrDefault(a => a.Id == id); }
+    }
 
     public InternalAudit? GetAuditForUser(int id, int userId, string role)
     {
@@ -64,40 +142,113 @@ public class AuditService(AppDbContext db)
     }
 
     public InternalAudit CreateAudit(string title, string? auditType, string? auditedUnit,
-        string? scope, string period, DateOnly? startDate, DateOnly? endDate, int leadAuditorId)
+        string? scope, string period, DateOnly? startDate, DateOnly? endDate, int leadAuditorId,
+        int? departmentId = null, int? auditPlanItemId = null)
     {
         var audit = new InternalAudit
         {
-            Code = GenerateAuditCode(),
-            Title = title,
-            AuditType = auditType,
-            AuditedUnit = auditedUnit,
-            Scope = scope,
-            Period = period,
-            StartDate = startDate,
-            EndDate = endDate,
-            LeadAuditorId = leadAuditorId,
+            Code           = GenerateAuditCode(),
+            Title          = title,
+            AuditType      = auditType,
+            AuditedUnit    = auditedUnit,
+            Scope          = scope,
+            Period         = period,
+            StartDate      = startDate,
+            EndDate        = endDate,
+            LeadAuditorId  = leadAuditorId,
+            DepartmentId   = departmentId,
+            AuditPlanItemId= auditPlanItemId,
         };
         db.InternalAudits.Add(audit);
         db.SaveChanges();
         return audit;
     }
 
+    /// <summary>
+    /// Denetim planındaki bir maddeden otomatik iç denetim oluşturur.
+    /// Madde zaten bir denetime bağlıysa hata fırlatır.
+    /// </summary>
+    public InternalAudit CreateAuditFromPlanItem(int planItemId, int leadAuditorId)
+    {
+        var item = db.AuditPlanItems
+            .Include(i => i.Department)
+            .Include(i => i.Plan)
+            .FirstOrDefault(i => i.Id == planItemId)
+            ?? throw new InvalidOperationException("Plan maddesi bulunamadı.");
+
+        if (db.InternalAudits.Any(a => a.AuditPlanItemId == planItemId))
+            throw new InvalidOperationException("Bu plan maddesine zaten bir iç denetim bağlı.");
+
+        var unitName = item.Department?.Name ?? item.AuditedUnit;
+        var period   = $"{item.Plan.Year}";
+
+        var audit = CreateAudit(
+            title          : item.Title,
+            auditType      : item.AuditType,
+            auditedUnit    : unitName,
+            scope          : item.Description,
+            period         : period,
+            startDate      : item.PlannedStartDate,
+            endDate        : item.PlannedEndDate,
+            leadAuditorId  : leadAuditorId,
+            departmentId   : item.DepartmentId,
+            auditPlanItemId: planItemId);
+
+        return audit;
+    }
+
     public bool UpdateAudit(int id, string title, string? auditType, string? auditedUnit,
-        string? scope, string period, DateOnly? startDate, DateOnly? endDate, string status)
+        string? scope, string period, DateOnly? startDate, DateOnly? endDate, string status,
+        int? departmentId = null)
     {
         var audit = db.InternalAudits.Find(id);
         if (audit == null) return false;
-        audit.Title = title;
-        audit.AuditType = auditType;
-        audit.AuditedUnit = auditedUnit;
-        audit.Scope = scope;
-        audit.Period = period;
-        audit.StartDate = startDate;
-        audit.EndDate = endDate;
-        audit.Status = status;
+        audit.Title        = title;
+        audit.AuditType    = auditType;
+        audit.AuditedUnit  = auditedUnit;
+        audit.Scope        = scope;
+        audit.Period       = period;
+        audit.StartDate    = startDate;
+        audit.EndDate      = endDate;
+        audit.Status       = status;
+        audit.DepartmentId = departmentId ?? audit.DepartmentId;
         db.SaveChanges();
+
+        // Plan maddesinin actual tarihlerini güncelle
+        SyncPlanItemDates(audit);
+
         return true;
+    }
+
+    /// <summary>
+    /// İç denetimin durumuna göre bağlı plan maddesinin gerçekleşen tarihlerini günceller.
+    /// </summary>
+    private void SyncPlanItemDates(InternalAudit audit)
+    {
+        if (audit.AuditPlanItemId == null) return;
+        var item = db.AuditPlanItems.Find(audit.AuditPlanItemId);
+        if (item == null) return;
+
+        var today = DateOnly.FromDateTime(DateTime.Today);
+
+        if (audit.Status == "in_progress" && item.ActualStartDate == null)
+            item.ActualStartDate = audit.StartDate ?? today;
+
+        if (audit.Status == "completed" && item.ActualEndDate == null)
+        {
+            if (item.ActualStartDate == null)
+                item.ActualStartDate = audit.StartDate ?? today;
+            item.ActualEndDate = audit.EndDate ?? today;
+        }
+
+        db.SaveChanges();
+    }
+
+    /// <summary>Plan maddesine bağlı InternalAudit'i döner (yoksa null).</summary>
+    public InternalAudit? GetAuditByPlanItem(int planItemId)
+    {
+        try   { return AuditQuery().FirstOrDefault(a => a.AuditPlanItemId == planItemId); }
+        catch { return null; }
     }
 
     // ─── Findings ─────────────────────────────────────────────────────────────
@@ -385,16 +536,16 @@ public class AuditService(AppDbContext db)
     public AuditDashboardStats GetDashboard(string[] severities)
     {
         var findings = db.AuditFindings.ToList();
-        return BuildDashboardStats(findings, severities);
+        return BuildDashboardStats(findings, severities, db);
     }
 
     public AuditDashboardStats GetDashboardForUser(int userId, string role, string[] severities)
     {
         var findings = ScopeFindings(db.AuditFindings.Include(f => f.InternalAudit), userId, role).ToList();
-        return BuildDashboardStats(findings, severities);
+        return BuildDashboardStats(findings, severities, db);
     }
 
-    private static AuditDashboardStats BuildDashboardStats(List<AuditFinding> findings, string[] severities)
+    private static AuditDashboardStats BuildDashboardStats(List<AuditFinding> findings, string[] severities, AppDbContext db)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
@@ -409,15 +560,43 @@ public class AuditService(AppDbContext db)
                 byCategory[f.Category] = byCategory.GetValueOrDefault(f.Category) + 1;
         }
 
+        // Plan istatistikleri — tablolar henüz yoksa sıfır döner
+        var currentYear = DateTime.Today.Year;
+        List<AuditPlanItem> planItems;
+        HashSet<int> linkedAuditIds;
+        try
+        {
+            planItems = db.AuditPlanItems.Where(i => i.Plan.Year == currentYear).ToList();
+            linkedAuditIds = db.InternalAudits
+                .Where(a => a.AuditPlanItemId != null)
+                .Select(a => a.AuditPlanItemId!.Value)
+                .ToHashSet();
+        }
+        catch
+        {
+            planItems      = [];
+            linkedAuditIds = [];
+        }
+
         return new AuditDashboardStats
         {
-            Total = findings.Count,
-            Open = findings.Count(f => f.Status == "open"),
+            Total            = findings.Count,
+            Open             = findings.Count(f => f.Status == "open"),
             ClosureRequested = findings.Count(f => f.Status == "closure_requested"),
-            Closed = findings.Count(f => f.Status == "closed"),
-            Overdue = findings.Count(f => f.Status != "closed" && f.DueDate.HasValue && f.DueDate < today),
-            BySeverity = bySeverity,
-            ByCategory = byCategory,
+            Closed           = findings.Count(f => f.Status == "closed"),
+            Overdue          = findings.Count(f => f.Status != "closed" && f.DueDate.HasValue && f.DueDate < today),
+            BySeverity       = bySeverity,
+            ByCategory       = byCategory,
+            // Aktif denetimler
+            ActiveAudits     = db.InternalAudits.Count(a => a.Status == "in_progress"),
+            PlannedAudits    = db.InternalAudits.Count(a => a.Status == "planned"),
+            CompletedAudits  = db.InternalAudits.Count(a => a.Status == "completed"),
+            // Plan tamamlanma
+            PlanYear         = currentYear,
+            PlanTotal        = planItems.Count,
+            PlanConverted    = planItems.Count(i => linkedAuditIds.Contains(i.Id)),
+            PlanCompleted    = planItems.Count(i => GetItemStatus(i) is "completed" or "completed_late"),
+            PlanLate         = planItems.Count(i => GetItemStatus(i) == "late"),
         };
     }
 
@@ -471,11 +650,22 @@ public class AuditService(AppDbContext db)
 
 public record AuditDashboardStats
 {
-    public int Total { get; init; }
-    public int Open { get; init; }
+    // Bulgular
+    public int Total            { get; init; }
+    public int Open             { get; init; }
     public int ClosureRequested { get; init; }
-    public int Closed { get; init; }
-    public int Overdue { get; init; }
+    public int Closed           { get; init; }
+    public int Overdue          { get; init; }
     public Dictionary<string, int> BySeverity { get; init; } = [];
     public Dictionary<string, int> ByCategory { get; init; } = [];
+    // İç denetimler
+    public int ActiveAudits   { get; init; }
+    public int PlannedAudits  { get; init; }
+    public int CompletedAudits{ get; init; }
+    // Yıllık plan
+    public int PlanYear      { get; init; }
+    public int PlanTotal     { get; init; }
+    public int PlanConverted { get; init; }
+    public int PlanCompleted { get; init; }
+    public int PlanLate      { get; init; }
 }

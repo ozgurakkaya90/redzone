@@ -2,6 +2,61 @@ using System.ComponentModel.DataAnnotations;
 
 namespace RiskManagement.Models;
 
+public class AuditPlan
+{
+    public int Id { get; set; }
+    public int Year { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Title { get; set; } = "";
+
+    [MaxLength(1000)]
+    public string? Description { get; set; }
+
+    public int CreatedById { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public User CreatedBy { get; set; } = null!;
+    public ICollection<AuditPlanItem> Items { get; set; } = [];
+}
+
+public class AuditPlanItem
+{
+    public int Id { get; set; }
+    public int AuditPlanId { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Title { get; set; } = "";
+
+    [MaxLength(100)]
+    public string? AuditType { get; set; }
+
+    [MaxLength(200)]
+    public string? AuditedUnit { get; set; }
+
+    [MaxLength(500)]
+    public string? Description { get; set; }
+
+    public DateOnly PlannedStartDate { get; set; }
+    public DateOnly PlannedEndDate { get; set; }
+
+    public DateOnly? ActualStartDate { get; set; }
+    public DateOnly? ActualEndDate { get; set; }
+
+    public int? DepartmentId { get; set; }
+
+    public int? ResponsibleId { get; set; }
+
+    [MaxLength(500)]
+    public string? Notes { get; set; }
+
+    public int SortOrder { get; set; }
+
+    public AuditPlan Plan { get; set; } = null!;
+    public Department? Department { get; set; }
+    public User? Responsible { get; set; }
+}
+
 public class InternalAudit
 {
     public int Id { get; set; }
@@ -30,10 +85,17 @@ public class InternalAudit
     [Required, MaxLength(20)]
     public string Status { get; set; } = "planned"; // planned|in_progress|completed
 
+    public int? DepartmentId { get; set; }
+
+    /// <summary>Hangi plan maddesinden oluşturuldu (varsa)</summary>
+    public int? AuditPlanItemId { get; set; }
+
     public int LeadAuditorId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public User LeadAuditor { get; set; } = null!;
+    public Department? Department { get; set; }
+    public AuditPlanItem? AuditPlanItem { get; set; }
     public ICollection<AuditFinding> Findings { get; set; } = [];
 }
 

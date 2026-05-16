@@ -128,23 +128,116 @@ builder.Services.AddHttpContextAccessor();
 
 var app = builder.Build();
 
+// ─── MySQL Schema Fix (raw SQL — EF Core modelinden bağımsız) ────────────────
+// EF Core migration çalışmadan önce eksik kolon/tablo varsa direkt ekler.
+// SQLite ortamında çalışmaz (MySQL dışı ortamlar atlanır).
+if (!builder.Configuration.GetValue<bool>("AppSettings:UseSqlite"))
+{
+    var fixLogger = app.Services.GetRequiredService<ILogger<Program>>();
+    var fixConnStr = builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection") ?? "";
+    if (!string.IsNullOrEmpty(fixConnStr))
+    {
+        try
+        {
+            using var fixConn = new MySqlConnector.MySqlConnection(fixConnStr);
+            fixConn.Open();
+            var fixCmds = new[]
+            {
+                "ALTER TABLE `Risks` ADD COLUMN IF NOT EXISTS `SourceLibraryItemId` int NULL",
+
+                @"CREATE TABLE IF NOT EXISTS `AuditPlans` (
+                    `Id` int NOT NULL AUTO_INCREMENT,
+                    `Year` int NOT NULL DEFAULT 0,
+                    `Title` varchar(200) NOT NULL DEFAULT '',
+                    `Description` longtext NULL,
+                    `CreatedById` int NOT NULL DEFAULT 0,
+                    `CreatedAt` datetime(6) NOT NULL DEFAULT '2000-01-01 00:00:00',
+                    PRIMARY KEY (`Id`)
+                ) CHARACTER SET utf8mb4",
+
+                @"CREATE TABLE IF NOT EXISTS `AuditPlanItems` (
+                    `Id` int NOT NULL AUTO_INCREMENT,
+                    `AuditPlanId` int NOT NULL DEFAULT 0,
+                    `Title` varchar(200) NOT NULL DEFAULT '',
+                    `AuditType` varchar(100) NULL,
+                    `AuditedUnit` varchar(200) NULL,
+                    `Description` varchar(500) NULL,
+                    `PlannedStartDate` date NOT NULL DEFAULT '2000-01-01',
+                    `PlannedEndDate` date NOT NULL DEFAULT '2000-01-01',
+                    `ActualStartDate` date NULL,
+                    `ActualEndDate` date NULL,
+                    `DepartmentId` int NULL,
+                    `ResponsibleId` int NULL,
+                    `Notes` varchar(500) NULL,
+                    `SortOrder` int NOT NULL DEFAULT 0,
+                    PRIMARY KEY (`Id`)
+                ) CHARACTER SET utf8mb4",
+
+                "ALTER TABLE `AuditPlans`    MODIFY COLUMN `Id` int NOT NULL AUTO_INCREMENT",
+                "ALTER TABLE `AuditPlanItems` MODIFY COLUMN `Id` int NOT NULL AUTO_INCREMENT",
+
+                "ALTER TABLE `AuditPlanItems`  ADD COLUMN IF NOT EXISTS `DepartmentId`    int NULL",
+                "ALTER TABLE `InternalAudits`  ADD COLUMN IF NOT EXISTS `DepartmentId`    int NULL",
+                "ALTER TABLE `InternalAudits`  ADD COLUMN IF NOT EXISTS `AuditPlanItemId` int NULL",
+
+                @"INSERT IGNORE INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`) VALUES
+                    ('20260514183416_AddSourceLibraryItemIdToRisk','8.0.2'),
+                    ('20260514184823_AddAuditPlan','8.0.2'),
+                    ('20260514190109_AddAuditPlanItemDepartment','8.0.2'),
+                    ('20260514190916_AddAuditDeptAndPlanLink','8.0.2'),
+                    ('20260514200000_FixMySqlAutoIncrement','8.0.2')",
+            };
+            foreach (var sql in fixCmds)
+            {
+                try
+                {
+                    using var cmd = new MySqlConnector.MySqlCommand(sql, fixConn);
+                    cmd.CommandTimeout = 20;
+                    cmd.ExecuteNonQuery();
+                }
+                catch (Exception ex) { fixLogger.LogWarning("Fix SQL atlandı: {Msg}", ex.Message); }
+            }
+            fixLogger.LogInformation("Schema fix tamamlandı.");
+        }
+        catch (Exception ex) { fixLogger.LogError(ex, "Schema fix bağlantı hatası."); }
+    }
+}
+
 // ─── Migrations + Seed ───────────────────────────────────────────────────────
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var db     = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-    db.Database.Migrate();
-
-    if (app.Configuration.GetValue<bool>("AppSettings:DemoMode"))
+    // Migration 30 saniyede tamamlanmazsa uyarı ver, devam et
+    using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30));
+    try
     {
-        await SeedData.RunAsync(db);
+        await db.Database.MigrateAsync(cts.Token);
+        logger.LogInformation("Migration tamamlandı.");
+    }
+    catch (OperationCanceledException)
+    {
+        logger.LogWarning("Migration 30 saniyede tamamlanamadı. /admin/db-migrate ile manuel çalıştırın.");
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Migration hatası: {Message}", ex.Message);
     }
 
-    // Risk kütüphanesini seed et (boşsa)
-    scope.ServiceProvider.GetRequiredService<RiskLibraryService>().SeedIfEmpty();
+    try
+    {
+        if (app.Configuration.GetValue<bool>("AppSettings:DemoMode"))
+            await SeedData.RunAsync(db);
 
-    // Mevcut kullanıcıları yeni çoklu atama tablolarıyla senkronize et
-    SyncUserAssignments(db);
+        scope.ServiceProvider.GetRequiredService<RiskLibraryService>().SeedIfEmpty();
+        SyncUserAssignments(db);
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "Seed/sync hatası: {Message}", ex.Message);
+    }
 }
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
