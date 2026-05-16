@@ -1,0 +1,441 @@
+@page "/audit/external/{Id:int}"
+@attribute [Authorize]
+@inject ExternalAuditService ExtSvc
+@inject AuthService Auth
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Dış Denetim @(_audit?.Code ?? "")</PageTitle>
+
+@if (_audit is null)
+{
+    <div class="card" style="padding:24px">
+        <div style="font-weight:700;margin-bottom:6px">Bulunamadı</div>
+        <div style="color:var(--text-3)">Bu dış denetim kaydına erişiminiz yok veya kayıt mevcut değil.</div>
+        <a href="/audit/external" class="btn btn-outline btn-sm" style="margin-top:12px">← Listeye dön</a>
+    </div>
+}
+else
+{
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
+        <a href="/audit/external" class="btn btn-outline btn-sm">← Geri</a>
+        <div style="flex:1">
+            <h1 style="margin:0;font-size:22px;font-weight:800">
+                <code style="font-size:18px">@_audit.Code</code>
+                <span style="margin-left:8px">@_audit.Subject</span>
+            </h1>
+            <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+                <span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700">@_audit.AuditingBody</span>
+                @if (!string.IsNullOrEmpty(_audit.Standard))
+                { <span class="tag" style="margin-left:6px">@_audit.Standard</span> }
+                <span style="margin-left:10px">@_audit.AuditDate.ToString("dd.MM.yyyy")</span>
+            </div>
+        </div>
+        <span class="badge @StatusBadge(_audit.Status)" style="font-size:13px;padding:6px 12px">
+            @StatusLabel(_audit.Status)
+        </span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start">
+        <div>
+            @* ─── Findings ─── *@
+            <div class="card" style="padding:18px;margin-bottom:16px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+                    <h2 style="margin:0;font-size:16px;font-weight:700">📋 Dış Denetim Bulguları (@_findings.Count)</h2>
+                    @if (_canEdit && !_addingFinding)
+                    {
+                        <button class="btn btn-primary btn-sm" @onclick="() => _addingFinding = true">+ Bulgu Ekle</button>
+                    }
+                </div>
+
+                @if (_addingFinding)
+                {
+                    <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:14px;margin-bottom:14px">
+                        <div style="font-weight:700;margin-bottom:10px">Yeni Bulgu</div>
+                        @if (!string.IsNullOrEmpty(_findingError))
+                        { <div class="alert alert-error" style="margin-bottom:10px">@_findingError</div> }
+                        <div class="form-group">
+                            <label class="form-label">Başlık *</label>
+                            <input class="form-control" @bind="_newFinding.Title" maxlength="200" />
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                            <div class="form-group">
+                                <label class="form-label">Önem</label>
+                                <select class="form-control" @bind="_newFinding.Severity">
+                                    <option value="">— Seçin —</option>
+                                    <option value="low">Düşük</option>
+                                    <option value="medium">Orta</option>
+                                    <option value="high">Yüksek</option>
+                                    <option value="critical">Kritik</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Bulgu Sahibi</label>
+                                <select class="form-control" @bind="_newFinding.OwnerId">
+                                    <option value="">— Seçin —</option>
+                                    @foreach (var u in _users)
+                                    { <option value="@u.Id">@u.FullName</option> }
+                                </select>
+                            </div>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                            <div class="form-group">
+                                <label class="form-label">Sahip Birimi</label>
+                                <select class="form-control" @bind="_newFinding.DepartmentId">
+                                    <option value="">— Seçin —</option>
+                                    @foreach (var d in _departments)
+                                    { <option value="@d.Id">@d.Name</option> }
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Termin</label>
+                                <input type="date" class="form-control" @bind="_newFindingDue" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Açıklama</label>
+                            <textarea class="form-control" rows="3" @bind="_newFinding.Description" maxlength="2000"></textarea>
+                        </div>
+                        <div style="display:flex;gap:8px">
+                            <button class="btn btn-primary btn-sm" @onclick="SaveFinding">Kaydet</button>
+                            <button class="btn btn-outline btn-sm" @onclick="CancelAddFinding">İptal</button>
+                        </div>
+                    </div>
+                }
+
+                @if (!_findings.Any() && !_addingFinding)
+                {
+                    <div style="text-align:center;padding:24px;color:var(--text-3)">
+                        <div style="font-size:24px;margin-bottom:6px">📭</div>
+                        <div>Henüz bulgu eklenmemiş.</div>
+                    </div>
+                }
+                else
+                {
+                    @foreach (var f in _findings)
+                    {
+                        var actions = _actionsByFinding.TryGetValue(f.Id, out var lst) ? lst : new List<AuditFindingAction>();
+                        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:10px;background:#fff">
+                            <div style="display:flex;justify-content:space-between;align-items:start;gap:12px">
+                                <div style="flex:1">
+                                    <div style="font-weight:700;font-size:14px">
+                                        <code style="font-size:11px">@f.Code</code>
+                                        <span style="margin-left:6px">@f.Title</span>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(f.Description))
+                                    {
+                                        <div style="font-size:12px;color:var(--text-2);margin-top:6px;white-space:pre-wrap">@f.Description</div>
+                                    }
+                                    <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--text-3);margin-top:8px">
+                                        @if (!string.IsNullOrEmpty(f.Severity))
+                                        { <span class="badge @SeverityBadge(f.Severity)">@SeverityLabel(f.Severity)</span> }
+                                        @if (f.Owner != null)
+                                        { <span>👤 @f.Owner.FullName</span> }
+                                        @if (f.Department != null)
+                                        { <span>🏢 @f.Department.Name</span> }
+                                        @if (f.DueDate.HasValue)
+                                        { <span>⏰ @f.DueDate.Value.ToString("dd.MM.yyyy")</span> }
+                                    </div>
+                                </div>
+                                <span class="badge @FindingStatusBadge(f.Status)" style="font-size:11px">@FindingStatusLabel(f.Status)</span>
+                            </div>
+
+                            @* Actions *@
+                            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #e5e7eb">
+                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                                    <div style="font-size:12px;font-weight:600;color:var(--text-3)">
+                                        Aksiyonlar (@actions.Count)
+                                    </div>
+                                    @if (_canEdit)
+                                    {
+                                        <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px"
+                                                @onclick="() => StartAddAction(f.Id)">+ Aksiyon</button>
+                                    }
+                                </div>
+                                @foreach (var a in actions)
+                                {
+                                    <div style="font-size:12px;padding:6px 8px;background:#f8fafc;border-radius:6px;margin-bottom:4px">
+                                        <span class="badge @ActionStatusBadge(a.Status)" style="font-size:10px;margin-right:6px">@ActionStatusLabel(a.Status)</span>
+                                        @a.Description
+                                        @if (!string.IsNullOrEmpty(a.Responsible))
+                                        { <span style="color:var(--text-3);margin-left:6px">— @a.Responsible</span> }
+                                        @if (a.DueDate.HasValue)
+                                        { <span style="color:var(--text-3);margin-left:6px">⏰ @a.DueDate.Value.ToString("dd.MM.yyyy")</span> }
+                                    </div>
+                                }
+                                @if (_addActionFor == f.Id)
+                                {
+                                    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:10px;margin-top:6px">
+                                        <input class="form-control" placeholder="Aksiyon açıklaması…"
+                                               @bind="_newAction.Description" maxlength="1000" style="margin-bottom:6px" />
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
+                                            <input class="form-control" placeholder="Sorumlu (serbest metin)"
+                                                   @bind="_newAction.Responsible" maxlength="200" />
+                                            <input type="date" class="form-control" @bind="_newActionDue" />
+                                        </div>
+                                        <div style="display:flex;gap:6px">
+                                            <button class="btn btn-primary btn-sm" @onclick="() => SaveAction(f.Id)">Ekle</button>
+                                            <button class="btn btn-outline btn-sm" @onclick="() => _addActionFor = 0">İptal</button>
+                                        </div>
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+
+        @* ─── Right panel: meta + status ─── *@
+        <div>
+            <div class="card" style="padding:16px;margin-bottom:14px">
+                <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:10px">Durum</div>
+                @if (_canEdit)
+                {
+                    <select class="form-control" @bind="_audit.Status" @bind:after="SaveStatus">
+                        <option value="planned">Planlandı</option>
+                        <option value="in_progress">Devam Ediyor</option>
+                        <option value="completed">Tamamlandı</option>
+                        <option value="closed">Kapatıldı</option>
+                    </select>
+                }
+                else
+                {
+                    <div style="font-weight:600">@StatusLabel(_audit.Status)</div>
+                }
+            </div>
+
+            <div class="card" style="padding:16px;margin-bottom:14px">
+                <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:10px">Bilgiler</div>
+                <div style="font-size:12px;line-height:1.7">
+                    <div><strong>Kurum:</strong> @_audit.AuditingBody</div>
+                    @if (!string.IsNullOrEmpty(_audit.Standard))
+                    { <div><strong>Standart:</strong> @_audit.Standard</div> }
+                    <div><strong>Tarih:</strong> @_audit.AuditDate.ToString("dd.MM.yyyy")</div>
+                    @if (_audit.EndDate.HasValue)
+                    { <div><strong>Bitiş:</strong> @_audit.EndDate.Value.ToString("dd.MM.yyyy")</div> }
+                    @if (!string.IsNullOrEmpty(_audit.Score))
+                    { <div><strong>Skor:</strong> @_audit.Score</div> }
+                    @if (_audit.ResponsibleDept != null)
+                    { <div><strong>Sorumlu Birim:</strong> @_audit.ResponsibleDept.Name</div> }
+                    @if (_audit.ResponsibleUser != null)
+                    { <div><strong>Sorumlu Kişi:</strong> @_audit.ResponsibleUser.FullName</div> }
+                    <div><strong>Oluşturan:</strong> @(_audit.CreatedBy?.FullName ?? "—")</div>
+                    <div><strong>Oluşturma:</strong> @_audit.CreatedAt.ToString("dd.MM.yyyy HH:mm")</div>
+                </div>
+            </div>
+
+            @if (!string.IsNullOrEmpty(_audit.Notes))
+            {
+                <div class="card" style="padding:16px;margin-bottom:14px">
+                    <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:10px">Notlar</div>
+                    <div style="font-size:12px;white-space:pre-wrap">@_audit.Notes</div>
+                </div>
+            }
+
+            @if (_canEdit)
+            {
+                <div class="card" style="padding:14px;background:#fef2f2;border-color:#fecaca">
+                    <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:8px">Tehlikeli Bölge</div>
+                    @if (!_confirmDelete)
+                    {
+                        <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#dc2626"
+                                @onclick="() => _confirmDelete = true">🗑 Denetimi Sil</button>
+                    }
+                    else
+                    {
+                        <div style="font-size:12px;color:#7f1d1d;margin-bottom:8px">
+                            Bu işlem denetimi, tüm bulgularını ve aksiyonlarını siler. Emin misiniz?
+                        </div>
+                        <div style="display:flex;gap:6px">
+                            <button class="btn btn-primary btn-sm" style="background:#dc2626;border-color:#dc2626"
+                                    @onclick="ConfirmDelete">Evet, sil</button>
+                            <button class="btn btn-outline btn-sm" @onclick="() => _confirmDelete = false">Vazgeç</button>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+<style>
+    .form-label { font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;display:block;margin-bottom:4px }
+</style>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private ExternalAudit? _audit;
+    private List<AuditFinding> _findings = [];
+    private Dictionary<int, List<AuditFindingAction>> _actionsByFinding = new();
+    private List<User> _users = [];
+    private List<Department> _departments = [];
+    private bool _canEdit;
+    private bool _confirmDelete;
+
+    // New finding
+    private bool _addingFinding;
+    private AuditFinding _newFinding = new();
+    private DateTime? _newFindingDue;
+    private string _findingError = "";
+
+    // New action
+    private int _addActionFor;
+    private AuditFindingAction _newAction = new();
+    private DateTime? _newActionDue;
+
+    private int UserId => int.TryParse(
+        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    protected override void OnInitialized() => Load();
+
+    private void Load()
+    {
+        var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == UserId);
+        if (user is null) return;
+        _audit = ExtSvc.Get(Id, user);
+        if (_audit is null) return;
+        _canEdit = ExtSvc.CanEdit(user, _audit.AuditingBody);
+        _findings = LoadFindingsForAudit(Id);
+        LoadActions();
+        _users = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
+        _departments = [.. Db.Departments.OrderBy(d => d.Name)];
+    }
+
+    private List<AuditFinding> LoadFindingsForAudit(int extId)
+    {
+        try
+        {
+            return [.. Db.AuditFindings
+                .Where(f => f.ExternalAuditId == extId)
+                .Include(f => f.Owner)
+                .Include(f => f.Department)
+                .OrderByDescending(f => f.CreatedAt)
+                .AsNoTracking()];
+        }
+        catch { return []; }
+    }
+
+    private void LoadActions()
+    {
+        _actionsByFinding.Clear();
+        if (_findings.Count == 0) return;
+        var ids = _findings.Select(f => f.Id).ToList();
+        var all = Db.AuditFindingActions
+            .Where(a => ids.Contains(a.FindingId))
+            .OrderBy(a => a.CreatedAt)
+            .AsNoTracking().ToList();
+        foreach (var grp in all.GroupBy(a => a.FindingId))
+            _actionsByFinding[grp.Key] = grp.ToList();
+    }
+
+    private void CancelAddFinding()
+    {
+        _addingFinding = false;
+        _newFinding = new();
+        _newFindingDue = null;
+        _findingError = "";
+    }
+
+    private void SaveFinding()
+    {
+        _findingError = "";
+        if (string.IsNullOrWhiteSpace(_newFinding.Title))
+        { _findingError = "Başlık zorunludur."; return; }
+
+        try
+        {
+            _newFinding.DueDate = _newFindingDue.HasValue ? DateOnly.FromDateTime(_newFindingDue.Value) : null;
+            _newFinding.Severity = string.IsNullOrEmpty(_newFinding.Severity) ? null : _newFinding.Severity;
+            ExtSvc.CreateFinding(_audit!.Id, _newFinding, UserId);
+            CancelAddFinding();
+            _findings = LoadFindingsForAudit(_audit.Id);
+            LoadActions();
+        }
+        catch (Exception ex)
+        {
+            _findingError = "Hata: " + ex.Message;
+        }
+    }
+
+    private void StartAddAction(int findingId)
+    {
+        _addActionFor = findingId;
+        _newAction = new AuditFindingAction();
+        _newActionDue = null;
+    }
+
+    private void SaveAction(int findingId)
+    {
+        if (string.IsNullOrWhiteSpace(_newAction.Description)) return;
+        _newAction.FindingId = findingId;
+        _newAction.CreatedById = UserId;
+        _newAction.CreatedAt = DateTime.UtcNow;
+        _newAction.Status = "planned";
+        _newAction.DueDate = _newActionDue.HasValue ? DateOnly.FromDateTime(_newActionDue.Value) : null;
+        Db.AuditFindingActions.Add(_newAction);
+        Db.SaveChanges();
+        _addActionFor = 0;
+        LoadActions();
+    }
+
+    private void SaveStatus()
+    {
+        if (_audit is null) return;
+        try { ExtSvc.Update(_audit); }
+        catch { /* sessizce yut */ }
+    }
+
+    private void ConfirmDelete()
+    {
+        if (_audit is null) return;
+        try
+        {
+            ExtSvc.Delete(_audit.Id);
+            Nav.NavigateTo("/audit/external");
+        }
+        catch { _confirmDelete = false; }
+    }
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "planned" => "Planlandı", "in_progress" => "Devam Ediyor",
+        "completed" => "Tamamlandı", "closed" => "Kapatıldı", _ => s
+    };
+    private static string StatusBadge(string s) => s switch
+    {
+        "planned" => "badge-blue", "in_progress" => "badge-yellow",
+        "completed" => "badge-green", "closed" => "badge-gray", _ => ""
+    };
+    private static string SeverityLabel(string? s) => s switch
+    {
+        "low" => "Düşük", "medium" => "Orta", "high" => "Yüksek", "critical" => "Kritik", _ => s ?? ""
+    };
+    private static string SeverityBadge(string? s) => s switch
+    {
+        "low" => "badge-gray", "medium" => "badge-blue",
+        "high" => "badge-yellow", "critical" => "badge-red", _ => ""
+    };
+    private static string FindingStatusLabel(string s) => s switch
+    {
+        "open" => "Açık", "closure_requested" => "Kapanış Talebi", "closed" => "Kapalı", _ => s
+    };
+    private static string FindingStatusBadge(string s) => s switch
+    {
+        "open" => "badge-red", "closure_requested" => "badge-yellow", "closed" => "badge-green", _ => ""
+    };
+    private static string ActionStatusLabel(string s) => s switch
+    {
+        "planned" => "Planlandı", "in_progress" => "Devam", "completed" => "Tamam", "cancelled" => "İptal", _ => s
+    };
+    private static string ActionStatusBadge(string s) => s switch
+    {
+        "planned" => "badge-blue", "in_progress" => "badge-yellow",
+        "completed" => "badge-green", "cancelled" => "badge-gray", _ => ""
+    };
+}

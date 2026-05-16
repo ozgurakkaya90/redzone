@@ -1,0 +1,280 @@
+@page "/audit/external/new"
+@attribute [Authorize]
+@inject ExternalAuditService ExtSvc
+@inject AuthService Auth
+@inject AppDbContext Db
+@inject NavigationManager Nav
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Yeni Dış Denetim</PageTitle>
+
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
+    <a href="/audit/external" class="btn btn-outline btn-sm">← Geri</a>
+    <div>
+        <h1 style="margin:0;font-size:22px;font-weight:800">🏛️ Yeni Dış Denetim</h1>
+        <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+            BRC, JCI, müşteri denetimi vb. dış denetim kaydı oluştur
+        </div>
+    </div>
+</div>
+
+@if (!_canCreate)
+{
+    <div class="card" style="padding:24px">
+        <div style="font-weight:700;margin-bottom:6px">Yetki yok</div>
+        <div style="color:var(--text-3)">
+            Dış denetim oluşturmak için kurum bazlı düzenleme yetkisi gerekiyor.
+            Sistem yöneticisi sizi en az bir denetleyen kuruma yetkili atamalıdır.
+        </div>
+    </div>
+}
+else
+{
+<div style="max-width:740px">
+    <div class="card" style="padding:24px">
+        @if (!string.IsNullOrEmpty(_error))
+        { <div class="alert alert-error" style="margin-bottom:16px">@_error</div> }
+
+        <div class="form-group">
+            <label class="form-label">Denetleyen Kurum *</label>
+            @if (_useFreeText)
+            {
+                <div style="display:flex;gap:8px">
+                    <input class="form-control" @bind="_bodyText"
+                           placeholder="örn. ABC Sertifikasyon" maxlength="200" />
+                    <button class="btn btn-outline btn-sm" type="button"
+                            @onclick="() => { _useFreeText = false; _bodyText = string.Empty; }">Listeden seç</button>
+                </div>
+                <div style="font-size:11px;color:var(--text-3);margin-top:4px">
+                    Yeni kurum girişi katalogda otomatik açılır. Yetkilendirme admin tarafından yapılmalıdır.
+                </div>
+            }
+            else
+            {
+                <div style="display:flex;gap:8px">
+                    <select class="form-control" @bind="_bodySelect">
+                        <option value="">— Seçiniz —</option>
+                        @foreach (var b in _editableBodies)
+                        { <option value="@b">@b</option> }
+                    </select>
+                    @if (_isAdmin)
+                    {
+                        <button class="btn btn-outline btn-sm" type="button"
+                                @onclick="() => _useFreeText = true">+ Yeni kurum</button>
+                    }
+                </div>
+                @if (_editableBodies.Count == 0)
+                {
+                    <div style="font-size:11px;color:#dc2626;margin-top:4px">
+                        Düzenleme yetkili olduğunuz hiçbir kurum yok. Admin yetki atamadıkça yeni denetim oluşturulamaz.
+                    </div>
+                }
+            }
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group">
+                <label class="form-label">Standart (opsiyonel)</label>
+                <input class="form-control" @bind="_standard" maxlength="100"
+                       placeholder="örn. BRC v9, JCI 7th ed" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Skor / Sonuç (opsiyonel)</label>
+                <input class="form-control" @bind="_score" maxlength="100"
+                       placeholder="örn. A, Pass, 92/100" />
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Denetim Konusu *</label>
+            <input class="form-control" @bind="_subject" maxlength="300"
+                   placeholder="örn. Gıda Güvenliği Yönetim Sistemi Tetkiki" />
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group">
+                <label class="form-label">Denetim Tarihi *</label>
+                <input type="date" class="form-control" @bind="_auditDate" />
+            </div>
+            <div class="form-group">
+                <label class="form-label">Bitiş Tarihi (opsiyonel)</label>
+                <input type="date" class="form-control" @bind="_endDate" />
+            </div>
+        </div>
+
+        @* Sorumlu Birim - cascading *@
+        <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:14px;margin-bottom:12px">
+            <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:10px">
+                Şirket İçi Sorumlu Birim
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+                <div>
+                    <label class="form-label">Şirket</label>
+                    <select class="form-control" value="@_companyId" @onchange="OnCompanyChange">
+                        <option value="">— Tümü —</option>
+                        @foreach (var c in _companies)
+                        { <option value="@c.Id">@c.Name</option> }
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Organizasyon</label>
+                    <select class="form-control" value="@_orgId" @onchange="OnOrgChange">
+                        <option value="">— Tümü —</option>
+                        @foreach (var o in FilteredOrgs)
+                        { <option value="@o.Id">@o.Name</option> }
+                    </select>
+                </div>
+                <div>
+                    <label class="form-label">Departman</label>
+                    <select class="form-control" @bind="_deptId">
+                        <option value="">— Seçin —</option>
+                        @foreach (var d in FilteredDepts)
+                        {
+                            var hint = d.Organization != null ? $" ({d.Organization.Name})" : "";
+                            <option value="@d.Id">@d.Name@hint</option>
+                        }
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Sorumlu Kişi (opsiyonel)</label>
+            <select class="form-control" @bind="_responsibleUserId">
+                <option value="">— Seçin —</option>
+                @foreach (var u in _users)
+                { <option value="@u.Id">@u.FullName</option> }
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label class="form-label">Notlar</label>
+            <textarea class="form-control" rows="3" @bind="_notes" maxlength="2000"
+                      placeholder="Denetimle ilgili notlar…"></textarea>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:4px">
+            <button class="btn btn-primary" @onclick="Submit" disabled="@_loading">
+                @(_loading ? "Kaydediliyor…" : "Dış Denetimi Oluştur")
+            </button>
+            <a href="/audit/external" class="btn btn-outline">İptal</a>
+        </div>
+    </div>
+</div>
+}
+
+<style>
+    .form-label { font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;display:block;margin-bottom:4px }
+</style>
+
+@code {
+    private string _bodySelect = "", _bodyText = "", _standard = "", _score = "",
+                   _subject = "", _notes = "";
+    private DateTime? _auditDate = DateTime.Today, _endDate;
+    private int? _companyId, _orgId, _deptId, _responsibleUserId;
+    private bool _useFreeText, _isAdmin, _canCreate, _loading;
+    private string _error = "";
+
+    private List<string> _editableBodies = [];
+    private List<Company> _companies = [];
+    private List<Organization> _organizations = [];
+    private List<Department> _departments = [];
+    private List<User> _users = [];
+
+    private int UserId => int.TryParse(
+        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    private IEnumerable<Organization> FilteredOrgs =>
+        _companyId.HasValue ? _organizations.Where(o => o.CompanyId == _companyId) : _organizations;
+    private IEnumerable<Department> FilteredDepts =>
+        _orgId.HasValue ? _departments.Where(d => d.OrganizationId == _orgId)
+        : _companyId.HasValue ? _departments.Where(d => d.Organization?.CompanyId == _companyId)
+        : _departments;
+
+    protected override void OnInitialized()
+    {
+        var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == UserId);
+        if (user is null) return;
+
+        _isAdmin = ExtSvc.IsAdmin(user);
+        if (_isAdmin)
+        {
+            _editableBodies = [.. ExtSvc.GetBodies().Select(b => b.Name)];
+            _canCreate = true;
+        }
+        else if (Auth.HasPermission(user, "external_audit.write"))
+        {
+            _editableBodies = [.. Db.UserExternalAuditBodies
+                .Where(b => b.UserId == user.Id && b.CanEdit)
+                .Select(b => b.AuditingBody).Distinct()];
+            _canCreate = _editableBodies.Count > 0;
+        }
+
+        _companies     = [.. Db.Companies.OrderBy(c => c.Name)];
+        _organizations = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
+        _departments   = [.. Db.Departments
+            .Include(d => d.Organization).ThenInclude(o => o!.Company)
+            .OrderBy(d => d.Name)];
+        _users         = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
+    }
+
+    private void OnCompanyChange(ChangeEventArgs e)
+    {
+        _companyId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null;
+        _orgId = null; _deptId = null;
+    }
+    private void OnOrgChange(ChangeEventArgs e)
+    {
+        _orgId = int.TryParse(e.Value?.ToString(), out var v) && v > 0 ? v : null;
+        _deptId = null;
+    }
+
+    private void Submit()
+    {
+        _error = "";
+        var body = (_useFreeText ? _bodyText : _bodySelect).Trim();
+        if (string.IsNullOrWhiteSpace(body))    { _error = "Denetleyen kurum seçiniz/giriniz."; return; }
+        if (string.IsNullOrWhiteSpace(_subject)) { _error = "Konu zorunludur."; return; }
+        if (!_auditDate.HasValue)               { _error = "Denetim tarihi zorunludur."; return; }
+
+        if (_useFreeText && !_isAdmin)
+        {
+            _error = "Yeni kurum eklemek için admin yetkisi gerekiyor."; return;
+        }
+
+        _loading = true;
+        try
+        {
+            // Yeni kurum girilmişse katalogda aç
+            if (_useFreeText)
+            {
+                ExtSvc.AddBody(body);
+            }
+
+            var audit = new ExternalAudit
+            {
+                AuditingBody = body,
+                Standard = _standard.NullIfEmpty(),
+                Subject = _subject.Trim(),
+                Score = _score.NullIfEmpty(),
+                AuditDate = DateOnly.FromDateTime(_auditDate!.Value),
+                EndDate = _endDate.HasValue ? DateOnly.FromDateTime(_endDate.Value) : (DateOnly?)null,
+                ResponsibleDeptId = _deptId,
+                ResponsibleUserId = _responsibleUserId,
+                Notes = _notes.NullIfEmpty(),
+                Status = "planned",
+                CreatedById = UserId
+            };
+            audit = ExtSvc.Create(audit);
+            Nav.NavigateTo($"/audit/external/{audit.Id}");
+        }
+        catch (Exception ex)
+        {
+            _error = "Kaydedilemedi: " + ex.Message;
+            _loading = false;
+        }
+    }
+}

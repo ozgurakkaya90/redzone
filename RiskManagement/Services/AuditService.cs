@@ -272,7 +272,7 @@ public class AuditService(AppDbContext db)
     public List<AuditFinding> GetFindings(string? category = null, string? severity = null,
         string? status = null, int? auditId = null)
     {
-        var q = FindingQuery();
+        var q = FindingQuery().Where(f => f.AuditSource == "internal");
         if (!string.IsNullOrEmpty(category)) q = q.Where(f => f.Category == category);
         if (!string.IsNullOrEmpty(severity)) q = q.Where(f => f.Severity == severity);
         if (!string.IsNullOrEmpty(status))   q = q.Where(f => f.Status == status);
@@ -283,7 +283,7 @@ public class AuditService(AppDbContext db)
     public List<AuditFinding> GetFindingsForUser(int userId, string role, string? category = null,
         string? severity = null, string? status = null, int? auditId = null)
     {
-        var q = FindingQuery();
+        var q = FindingQuery().Where(f => f.AuditSource == "internal");
         if (!string.IsNullOrEmpty(category)) q = q.Where(f => f.Category == category);
         if (!string.IsNullOrEmpty(severity)) q = q.Where(f => f.Severity == severity);
         if (!string.IsNullOrEmpty(status))   q = q.Where(f => f.Status == status);
@@ -488,6 +488,7 @@ public class AuditService(AppDbContext db)
         var q = db.AuditFindingActions
             .Include(a => a.Finding).ThenInclude(f => f.InternalAudit)
             .Include(a => a.CreatedBy)
+            .Where(a => a.Finding.AuditSource == "internal")
             .AsQueryable();
 
         if (role is not ("admin" or "audit_manager"))
@@ -535,13 +536,15 @@ public class AuditService(AppDbContext db)
 
     public AuditDashboardStats GetDashboard(string[] severities)
     {
-        var findings = db.AuditFindings.ToList();
+        var findings = db.AuditFindings.Where(f => f.AuditSource == "internal").ToList();
         return BuildDashboardStats(findings, severities, db);
     }
 
     public AuditDashboardStats GetDashboardForUser(int userId, string role, string[] severities)
     {
-        var findings = ScopeFindings(db.AuditFindings.Include(f => f.InternalAudit), userId, role).ToList();
+        var findings = ScopeFindings(
+            db.AuditFindings.Include(f => f.InternalAudit).Where(f => f.AuditSource == "internal"),
+            userId, role).ToList();
         return BuildDashboardStats(findings, severities, db);
     }
 

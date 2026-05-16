@@ -1,0 +1,257 @@
+@page "/audit/external"
+@attribute [Authorize]
+@inject ExternalAuditService ExtSvc
+@inject AuthService Auth
+@inject AppDbContext Db
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Dış Denetimler</PageTitle>
+
+@{
+    var userId = UserId;
+    var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == userId);
+}
+
+@if (user is null || !CanRead)
+{
+    <div class="card" style="padding:24px">
+        <div style="font-weight:700;margin-bottom:6px">Yetki yok</div>
+        <div style="color:var(--text-3)">Dış denetim modülüne erişiminiz bulunmuyor.</div>
+    </div>
+}
+else
+{
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+            <h1 style="margin:0;font-size:22px;font-weight:800">🏛️ Dış Denetimler</h1>
+            <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+                @_filtered.Count kayıt
+                @if (_filtered.Count != _all.Count) { <span> (toplam @_all.Count)</span> }
+                @if (_allowedBodies != null)
+                {
+                    <span> · yetkili kurumlar: @(_allowedBodies.Count == 0 ? "yok" : string.Join(", ", _allowedBodies))</span>
+                }
+                else { <span> · tüm kurumlara erişim (admin)</span> }
+            </div>
+        </div>
+        <div style="display:flex;gap:8px">
+            <a href="/audit/findings/external" class="btn btn-outline btn-sm">📋 Dış Bulgular</a>
+            @if (CanCreateAny)
+            {
+                <a href="/audit/external/new" class="btn btn-primary btn-sm">+ Yeni Dış Denetim</a>
+            }
+        </div>
+    </div>
+
+    <div class="card" style="padding:12px 16px;margin-bottom:16px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+            <div style="flex:2;min-width:180px">
+                <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Arama</div>
+                <input class="form-control" placeholder="Kod, konu, kurum…"
+                       @bind="_search" @bind:event="oninput" @bind:after="ApplyFilter" />
+            </div>
+            <div style="min-width:160px">
+                <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Denetleyen Kurum</div>
+                <select class="form-control" @bind="_filterBody" @bind:after="ApplyFilter">
+                    <option value="">Tümü</option>
+                    @foreach (var b in _bodies)
+                    { <option value="@b">@b</option> }
+                </select>
+            </div>
+            <div style="min-width:140px">
+                <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Durum</div>
+                <select class="form-control" @bind="_filterStatus" @bind:after="ApplyFilter">
+                    <option value="">Tümü</option>
+                    <option value="planned">Planlandı</option>
+                    <option value="in_progress">Devam Ediyor</option>
+                    <option value="completed">Tamamlandı</option>
+                    <option value="closed">Kapatıldı</option>
+                </select>
+            </div>
+            <div style="min-width:100px">
+                <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Yıl</div>
+                <select class="form-control" @bind="_filterYear" @bind:after="ApplyFilter">
+                    <option value="">Tümü</option>
+                    @foreach (var y in _years) { <option value="@y">@y</option> }
+                </select>
+            </div>
+            @if (HasFilter)
+            {
+                <button class="btn btn-outline btn-sm" @onclick="ClearFilter">Temizle</button>
+            }
+        </div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:10px;margin-bottom:16px">
+        @foreach (var (label, count, color, filter) in StatusCards())
+        {
+            var f = filter;
+            <div class="card" style="padding:12px 14px;border-top:3px solid @color;cursor:pointer"
+                 @onclick="() => { _filterStatus=f; ApplyFilter(); }">
+                <div style="font-size:20px;font-weight:800;color:@color">@count</div>
+                <div style="font-size:11px;color:var(--text-3)">@label</div>
+            </div>
+        }
+    </div>
+
+    <div class="card" style="padding:0;overflow-x:auto">
+        <table class="table" style="font-size:13px">
+            <thead>
+                <tr>
+                    <th style="width:110px">Kod</th>
+                    <th style="width:160px">Denetleyen Kurum</th>
+                    <th>Konu</th>
+                    <th style="width:110px">Standart</th>
+                    <th style="width:170px">Sorumlu Birim</th>
+                    <th style="width:110px">Tarih</th>
+                    <th style="width:110px">Durum</th>
+                    <th style="width:60px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var a in _filtered)
+                {
+                    <tr>
+                        <td><code style="font-size:11px">@a.Code</code></td>
+                        <td>
+                            <span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700">
+                                @a.AuditingBody
+                            </span>
+                        </td>
+                        <td style="font-weight:600">@a.Subject</td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(a.Standard))
+                            { <span class="tag" style="font-size:11px">@a.Standard</span> }
+                            else { <span style="color:var(--text-3)">—</span> }
+                        </td>
+                        <td style="font-size:12px">
+                            @if (a.ResponsibleDept != null)
+                            {
+                                <div style="font-weight:500">@a.ResponsibleDept.Name</div>
+                                @if (a.ResponsibleDept.Organization != null)
+                                {
+                                    <div style="font-size:10px;color:var(--text-3)">@a.ResponsibleDept.Organization.Name</div>
+                                }
+                            }
+                            else if (a.ResponsibleUser != null)
+                            { <span>@a.ResponsibleUser.FullName</span> }
+                            else { <span style="color:var(--text-3)">—</span> }
+                        </td>
+                        <td style="font-size:11px;color:var(--text-3)">
+                            @a.AuditDate.ToString("dd.MM.yyyy")
+                            @if (a.EndDate.HasValue && a.EndDate.Value != a.AuditDate)
+                            { <div style="font-size:10px">→ @a.EndDate.Value.ToString("dd.MM.yyyy")</div> }
+                        </td>
+                        <td>
+                            <span class="badge @StatusBadge(a.Status)" style="font-size:11px">@StatusLabel(a.Status)</span>
+                        </td>
+                        <td>
+                            <a href="/audit/external/@a.Id" class="btn btn-outline btn-sm"
+                               style="padding:3px 10px;font-size:11px">Detay</a>
+                        </td>
+                    </tr>
+                }
+                @if (!_filtered.Any())
+                {
+                    <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-3)">
+                        <div style="font-size:24px;margin-bottom:8px">🏛️</div>
+                        <div style="font-weight:600">Dış denetim bulunamadı</div>
+                        <div style="font-size:12px;margin-top:4px">Yetkili olduğunuz kurumlarda kayıt yok ya da filtre uyumsuz.</div>
+                    </td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<ExternalAudit> _all = [];
+    private List<ExternalAudit> _filtered = [];
+    private List<string> _bodies = [];
+    private List<int> _years = [];
+    private List<string>? _allowedBodies;
+
+    private string _search = "", _filterBody = "", _filterStatus = "", _filterYear = "";
+    private bool _canRead;
+    private bool _canCreate;
+
+    private int UserId => int.TryParse(
+        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    private bool CanRead => _canRead;
+    private bool CanCreateAny => _canCreate;
+    private bool HasFilter => !string.IsNullOrEmpty(_search) || !string.IsNullOrEmpty(_filterBody)
+                          || !string.IsNullOrEmpty(_filterStatus) || !string.IsNullOrEmpty(_filterYear);
+
+    protected override void OnInitialized()
+    {
+        var u = Db.Users.Include(x => x.UserRoles).FirstOrDefault(x => x.Id == UserId);
+        if (u is null) return;
+        _canRead = Auth.HasPermission(u, "external_audit.read") || ExtSvc.IsAdmin(u);
+        if (!_canRead) return;
+
+        _allowedBodies = ExtSvc.GetAllowedBodies(u);
+        _canCreate = ExtSvc.IsAdmin(u) ||
+            (Auth.HasPermission(u, "external_audit.write") &&
+             Db.UserExternalAuditBodies.Any(b => b.UserId == u.Id && b.CanEdit));
+
+        try
+        {
+            _all = ExtSvc.List(u);
+        }
+        catch { _all = []; }
+
+        _bodies = [.. _all.Select(a => a.AuditingBody).Distinct().OrderBy(b => b)];
+        _years = [.. _all.Select(a => a.AuditDate.Year).Distinct().OrderByDescending(y => y)];
+        _filtered = _all;
+    }
+
+    private void ApplyFilter()
+    {
+        var s = _search.Trim().ToLowerInvariant();
+        _filtered = _all.Where(a =>
+            (string.IsNullOrEmpty(s) ||
+                a.Code.ToLower().Contains(s) ||
+                a.Subject.ToLower().Contains(s) ||
+                a.AuditingBody.ToLower().Contains(s)) &&
+            (string.IsNullOrEmpty(_filterBody)   || a.AuditingBody == _filterBody) &&
+            (string.IsNullOrEmpty(_filterStatus) || a.Status == _filterStatus) &&
+            (string.IsNullOrEmpty(_filterYear)   || a.AuditDate.Year.ToString() == _filterYear)
+        ).ToList();
+    }
+
+    private void ClearFilter()
+    {
+        _search = ""; _filterBody = ""; _filterStatus = ""; _filterYear = "";
+        _filtered = _all;
+    }
+
+    private IEnumerable<(string Label, int Count, string Color, string Filter)> StatusCards()
+    {
+        yield return ("Toplam",       _all.Count,                                  "#64748b", "");
+        yield return ("Planlandı",    _all.Count(a => a.Status == "planned"),      "#3b82f6", "planned");
+        yield return ("Devam Ediyor", _all.Count(a => a.Status == "in_progress"),  "#f59e0b", "in_progress");
+        yield return ("Tamamlandı",   _all.Count(a => a.Status == "completed"),    "#22c55e", "completed");
+        yield return ("Kapatıldı",    _all.Count(a => a.Status == "closed"),       "#64748b", "closed");
+    }
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "planned"     => "Planlandı",
+        "in_progress" => "Devam Ediyor",
+        "completed"   => "Tamamlandı",
+        "closed"      => "Kapatıldı",
+        _             => s
+    };
+    private static string StatusBadge(string s) => s switch
+    {
+        "planned"     => "badge-blue",
+        "in_progress" => "badge-yellow",
+        "completed"   => "badge-green",
+        "closed"      => "badge-gray",
+        _             => ""
+    };
+}

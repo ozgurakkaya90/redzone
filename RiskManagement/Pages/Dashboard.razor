@@ -2,12 +2,16 @@
 @attribute [Authorize]
 @inject RiskService RiskSvc
 @inject AuditService AuditSvc
+@inject ExternalAuditService ExtAuditSvc
 @inject EthicsService EthicsSvc
 @inject ConfigService CfgSvc
 @inject TaskService TaskSvc
+@inject AppDbContext Db
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
 
 <PageTitle>Ana Panel — RED</PageTitle>
 
@@ -165,6 +169,20 @@
             <a href="/audit" class="module-card-link">Denetim Paneline Git →</a>
         </div>
     }
+    @if (_modExternal && _canSeeExternal)
+    {
+        <div class="module-card" style="--mc:#b45309;--mc-bg:#fffbeb;--mc-border:#fde68a">
+            <div class="module-card-header">
+                <span style="font-size:14px;font-weight:700;color:#b45309">🏛️ Dış Denetim</span>
+                <span style="font-size:28px;font-weight:800;color:#b45309">@_extTotal</span>
+            </div>
+            <MiniBarRow Label="Planlandı"    Value="_extPlanned"    Max="@Math.Max(_extTotal,1)" Color="#3b82f6" />
+            <MiniBarRow Label="Devam Ediyor" Value="_extInProgress" Max="@Math.Max(_extTotal,1)" Color="#f59e0b" />
+            <MiniBarRow Label="Tamamlandı"   Value="_extCompleted"  Max="@Math.Max(_extTotal,1)" Color="#16a34a" />
+            <MiniBarRow Label="Yaklaşan"     Value="_extUpcoming"   Max="@Math.Max(_extTotal,1)" Color="#0369a1" />
+            <a href="/audit/external" class="module-card-link">Dış Denetimlere Git →</a>
+        </div>
+    }
 </div>
 
 @code {
@@ -173,7 +191,8 @@
     private string FullName => HttpCtx.HttpContext?.User.FindFirst("full_name")?.Value ?? "Kullanıcı";
     private bool CanSeeEthics => Role is "audit_manager" or "ethics_board" or "admin";
 
-    private bool _modRisk, _modAudit, _modEthics;
+    private bool _modRisk, _modAudit, _modEthics, _modExternal;
+    private bool _canSeeExternal;
     private List<UserTask> _tasks = [], _urgent = [];
     private string _sortField = "priority";
     private bool   _sortAsc   = true;
@@ -190,14 +209,16 @@
     private int _riskTotal, _riskProposedReview, _riskApproved, _riskControlled, _riskRejected;
     private int _auditTotal, _auditOpen, _auditClosureRequested, _auditClosed, _auditOverdue;
     private int _ethicsTotal, _ethicsPending, _ethicsBoard, _ethicsClosed;
+    private int _extTotal, _extPlanned, _extInProgress, _extCompleted, _extUpcoming;
 
     private List<(string Label, int Value, string Color, string Bg, string Href)> _summaryCards = [];
 
     protected override void OnInitialized()
     {
-        _modRisk   = CfgSvc.IsModuleActive("risk");
-        _modAudit  = CfgSvc.IsModuleActive("audit");
-        _modEthics = CfgSvc.IsModuleActive("ethics");
+        _modRisk     = CfgSvc.IsModuleActive("risk");
+        _modAudit    = CfgSvc.IsModuleActive("audit");
+        _modEthics   = CfgSvc.IsModuleActive("ethics");
+        _modExternal = CfgSvc.IsModuleActive("external");
 
         _tasks  = TaskSvc.GetTasksForUser(UserId, Role);
         _urgent = _tasks.Where(t => t.Icon is "⚠️" or "🚨" or "🔴").ToList();
@@ -225,6 +246,30 @@
             _ethicsPending = reports.Count(r => r.Status == "pending");
             _ethicsBoard   = reports.Count(r => r.Status == "ethics_board_notified");
             _ethicsClosed  = reports.Count(r => r.Status is "irrelevant" or "no_violation" or "disciplinary_referred");
+        }
+
+        if (_modExternal)
+        {
+            try
+            {
+                var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == UserId);
+                if (user != null)
+                {
+                    _canSeeExternal = ExtAuditSvc.IsAdmin(user) ||
+                        user.UserRoles.Any(r => r.RoleName is "auditor" or "audit_manager") ||
+                        Db.UserExternalAuditBodies.Any(b => b.UserId == user.Id);
+                    if (_canSeeExternal)
+                    {
+                        var extStats = ExtAuditSvc.GetStats(user);
+                        _extTotal      = extStats.Total;
+                        _extPlanned    = extStats.Planned;
+                        _extInProgress = extStats.InProgress;
+                        _extCompleted  = extStats.Completed;
+                        _extUpcoming   = extStats.Upcoming;
+                    }
+                }
+            }
+            catch { /* migration uygulanmamışsa sessizce yut */ }
         }
 
         _summaryCards =

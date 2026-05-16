@@ -116,6 +116,7 @@ builder.Services.AddScoped<ConfigService>();
 builder.Services.AddScoped<IRiskCalculator, RiskCalculator>();
 builder.Services.AddScoped<RiskService>();
 builder.Services.AddScoped<AuditService>();
+builder.Services.AddScoped<ExternalAuditService>();
 builder.Services.AddScoped<EthicsService>();
 builder.Services.AddScoped<TaskService>();
 builder.Services.AddScoped<ToastService>();

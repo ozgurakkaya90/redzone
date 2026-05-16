@@ -45,6 +45,10 @@ public class AuthService(AppDbContext db)
         ["audit.write"]         = "Denetim ve bulgu oluştur",
         ["audit.modify"]        = "Bulgu güncelle / kapanış başvurusu yap",
         ["audit.close_approve"] = "Kapanış başvurularını onayla",
+        // Dış Denetim — kurum bazlı yetki UserExternalAuditBodies'te tutulur
+        ["external_audit.read"]   = "Dış denetimleri ve bulgularını görüntüle",
+        ["external_audit.write"]  = "Dış denetim, bulgu, aksiyon oluştur/güncelle",
+        ["external_audit.admin"]  = "Tüm dış denetimleri yönet ve kurum yetkisi ata",
         // Etik
         ["ethics.read"]         = "Etik bildirimleri görüntüle",
         ["ethics.write"]        = "Etik bildirim oluştur",
@@ -77,6 +81,12 @@ public class AuthService(AppDbContext db)
             new("audit.modify",        "Düzenleme", "Bulgu güncelle / kapanış başvurusu"),
             new("audit.close_approve", "Onaylama",  "Kapanış başvurularını onayla"),
         ]),
+        new("Dış Denetim", "🏛️", "#b45309", "#fffbeb",
+        [
+            new("external_audit.read",  "Okuma",      "Dış denetim ve bulguları görüntüle (kurum bazlı)"),
+            new("external_audit.write", "Yazma",      "Dış denetim, bulgu, aksiyon oluştur (kurum bazlı)"),
+            new("external_audit.admin", "Yönetim",    "Tüm kurumları yönet + kurum yetkisi ata"),
+        ]),
         new("Etik Yönetimi", "⚖️", "#7c3aed", "#faf5ff",
         [
             new("ethics.read",         "Okuma",       "Etik bildirimleri görüntüle"),
@@ -93,8 +103,8 @@ public class AuthService(AppDbContext db)
         [Roles.RiskManager]  = ["risk.read","risk.write","risk.modify","control.read","control.write","control.modify","action.read","action.write","action.modify"],
         [Roles.RiskOwner]    = ["risk.read","risk.write","control.read","control.write","action.read","action.write","action.modify"],
         [Roles.User]         = ["risk.read","risk.write"],
-        [Roles.Auditor]      = ["risk.read","audit.read","audit.write","audit.modify","ethics.read"],
-        [Roles.AuditManager] = ["risk.read","risk.modify","audit.read","audit.write","audit.modify","audit.close_approve","ethics.read","ethics.audit_review"],
+        [Roles.Auditor]      = ["risk.read","audit.read","audit.write","audit.modify","external_audit.read","external_audit.write","ethics.read"],
+        [Roles.AuditManager] = ["risk.read","risk.modify","audit.read","audit.write","audit.modify","audit.close_approve","external_audit.read","external_audit.write","external_audit.admin","ethics.read","ethics.audit_review"],
         [Roles.FindingOwner] = ["audit.read","audit.modify"],
         [Roles.EthicsBoard]  = ["ethics.read","ethics.board_review"],
     };

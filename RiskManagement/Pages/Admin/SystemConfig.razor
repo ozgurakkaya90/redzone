@@ -746,10 +746,11 @@
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
             @foreach (var mod in new[]
             {
-                (Icon:"🛡️", Name:"Risk Yönetimi",    Desc:"Risk envanteri, kontrol, aksiyon",  Bg:"#fff5f5", Border:"#fca5a5", Active:_riskActive,   Toggle:(Action)ToggleRisk),
-                (Icon:"🔍", Name:"İç Denetim",        Desc:"Denetim planları, bulgular",         Bg:"#f0fdf4", Border:"#86efac", Active:_auditActive,  Toggle:(Action)ToggleAudit),
-                (Icon:"⚖️", Name:"Etik Yönetimi",     Desc:"Etik bildirimler, kurul incelemeleri",Bg:"#faf5ff", Border:"#c4b5fd", Active:_ethicsActive, Toggle:(Action)ToggleEthics),
-                (Icon:"🏢", Name:"Active Directory",  Desc:"Kurumsal LDAP/AD kimlik doğrulama",  Bg:"#eff6ff", Border:"#bfdbfe", Active:_ldapEnabled,  Toggle:(Action)ToggleLdapModule),
+                (Icon:"🛡️", Name:"Risk Yönetimi",    Desc:"Risk envanteri, kontrol, aksiyon",  Bg:"#fff5f5", Border:"#fca5a5", Active:_riskActive,     Toggle:(Action)ToggleRisk),
+                (Icon:"🔍", Name:"İç Denetim",        Desc:"Denetim planları, bulgular",         Bg:"#f0fdf4", Border:"#86efac", Active:_auditActive,    Toggle:(Action)ToggleAudit),
+                (Icon:"🏛️", Name:"Dış Denetim",       Desc:"BRC, JCI, müşteri denetimleri",      Bg:"#fffbeb", Border:"#fde68a", Active:_externalActive, Toggle:(Action)ToggleExternal),
+                (Icon:"⚖️", Name:"Etik Yönetimi",     Desc:"Etik bildirimler, kurul incelemeleri",Bg:"#faf5ff", Border:"#c4b5fd", Active:_ethicsActive,   Toggle:(Action)ToggleEthics),
+                (Icon:"🏢", Name:"Active Directory",  Desc:"Kurumsal LDAP/AD kimlik doğrulama",  Bg:"#eff6ff", Border:"#bfdbfe", Active:_ldapEnabled,    Toggle:(Action)ToggleLdapModule),
             })
             {
                 var m = mod;
@@ -957,7 +958,7 @@
     private List<string> _auditTypes = [], _auditCategories = [], _auditSeverities = [], _ethicsCategories = [];
 
     // Modüller
-    private bool   _riskActive, _auditActive, _ethicsActive, _ldapEnabled;
+    private bool   _riskActive, _auditActive, _externalActive, _ethicsActive, _ldapEnabled;
     private string _moduleMsg    = "";
     private bool   _moduleIsError;
 
@@ -1004,6 +1005,7 @@
         _logoPath       = CfgSvc.Get<string>("logo_path")     ?? "";
         _riskActive     = CfgSvc.IsModuleActive("risk");
         _auditActive    = CfgSvc.IsModuleActive("audit");
+        _externalActive = CfgSvc.IsModuleActive("external");
         _ethicsActive   = CfgSvc.IsModuleActive("ethics");
         _ldapEnabled    = Db.LdapConfigurations.FirstOrDefault()?.Enabled ?? false;
         _ldapCfg        = Db.LdapConfigurations.FirstOrDefault() ?? new LdapConfiguration();
@@ -1152,9 +1154,10 @@
     }
 
     // ── Modüller ─────────────────────────────────────────────────────────────
-    private void ToggleRisk()   { _riskActive   = !_riskActive;   SaveModule("module_risk",   _riskActive,   "Risk Yönetimi"); }
-    private void ToggleAudit()  { _auditActive  = !_auditActive;  SaveModule("module_audit",  _auditActive,  "İç Denetim"); }
-    private void ToggleEthics() { _ethicsActive = !_ethicsActive; SaveModule("module_ethics", _ethicsActive, "Etik Yönetimi"); }
+    private void ToggleRisk()     { _riskActive     = !_riskActive;     SaveModule("module_risk",     _riskActive,     "Risk Yönetimi"); }
+    private void ToggleAudit()    { _auditActive    = !_auditActive;    SaveModule("module_audit",    _auditActive,    "İç Denetim"); }
+    private void ToggleExternal() { _externalActive = !_externalActive; SaveModule("module_external", _externalActive, "Dış Denetim"); }
+    private void ToggleEthics()   { _ethicsActive   = !_ethicsActive;   SaveModule("module_ethics",   _ethicsActive,   "Etik Yönetimi"); }
 
     private void ToggleLdapModule()
     {

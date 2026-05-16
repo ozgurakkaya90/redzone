@@ -87,9 +87,10 @@ public class ConfigService(AppDbContext db, ILogger<ConfigService> logger)
             ["sidebar_color"] = "#0f1f33",
             ["logo_path"]     = "",
 
-            ["module_risk"]   = true,
-            ["module_audit"]  = true,
-            ["module_ethics"] = true,
+            ["module_risk"]     = true,
+            ["module_audit"]    = true,
+            ["module_external"] = true,
+            ["module_ethics"]   = true,
 
             ["review_threshold_days"] = 90,
 

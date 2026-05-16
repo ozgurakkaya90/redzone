@@ -1,0 +1,275 @@
+@page "/admin/external-audit"
+@attribute [Authorize(Roles = "admin,audit_manager")]
+@inject ExternalAuditService ExtSvc
+@inject AppDbContext Db
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Dış Denetim Yapılandırması</PageTitle>
+
+<div style="margin-bottom:20px">
+    <h1 style="margin:0;font-size:22px;font-weight:800">🏛️ Dış Denetim Yapılandırması</h1>
+    <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+        Denetleyici kurumları ve kullanıcı yetkilerini yönet
+    </div>
+</div>
+
+<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+
+    @* ─── Sol: Kurum Kataloğu ─── *@
+    <div class="card" style="padding:18px;flex:1;min-width:380px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h2 style="margin:0;font-size:15px;font-weight:700">Denetleyici Kurumlar</h2>
+            <button class="btn btn-primary btn-sm" @onclick="() => _addingBody = true">+ Kurum</button>
+        </div>
+
+        @if (_addingBody)
+        {
+            <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-bottom:12px">
+                <input class="form-control" placeholder="Kurum adı (örn. BRC, JCI)"
+                       @bind="_newBodyName" maxlength="200" style="margin-bottom:6px" />
+                <input class="form-control" placeholder="Açıklama (opsiyonel)"
+                       @bind="_newBodyDesc" maxlength="500" style="margin-bottom:8px" />
+                @if (!string.IsNullOrEmpty(_bodyError))
+                { <div class="alert alert-error" style="margin-bottom:8px;font-size:12px">@_bodyError</div> }
+                <div style="display:flex;gap:6px">
+                    <button class="btn btn-primary btn-sm" @onclick="AddBody">Ekle</button>
+                    <button class="btn btn-outline btn-sm" @onclick="CancelAddBody">İptal</button>
+                </div>
+            </div>
+        }
+
+        <div style="margin-bottom:8px">
+            <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" @bind="_showInactive" @bind:after="ReloadBodies" />
+                Pasif kurumları da göster
+            </label>
+        </div>
+
+        @if (_bodies.Count == 0)
+        {
+            <div style="text-align:center;padding:24px;color:var(--text-3);font-size:13px">
+                Henüz kurum eklenmemiş.
+            </div>
+        }
+        else
+        {
+            <table class="table" style="font-size:12px">
+                <thead><tr>
+                    <th>Kurum</th>
+                    <th style="width:90px">Yetkili</th>
+                    <th style="width:90px">Denetim</th>
+                    <th style="width:130px;text-align:right">İşlemler</th>
+                </tr></thead>
+                <tbody>
+                @foreach (var b in _bodies)
+                {
+                    var userCnt = _userCountByBody.GetValueOrDefault(b.Name, 0);
+                    var auditCnt = _auditCountByBody.GetValueOrDefault(b.Name, 0);
+                    <tr style="@(b.IsActive ? "" : "opacity:0.55")">
+                        <td>
+                            <div style="font-weight:600">@b.Name</div>
+                            @if (!string.IsNullOrEmpty(b.Description))
+                            { <div style="font-size:11px;color:var(--text-3)">@b.Description</div> }
+                            @if (!b.IsActive)
+                            { <span class="badge badge-gray" style="font-size:10px;margin-top:2px">Pasif</span> }
+                        </td>
+                        <td style="text-align:center">
+                            <a href="javascript:void(0)" @onclick="() => SelectBody(b.Name)"
+                               style="color:#0369a1;font-weight:600">@userCnt</a>
+                        </td>
+                        <td style="text-align:center">@auditCnt</td>
+                        <td style="text-align:right">
+                            @if (b.IsActive)
+                            {
+                                <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px"
+                                        @onclick="() => DeactivateBody(b.Id)">Pasifleştir</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px"
+                                        @onclick="() => ActivateBody(b.Id)">Aktifleştir</button>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        }
+    </div>
+
+    @* ─── Sağ: Yetki Yönetimi ─── *@
+    <div class="card" style="padding:18px;flex:1.4;min-width:480px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+            <h2 style="margin:0;font-size:15px;font-weight:700">
+                Kurum Yetkileri
+                @if (!string.IsNullOrEmpty(_selectedBody))
+                { <span style="font-weight:400;color:var(--text-3)"> — @_selectedBody</span> }
+            </h2>
+            <select class="form-control" style="width:auto;font-size:12px" @bind="_selectedBody" @bind:after="LoadAssignments">
+                <option value="">— Kurum seçin —</option>
+                @foreach (var b in _bodies.Where(x => x.IsActive))
+                { <option value="@b.Name">@b.Name</option> }
+            </select>
+        </div>
+
+        @if (string.IsNullOrEmpty(_selectedBody))
+        {
+            <div style="text-align:center;padding:32px;color:var(--text-3);font-size:13px">
+                Yetki yönetmek için soldan bir kurum seçin.
+            </div>
+        }
+        else
+        {
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px">
+                <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">
+                    Kullanıcı Ekle
+                </div>
+                <div style="display:flex;gap:6px">
+                    <select class="form-control" @bind="_grantUserId">
+                        <option value="">— Kullanıcı —</option>
+                        @foreach (var u in _users.Where(u => !_assignments.Any(a => a.UserId == u.Id)))
+                        { <option value="@u.Id">@u.FullName (@u.Username)</option> }
+                    </select>
+                    <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px">
+                        <input type="checkbox" @bind="_grantCanEdit" /> Düzenleme yetkisi
+                    </label>
+                    <button class="btn btn-primary btn-sm" @onclick="GrantAccess">Ver</button>
+                </div>
+            </div>
+
+            @if (_assignments.Count == 0)
+            {
+                <div style="text-align:center;padding:24px;color:var(--text-3);font-size:13px">
+                    Bu kuruma yetkili kullanıcı yok.
+                </div>
+            }
+            else
+            {
+                <table class="table" style="font-size:12px">
+                    <thead><tr>
+                        <th>Kullanıcı</th>
+                        <th style="width:130px;text-align:center">Düzenleme</th>
+                        <th style="width:80px;text-align:right"></th>
+                    </tr></thead>
+                    <tbody>
+                    @foreach (var a in _assignments)
+                    {
+                        <tr>
+                            <td>
+                                <div style="font-weight:600">@(a.User?.FullName ?? "—")</div>
+                                <div style="font-size:10px;color:var(--text-3)">@a.User?.Username</div>
+                            </td>
+                            <td style="text-align:center">
+                                <label style="cursor:pointer">
+                                    <input type="checkbox" checked="@a.CanEdit"
+                                           @onchange="@((ChangeEventArgs e) => ToggleCanEdit(a, e))" />
+                                </label>
+                            </td>
+                            <td style="text-align:right">
+                                <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;color:#dc2626"
+                                        @onclick="() => Revoke(a)">Kaldır</button>
+                            </td>
+                        </tr>
+                    }
+                    </tbody>
+                </table>
+            }
+        }
+    </div>
+</div>
+
+@code {
+    private List<ExternalAuditBody> _bodies = [];
+    private List<User> _users = [];
+    private List<UserExternalAuditBody> _assignments = [];
+    private Dictionary<string, int> _userCountByBody = new();
+    private Dictionary<string, int> _auditCountByBody = new();
+
+    private bool _showInactive;
+    private bool _addingBody;
+    private string _newBodyName = "", _newBodyDesc = "", _bodyError = "";
+    private string _selectedBody = "";
+    private int? _grantUserId;
+    private bool _grantCanEdit = true;
+
+    protected override void OnInitialized()
+    {
+        _users = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
+        ReloadBodies();
+    }
+
+    private void ReloadBodies()
+    {
+        _bodies = ExtSvc.GetBodies(includeInactive: _showInactive);
+        _userCountByBody = Db.UserExternalAuditBodies
+            .GroupBy(u => u.AuditingBody)
+            .Select(g => new { Body = g.Key, Cnt = g.Count() })
+            .ToDictionary(x => x.Body, x => x.Cnt);
+        try
+        {
+            _auditCountByBody = Db.ExternalAudits
+                .GroupBy(a => a.AuditingBody)
+                .Select(g => new { Body = g.Key, Cnt = g.Count() })
+                .ToDictionary(x => x.Body, x => x.Cnt);
+        }
+        catch { _auditCountByBody = new(); }
+    }
+
+    private void AddBody()
+    {
+        _bodyError = "";
+        if (string.IsNullOrWhiteSpace(_newBodyName)) { _bodyError = "Kurum adı zorunludur."; return; }
+        try
+        {
+            ExtSvc.AddBody(_newBodyName.Trim(),
+                string.IsNullOrWhiteSpace(_newBodyDesc) ? null : _newBodyDesc.Trim());
+            CancelAddBody();
+            ReloadBodies();
+        }
+        catch (Exception ex) { _bodyError = "Hata: " + ex.Message; }
+    }
+
+    private void CancelAddBody()
+    {
+        _addingBody = false;
+        _newBodyName = ""; _newBodyDesc = ""; _bodyError = "";
+    }
+
+    private void DeactivateBody(int id) { ExtSvc.DeactivateBody(id); ReloadBodies(); }
+    private void ActivateBody(int id)   { ExtSvc.ActivateBody(id);   ReloadBodies(); }
+
+    private void SelectBody(string name) { _selectedBody = name; LoadAssignments(); }
+
+    private void LoadAssignments()
+    {
+        if (string.IsNullOrEmpty(_selectedBody)) { _assignments = []; return; }
+        _assignments = ExtSvc.GetBodyUsers(_selectedBody);
+        _grantUserId = null;
+        _grantCanEdit = true;
+    }
+
+    private void GrantAccess()
+    {
+        if (!_grantUserId.HasValue || string.IsNullOrEmpty(_selectedBody)) return;
+        ExtSvc.GrantBody(_grantUserId.Value, _selectedBody, _grantCanEdit);
+        LoadAssignments();
+        ReloadBodies();
+    }
+
+    private void ToggleCanEdit(UserExternalAuditBody a, ChangeEventArgs e)
+    {
+        var v = bool.TryParse(e.Value?.ToString(), out var b) && b;
+        ExtSvc.GrantBody(a.UserId, a.AuditingBody, v);
+        LoadAssignments();
+    }
+
+    private void Revoke(UserExternalAuditBody a)
+    {
+        ExtSvc.RevokeBody(a.UserId, a.AuditingBody);
+        LoadAssignments();
+        ReloadBodies();
+    }
+}

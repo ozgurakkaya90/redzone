@@ -1,9 +1,14 @@
 @page "/audit"
 @attribute [Authorize]
 @inject AuditService AuditSvc
+@inject ExternalAuditService ExtSvc
+@inject AuthService Auth
+@inject AppDbContext Db
 @inject ConfigService CfgSvc
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
 
 <PageTitle>Denetim Paneli</PageTitle>
 
@@ -158,8 +163,41 @@
         </div>
     </div>
 
+    @* ── Dış Denetim Kartı ── *@
+    @if (_extStats != null && _canSeeExternal)
+    {
+        <div class="card" style="padding:16px;margin-top:18px;background:linear-gradient(135deg,#fffbeb 0%,#fff 60%)">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+                <div style="font-size:13px;font-weight:700">🏛️ Dış Denetimler</div>
+                <a href="/audit/external" style="font-size:12px;color:#b45309">Tümünü Gör →</a>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px">
+                <div style="text-align:center;padding:10px;background:#fff;border-radius:8px;border:1px solid #fde68a">
+                    <div style="font-size:22px;font-weight:800;color:#b45309">@_extStats.Total</div>
+                    <div style="font-size:11px;color:var(--text-3);margin-top:2px">Toplam</div>
+                </div>
+                <div style="text-align:center;padding:10px;background:#fff;border-radius:8px;border:1px solid #fde68a">
+                    <div style="font-size:22px;font-weight:800;color:#3b82f6">@_extStats.Planned</div>
+                    <div style="font-size:11px;color:var(--text-3);margin-top:2px">Planlandı</div>
+                </div>
+                <div style="text-align:center;padding:10px;background:#fff;border-radius:8px;border:1px solid #fde68a">
+                    <div style="font-size:22px;font-weight:800;color:#f59e0b">@_extStats.InProgress</div>
+                    <div style="font-size:11px;color:var(--text-3);margin-top:2px">Devam Ediyor</div>
+                </div>
+                <div style="text-align:center;padding:10px;background:#fff;border-radius:8px;border:1px solid #fde68a">
+                    <div style="font-size:22px;font-weight:800;color:#22c55e">@_extStats.Completed</div>
+                    <div style="font-size:11px;color:var(--text-3);margin-top:2px">Tamamlandı</div>
+                </div>
+                <div style="text-align:center;padding:10px;background:#fff;border-radius:8px;border:1px solid #fde68a">
+                    <div style="font-size:22px;font-weight:800;color:#0369a1">@_extStats.Upcoming</div>
+                    <div style="font-size:11px;color:var(--text-3);margin-top:2px">Yaklaşan</div>
+                </div>
+            </div>
+        </div>
+    }
+
     @* ── Hızlı erişim ── *@
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:16px">
         <a href="/audit/internal" class="btn btn-outline btn-sm">📁 İç Denetimler</a>
         <a href="/audit/findings" class="btn btn-outline btn-sm">📋 Tüm Bulgular</a>
         <a href="/audit/actions"  class="btn btn-outline btn-sm">✅ Aksiyon Planları</a>
@@ -167,11 +205,17 @@
         {
             <a href="/audit/plan" class="btn btn-outline btn-sm">📅 Denetim Planı</a>
         }
+        @if (_canSeeExternal)
+        {
+            <a href="/audit/external" class="btn btn-outline btn-sm">🏛️ Dış Denetimler</a>
+        }
     </div>
 }
 
 @code {
     private AuditDashboardStats? _stats;
+    private ExternalAuditStats? _extStats;
+    private bool _canSeeExternal;
     private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
     private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     private bool   HasRole(params string[] roles) => roles.Contains(Role);
@@ -187,8 +231,20 @@
         catch (Exception ex)
         {
             _initError = ex.Message;
-            _stats = new AuditDashboardStats(); // boş istatistik — sayfa çökmez
+            _stats = new AuditDashboardStats();
         }
+
+        // Dış denetim istatistikleri (yetki varsa)
+        try
+        {
+            var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == UserId);
+            if (user != null)
+            {
+                _canSeeExternal = Auth.HasPermission(user, "external_audit.read") || ExtSvc.IsAdmin(user);
+                if (_canSeeExternal) _extStats = ExtSvc.GetStats(user);
+            }
+        }
+        catch { /* migration uygulanmamışsa sessizce yut */ }
     }
 
     private static string SeverityColor(string sev) => sev switch

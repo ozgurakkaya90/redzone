@@ -1,0 +1,216 @@
+@page "/audit/findings/external"
+@attribute [Authorize]
+@inject ExternalAuditService ExtSvc
+@inject AuthService Auth
+@inject AppDbContext Db
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Dış Denetim Aksiyonları</PageTitle>
+
+@if (!_canRead)
+{
+    <div class="card" style="padding:24px">
+        <div style="font-weight:700">Yetki yok</div>
+        <div style="color:var(--text-3)">Dış denetim modülüne erişiminiz bulunmuyor.</div>
+    </div>
+}
+else
+{
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+        <div>
+            <h1 style="margin:0;font-size:22px;font-weight:800">📋 Dış Denetim Bulgu & Aksiyonları</h1>
+            <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+                @_filtered.Count bulgu — toplam @_actionCount aksiyon
+            </div>
+        </div>
+        <a href="/audit/external" class="btn btn-outline btn-sm">← Dış Denetimler</a>
+    </div>
+
+    <div class="card" style="padding:12px 16px;margin-bottom:16px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+            <div style="flex:2;min-width:180px">
+                <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Arama</div>
+                <input class="form-control" placeholder="Bulgu kodu, başlık…"
+                       @bind="_search" @bind:event="oninput" @bind:after="ApplyFilter" />
+            </div>
+            <div style="min-width:160px">
+                <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Denetleyen Kurum</div>
+                <select class="form-control" @bind="_filterBody" @bind:after="ApplyFilter">
+                    <option value="">Tümü</option>
+                    @foreach (var b in _bodies) { <option value="@b">@b</option> }
+                </select>
+            </div>
+            <div style="min-width:140px">
+                <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Durum</div>
+                <select class="form-control" @bind="_filterStatus" @bind:after="ApplyFilter">
+                    <option value="">Tümü</option>
+                    <option value="open">Açık</option>
+                    <option value="closure_requested">Kapanış Talebi</option>
+                    <option value="closed">Kapalı</option>
+                </select>
+            </div>
+        </div>
+    </div>
+
+    <div class="card" style="padding:0;overflow-x:auto">
+        <table class="table" style="font-size:13px">
+            <thead>
+                <tr>
+                    <th style="width:110px">Kod</th>
+                    <th>Bulgu</th>
+                    <th style="width:140px">Kurum</th>
+                    <th style="width:140px">Denetim</th>
+                    <th style="width:90px">Önem</th>
+                    <th style="width:100px;text-align:center">Aksiyon</th>
+                    <th style="width:90px">Termin</th>
+                    <th style="width:110px">Durum</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _filtered)
+                {
+                    var f = row.Finding;
+                    var acts = row.Actions;
+                    var openActs = acts.Count(a => a.Status != "completed" && a.Status != "cancelled");
+                    <tr>
+                        <td><code style="font-size:11px">@f.Code</code></td>
+                        <td>
+                            <div style="font-weight:600">@f.Title</div>
+                            @if (!string.IsNullOrEmpty(f.Description))
+                            {
+                                <div style="font-size:11px;color:var(--text-3);margin-top:2px;
+                                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:400px">
+                                    @f.Description
+                                </div>
+                            }
+                        </td>
+                        <td>
+                            <span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:11px">
+                                @row.AuditingBody
+                            </span>
+                        </td>
+                        <td style="font-size:11px">
+                            <a href="/audit/external/@row.ExternalAuditId">@row.AuditCode</a>
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(f.Severity))
+                            { <span class="badge @SeverityBadge(f.Severity)" style="font-size:10px">@SeverityLabel(f.Severity)</span> }
+                            else { <span style="color:var(--text-3)">—</span> }
+                        </td>
+                        <td style="text-align:center">
+                            @if (acts.Count > 0)
+                            {
+                                <span class="badge @(openActs>0?"badge-yellow":"badge-green")"
+                                      title="@openActs açık / @acts.Count toplam">@acts.Count</span>
+                            }
+                            else { <span style="color:var(--text-3);font-size:12px">—</span> }
+                        </td>
+                        <td style="font-size:11px;color:var(--text-3)">
+                            @(f.DueDate?.ToString("dd.MM.yyyy") ?? "—")
+                        </td>
+                        <td>
+                            <span class="badge @FindingStatusBadge(f.Status)" style="font-size:11px">@FindingStatusLabel(f.Status)</span>
+                        </td>
+                    </tr>
+                }
+                @if (!_filtered.Any())
+                {
+                    <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-3)">
+                        <div style="font-size:24px;margin-bottom:8px">📭</div>
+                        <div style="font-weight:600">Dış denetim bulgusu bulunmuyor</div>
+                    </td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private bool _canRead;
+    private string _search = "", _filterBody = "", _filterStatus = "";
+    private List<string> _bodies = [];
+    private List<Row> _all = [];
+    private List<Row> _filtered = [];
+    private int _actionCount;
+
+    private int UserId => int.TryParse(
+        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    record Row(AuditFinding Finding, int ExternalAuditId, string AuditCode, string AuditingBody, List<AuditFindingAction> Actions);
+
+    protected override void OnInitialized()
+    {
+        var u = Db.Users.Include(x => x.UserRoles).FirstOrDefault(x => x.Id == UserId);
+        if (u is null) return;
+        _canRead = Auth.HasPermission(u, "external_audit.read") || ExtSvc.IsAdmin(u);
+        if (!_canRead) return;
+
+        try
+        {
+            var allowed = ExtSvc.GetAllowedBodies(u);
+            var auditQ = Db.ExternalAudits.AsQueryable();
+            if (allowed != null) auditQ = auditQ.Where(a => allowed.Contains(a.AuditingBody));
+            var audits = auditQ.AsNoTracking().ToList();
+            var auditIds = audits.Select(a => a.Id).ToList();
+
+            // Bulguları çek — ExternalAuditId artık mapped, EF doğrudan filtreleyebilir
+            var findings = Db.AuditFindings
+                .Where(f => f.ExternalAuditId.HasValue && auditIds.Contains(f.ExternalAuditId.Value))
+                .Include(f => f.Owner)
+                .Include(f => f.Department)
+                .AsNoTracking().ToList();
+
+            var fids = findings.Select(f => f.Id).ToList();
+            var actions = fids.Count == 0
+                ? new List<AuditFindingAction>()
+                : Db.AuditFindingActions.Where(a => fids.Contains(a.FindingId)).AsNoTracking().ToList();
+            _actionCount = actions.Count;
+
+            var auditMap = audits.ToDictionary(a => a.Id);
+            _all = [.. findings.Select(f =>
+            {
+                var a = auditMap.TryGetValue(f.ExternalAuditId!.Value, out var au) ? au : null;
+                var acts = actions.Where(x => x.FindingId == f.Id).ToList();
+                return new Row(f, a?.Id ?? 0, a?.Code ?? "", a?.AuditingBody ?? "—", acts);
+            }).OrderByDescending(r => r.Finding.CreatedAt)];
+
+            _bodies = [.. _all.Select(r => r.AuditingBody).Distinct().OrderBy(b => b)];
+            _filtered = _all;
+        }
+        catch { _all = []; _filtered = []; }
+    }
+
+    private void ApplyFilter()
+    {
+        var s = _search.Trim().ToLowerInvariant();
+        _filtered = _all.Where(r =>
+            (string.IsNullOrEmpty(s) ||
+                r.Finding.Code.ToLower().Contains(s) ||
+                r.Finding.Title.ToLower().Contains(s) ||
+                (r.Finding.Description?.ToLower().Contains(s) ?? false)) &&
+            (string.IsNullOrEmpty(_filterBody)   || r.AuditingBody == _filterBody) &&
+            (string.IsNullOrEmpty(_filterStatus) || r.Finding.Status == _filterStatus)
+        ).ToList();
+    }
+
+    private static string SeverityLabel(string? s) => s switch
+    {
+        "low" => "Düşük", "medium" => "Orta", "high" => "Yüksek", "critical" => "Kritik", _ => s ?? ""
+    };
+    private static string SeverityBadge(string? s) => s switch
+    {
+        "low" => "badge-gray", "medium" => "badge-blue",
+        "high" => "badge-yellow", "critical" => "badge-red", _ => ""
+    };
+    private static string FindingStatusLabel(string s) => s switch
+    {
+        "open" => "Açık", "closure_requested" => "Kapanış Talebi", "closed" => "Kapalı", _ => s
+    };
+    private static string FindingStatusBadge(string s) => s switch
+    {
+        "open" => "badge-red", "closure_requested" => "badge-yellow", "closed" => "badge-green", _ => ""
+    };
+}

@@ -127,6 +127,17 @@ public class AuditFinding
     public int? DepartmentId { get; set; }
     public int? InternalAuditId { get; set; }
 
+    // Dış denetim entegrasyonu — migration uygulandı, artık EF okuyabilir.
+    // "internal" | "external" — varsayılan internal (geriye dönük uyum)
+    [MaxLength(20)]
+    public string AuditSource { get; set; } = "internal";
+
+    public int? ExternalAuditId { get; set; }
+
+    // Nav property [NotMapped] — FK konfigürasyonu yok, manuel yüklenir
+    [NotMapped]
+    public ExternalAudit? ExternalAudit { get; set; }
+
     [Required, MaxLength(20)]
     public string Status { get; set; } = "open"; // open|closure_requested|closed
 
@@ -182,6 +193,88 @@ public class FindingAttachment
 
     public AuditFinding Finding { get; set; } = null!;
     public User UploadedBy { get; set; } = null!;
+}
+
+// ─────────────────────────────────────────────────────────────────
+// Dış Denetim (BRC, JCI, müşteri denetimi vb.)
+// ─────────────────────────────────────────────────────────────────
+public class ExternalAudit
+{
+    public int Id { get; set; }
+
+    [MaxLength(20)]
+    public string Code { get; set; } = "";
+
+    [Required, MaxLength(200)]
+    public string AuditingBody { get; set; } = "";   // BRC, JCI, TSE, müşteri…
+
+    [MaxLength(100)]
+    public string? Standard { get; set; }            // "BRC v9" gibi (opsiyonel)
+
+    [Required, MaxLength(300)]
+    public string Subject { get; set; } = "";        // Denetim Konusu
+
+    public DateOnly AuditDate { get; set; }
+    public DateOnly? EndDate { get; set; }
+
+    public int? ResponsibleDeptId { get; set; }
+    public int? ResponsibleUserId { get; set; }
+
+    [Required, MaxLength(20)]
+    public string Status { get; set; } = "planned";  // planned|in_progress|completed|closed
+
+    [MaxLength(100)]
+    public string? Score { get; set; }               // A/B/Pass vb. serbest
+
+    [MaxLength(500)]
+    public string? ReportFilePath { get; set; }
+
+    [MaxLength(2000)]
+    public string? Notes { get; set; }
+
+    public int CreatedById { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public Department? ResponsibleDept { get; set; }
+    public User? ResponsibleUser { get; set; }
+    public User CreatedBy { get; set; } = null!;
+
+    // [NotMapped]: AuditFinding.ExternalAuditId migration uygulanana kadar NotMapped.
+    [NotMapped]
+    public ICollection<AuditFinding> Findings { get; set; } = [];
+}
+
+// Denetleyici kurum kataloğu (BRC, JCI…). Soft-delete: IsActive=false işaretlenir,
+// eski denetim kayıtları string olarak referans tuttuğu için geriye dönük korunur.
+public class ExternalAuditBody
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = "";
+
+    [MaxLength(500)]
+    public string? Description { get; set; }
+
+    public bool IsActive { get; set; } = true;
+    public int SortOrder { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+// Kullanıcının hangi dış denetim kurumlarına erişebileceğini tutar.
+// (UserId, AuditingBody) unique. CanEdit=false ise sadece görüntüler.
+public class UserExternalAuditBody
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+
+    [Required, MaxLength(200)]
+    public string AuditingBody { get; set; } = "";
+
+    public bool CanEdit { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public User User { get; set; } = null!;
 }
 
 public class ClosureRequest

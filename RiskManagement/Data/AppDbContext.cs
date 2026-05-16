@@ -35,6 +35,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<UserOrganization> UserOrganizations => Set<UserOrganization>();
     public DbSet<UserCompany> UserCompanies => Set<UserCompany>();
     public DbSet<RiskLibraryItem> RiskLibraryItems => Set<RiskLibraryItem>();
+    public DbSet<ExternalAudit> ExternalAudits => Set<ExternalAudit>();
+    public DbSet<ExternalAuditBody> ExternalAuditBodies => Set<ExternalAuditBody>();
+    public DbSet<UserExternalAuditBody> UserExternalAuditBodies => Set<UserExternalAuditBody>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -238,5 +241,30 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(r => r.Category);
         mb.Entity<RiskLibraryItem>()
             .HasIndex(r => r.IsActive);
+
+        // ExternalAudit
+        mb.Entity<ExternalAudit>()
+            .HasOne(e => e.CreatedBy).WithMany().HasForeignKey(e => e.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<ExternalAudit>()
+            .HasOne(e => e.ResponsibleDept).WithMany().HasForeignKey(e => e.ResponsibleDeptId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<ExternalAudit>()
+            .HasOne(e => e.ResponsibleUser).WithMany().HasForeignKey(e => e.ResponsibleUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<ExternalAudit>().HasIndex(e => e.AuditingBody);
+        mb.Entity<ExternalAudit>().HasIndex(e => e.Status);
+        mb.Entity<ExternalAudit>().HasIndex(e => e.AuditDate);
+
+        // ExternalAuditBody
+        mb.Entity<ExternalAuditBody>().HasIndex(b => b.Name).IsUnique();
+        mb.Entity<ExternalAuditBody>().HasIndex(b => b.IsActive);
+
+        // UserExternalAuditBody
+        mb.Entity<UserExternalAuditBody>()
+            .HasOne(u => u.User).WithMany().HasForeignKey(u => u.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<UserExternalAuditBody>()
+            .HasIndex(u => new { u.UserId, u.AuditingBody }).IsUnique();
     }
 }
