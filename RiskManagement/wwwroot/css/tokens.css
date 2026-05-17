@@ -1,0 +1,147 @@
+/* ════════════════════════════════════════════════════════════════
+   RED Design System — Tokens
+   ════════════════════════════════════════════════════════════════ */
+
+/* ── Reduced Motion ─────────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Tokens ──────────────────────────────────────────────────── */
+:root {
+  /* Brand — navy (UI primary) */
+  --navy-700:  #1e3a5f;
+  --navy-800:  #162d4a;
+  --navy-50:   #e8eef5;
+  --navy-100:  #c7d8eb;
+
+  /* Semantic danger (risk badges, delete) */
+  --red-500:   #E1251B;
+  --red-600:   #C41C13;
+  --red-50:    #FFF1F0;
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 3px rgba(30,58,95,.25);
+
+  /* Neutrals */
+  --gray-25:   #FAFAFA;
+  --gray-50:   #F8FAFC;
+  --gray-100:  #F1F5F9;
+  --gray-200:  #E2E8F0;
+  --gray-300:  #CBD5E1;
+  --gray-400:  #94A3B8;
+  --gray-500:  #64748B;
+  --gray-600:  #475569;
+  --gray-700:  #334155;
+  --gray-800:  #1E293B;
+  --gray-900:  #0F172A;
+
+  /* Semantic */
+  --bg:        var(--gray-100);
+  --surface:   #FFFFFF;
+  --border:    var(--gray-200);
+  --border-strong: var(--gray-300);
+  --text:      var(--gray-900);
+  --text-2:    var(--gray-600);
+  --text-3:    var(--gray-500); /* #64748B — kontrast ~4.6:1 beyaz zemin üzerinde */
+
+  /* Status */
+  --green-500: #10B981;
+  --green-50:  #ECFDF5;
+  --green-100: #D1FAE5;
+  --yellow-500:#F59E0B;
+  --yellow-50: #FFFBEB;
+  --yellow-100:#FEF3C7;
+  --orange-500:#F97316;
+  --orange-50: #FFF7ED;
+  --blue-500:  #3B82F6;
+  --blue-50:   #EFF6FF;
+  --blue-100:  #DBEAFE;
+
+  /* Sidebar */
+  --sidebar-bg:         #0f1f33;
+  --sidebar-surface:    rgba(255,255,255,.05);
+  --sidebar-border:     rgba(255,255,255,.07);
+  --sidebar-text:       #94A3B8;
+  --sidebar-text-hover: #E2E8F0;
+  --sidebar-accent:     var(--navy-700);
+  --sidebar-w:          240px;
+  --sidebar-font-size:  13px;
+  --sidebar-font:       'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Spacing */
+  --r-sm:  6px;
+  --r-md:  8px;
+  --r-lg:  8px;
+  --r-xl: 10px;
+
+  /* Shadow */
+  --shadow-xs: 0 1px 2px rgba(0,0,0,.05);
+  --shadow-sm: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
+  --shadow-md: 0 4px 6px -1px rgba(0,0,0,.07), 0 2px 4px -1px rgba(0,0,0,.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0,0,0,.08), 0 4px 6px -2px rgba(0,0,0,.04);
+
+  /* Font */
+  --font: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'SF Mono', 'Fira Code', monospace;
+
+  /* Semantic aliases — iş mantığı renkleri */
+  --color-success:        var(--green-500);
+  --color-success-bg:     var(--green-50);
+  --color-success-border: var(--green-100);
+  --color-success-fg:     #065F46;
+
+  --color-warning:        var(--yellow-500);
+  --color-warning-bg:     var(--yellow-50);
+  --color-warning-border: var(--yellow-100);
+  --color-warning-fg:     #92400E;
+
+  --color-danger:         var(--red-500);
+  --color-danger-bg:      var(--red-50);
+  --color-danger-border:  #FECACA;
+  --color-danger-fg:      #991B1B;
+
+  --color-info:           var(--blue-500);
+  --color-info-bg:        var(--blue-50);
+  --color-info-border:    var(--blue-100);
+  --color-info-fg:        #1D4ED8;
+
+  --color-muted:          var(--gray-400);
+  --color-muted-bg:       var(--gray-100);
+
+  /* ── Domain: Risk seviyeleri ─────────────────────────────── */
+  --risk-critical-color: #7f1d1d;
+  --risk-critical-bg:    #fee2e2;
+  --risk-high-color:     #dc2626;
+  --risk-high-bg:        #fecaca;
+  --risk-medium-color:   #c2410c;
+  --risk-medium-bg:      #ffedd5;
+  --risk-low-color:      #ca8a04;
+  --risk-low-bg:         #fef9c3;
+  --risk-ok-color:       #15803d;
+  --risk-ok-bg:          #dcfce7;
+
+  /* ── Domain: Audit durumları ─────────────────────────────── */
+  --audit-open-color:    #dc2626;
+  --audit-open-bg:       #fef2f2;
+  --audit-pending-color: #f59e0b;
+  --audit-pending-bg:    #fffbeb;
+  --audit-closed-color:  #16a34a;
+  --audit-closed-bg:     #f0fdf4;
+  --audit-overdue-color: #7f1d1d;
+  --audit-overdue-bg:    #fff1f0;
+  --audit-planned-color: #3b82f6;
+  --audit-planned-bg:    #eff6ff;
+
+  /* ── Domain: İş akışı durumları ─────────────────────────── */
+  --status-proposed-color: #1d4ed8;
+  --status-review-color:   #92400e;
+  --status-approved-color: #065f46;
+  --status-rejected-color: #991b1b;
+  --status-active-color:   #0f766e;
+}
