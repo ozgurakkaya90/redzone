@@ -9,31 +9,31 @@
 
 <PageTitle>Dış Denetim Yapılandırması</PageTitle>
 
-<div style="margin-bottom:20px">
-    <h1 style="margin:0;font-size:22px;font-weight:800"> Dış Denetim Yapılandırması</h1>
-    <div style="font-size:12px;color:var(--text-3);margin-top:2px">
-        Denetleyici kurumları ve kullanıcı yetkilerini yönet
+<div class="page-header">
+    <div>
+        <h1>Dış Denetim Yapılandırması</h1>
+        <div class="page-toolbar-sub">Denetleyici kurumları ve kullanıcı yetkilerini yönet</div>
     </div>
 </div>
 
-<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+<div class="eac-layout">
 
     @* ─── Sol: Kurum Kataloğu ─── *@
-    <div class="card" style="padding:18px;flex:1;min-width:380px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <h2 style="margin:0;font-size:15px;font-weight:700">Denetleyici Kurumlar</h2>
+    <div class="card eac-card-left">
+        <div class="page-toolbar" style="margin-bottom:14px">
+            <h2 class="page-toolbar-title" style="font-size:15px">Denetleyici Kurumlar</h2>
             <button class="btn btn-primary btn-sm" @onclick="() => _addingBody = true">+ Kurum</button>
         </div>
 
         @if (_addingBody)
         {
-            <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:8px;padding:12px;margin-bottom:12px">
+            <div class="inset-form" style="margin-bottom:12px">
                 <input class="form-control" placeholder="Kurum adı (örn. BRC, JCI)"
                        @bind="_newBodyName" maxlength="200" style="margin-bottom:6px" />
                 <input class="form-control" placeholder="Açıklama (opsiyonel)"
                        @bind="_newBodyDesc" maxlength="500" style="margin-bottom:8px" />
                 @if (!string.IsNullOrEmpty(_bodyError))
-                { <div class="alert alert-error" style="margin-bottom:8px;font-size:12px">@_bodyError</div> }
+                { <div class="alert alert-error" style="margin-bottom:8px">@_bodyError</div> }
                 <div style="display:flex;gap:6px">
                     <button class="btn btn-primary btn-sm" @onclick="AddBody">Ekle</button>
                     <button class="btn btn-outline btn-sm" @onclick="CancelAddBody">İptal</button>
@@ -42,7 +42,7 @@
         }
 
         <div style="margin-bottom:8px">
-            <label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer">
+            <label class="eac-checkbox-label">
                 <input type="checkbox" @bind="_showInactive" @bind:after="ReloadBodies" />
                 Pasif kurumları da göster
             </label>
@@ -50,9 +50,7 @@
 
         @if (_bodies.Count == 0)
         {
-            <div style="text-align:center;padding:24px;color:var(--text-3);font-size:13px">
-                Henüz kurum eklenmemiş.
-            </div>
+            <div class="empty-state"><div class="empty-state-sub">Henüz kurum eklenmemiş.</div></div>
         }
         else
         {
@@ -84,13 +82,11 @@
                         <td style="text-align:right">
                             @if (b.IsActive)
                             {
-                                <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px"
-                                        @onclick="() => DeactivateBody(b.Id)">Pasifleştir</button>
+                                <button class="btn btn-outline btn-sm" @onclick="() => DeactivateBody(b.Id)">Pasifleştir</button>
                             }
                             else
                             {
-                                <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px"
-                                        @onclick="() => ActivateBody(b.Id)">Aktifleştir</button>
+                                <button class="btn btn-outline btn-sm" @onclick="() => ActivateBody(b.Id)">Aktifleştir</button>
                             }
                         </td>
                     </tr>
@@ -101,9 +97,9 @@
     </div>
 
     @* ─── Sağ: Yetki Yönetimi ─── *@
-    <div class="card" style="padding:18px;flex:1.4;min-width:480px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-            <h2 style="margin:0;font-size:15px;font-weight:700">
+    <div class="card eac-card-right">
+        <div class="page-toolbar" style="margin-bottom:14px">
+            <h2 class="page-toolbar-title" style="font-size:15px">
                 Kurum Yetkileri
                 @if (!string.IsNullOrEmpty(_selectedBody))
                 { <span style="font-weight:400;color:var(--text-3)"> — @_selectedBody</span> }
@@ -117,23 +113,19 @@
 
         @if (string.IsNullOrEmpty(_selectedBody))
         {
-            <div style="text-align:center;padding:32px;color:var(--text-3);font-size:13px">
-                Yetki yönetmek için soldan bir kurum seçin.
-            </div>
+            <div class="empty-state"><div class="empty-state-sub">Yetki yönetmek için soldan bir kurum seçin.</div></div>
         }
         else
         {
-            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px">
-                <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">
-                    Kullanıcı Ekle
-                </div>
-                <div style="display:flex;gap:6px">
+            <div class="inset-form" style="background:var(--gray-50);border-color:var(--border-strong);margin-bottom:12px">
+                <div class="section-title" style="margin-bottom:8px">Kullanıcı Ekle</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
                     <select class="form-control" @bind="_grantUserId">
                         <option value="">— Kullanıcı —</option>
                         @foreach (var u in _users.Where(u => !_assignments.Any(a => a.UserId == u.Id)))
                         { <option value="@u.Id">@u.FullName (@u.Username)</option> }
                     </select>
-                    <label style="display:flex;align-items:center;gap:6px;white-space:nowrap;font-size:12px">
+                    <label class="eac-checkbox-label">
                         <input type="checkbox" @bind="_grantCanEdit" /> Düzenleme yetkisi
                     </label>
                     <button class="btn btn-primary btn-sm" @onclick="GrantAccess">Ver</button>
@@ -142,9 +134,7 @@
 
             @if (_assignments.Count == 0)
             {
-                <div style="text-align:center;padding:24px;color:var(--text-3);font-size:13px">
-                    Bu kuruma yetkili kullanıcı yok.
-                </div>
+                <div class="empty-state"><div class="empty-state-sub">Bu kuruma yetkili kullanıcı yok.</div></div>
             }
             else
             {
@@ -169,8 +159,7 @@
                                 </label>
                             </td>
                             <td style="text-align:right">
-                                <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;color:#dc2626"
-                                        @onclick="() => Revoke(a)">Kaldır</button>
+                                <button class="btn btn-ghost-danger btn-sm" @onclick="() => Revoke(a)">Kaldır</button>
                             </td>
                         </tr>
                     }
@@ -180,6 +169,13 @@
         }
     </div>
 </div>
+
+<style>
+    .eac-layout    { display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; }
+    .eac-card-left  { padding:18px; flex:1; min-width:360px; }
+    .eac-card-right { padding:18px; flex:1.4; min-width:460px; }
+    .eac-checkbox-label { font-size:12px; display:flex; align-items:center; gap:6px; cursor:pointer; white-space:nowrap; }
+</style>
 
 @code {
     private List<ExternalAuditBody> _bodies = [];

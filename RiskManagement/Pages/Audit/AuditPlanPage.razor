@@ -11,13 +11,10 @@
 
 <PageTitle>Denetim Planı</PageTitle>
 
-@* ── Üst başlık ── *@
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+<div class="page-header">
     <div>
-        <h1 style="margin:0;font-size:22px;font-weight:800">Denetim Planı</h1>
-        <div style="font-size:12px;color:var(--text-3);margin-top:2px">
-            Yıllık denetim programı · planlanan ve gerçekleşen tarihler
-        </div>
+        <h1>Denetim Planı</h1>
+        <div class="page-toolbar-sub">Yıllık denetim programı · planlanan ve gerçekleşen tarihler</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
         <button class="btn btn-outline btn-sm" @onclick="PrevYear" disabled="@(_year <= DateTime.Today.Year - 5)">‹</button>
@@ -36,32 +33,27 @@
     </div>
 </div>
 
-@* ── Sayfa düzeyinde hata (migration eksikse burada görünür) ── *@
 @if (!string.IsNullOrEmpty(_pageError))
 {
-    <div class="alert alert-error" style="margin-bottom:16px;display:flex;gap:12px;align-items:flex-start">
-        <span style="font-size:18px"></span>
-        <div>
-            <div style="font-weight:700;margin-bottom:4px">Veritabanı Hatası</div>
-            <div style="font-size:13px">@_pageError</div>
-            <div style="font-size:12px;margin-top:6px;color:#7f1d1d">
-                Çözüm: Admin panelinden <a href="/admin/db-migrate" style="color:#dc2626;font-weight:600">Veritabanı Migration</a> sayfasını açın ve "Migration Çalıştır" butonuna tıklayın.
-            </div>
+    <div class="alert alert-error" style="flex-direction:column;align-items:flex-start;margin-bottom:16px">
+        <div style="font-weight:700;margin-bottom:4px">Veritabanı Hatası</div>
+        <div style="font-size:13px">@_pageError</div>
+        <div style="font-size:12px;margin-top:6px">
+            Çözüm: Admin panelinden <a href="/admin/db-migrate" style="color:var(--red-500);font-weight:600">Veritabanı Migration</a> sayfasını açın.
         </div>
     </div>
 }
 
-@* ── Plan oluşturma formu ── *@
 @if (_showCreatePlan)
 {
-    <div class="card" style="padding:20px;margin-bottom:20px;border:2px solid var(--primary)">
-        <div style="font-size:14px;font-weight:700;margin-bottom:14px">@_year Yılı Denetim Planı Oluştur</div>
-        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:end">
-            <div style="flex:1;min-width:260px">
+    <div class="card" style="margin-bottom:20px;border:2px solid var(--navy-700)">
+        <div class="card-title">@_year Yılı Denetim Planı Oluştur</div>
+        <div class="filter-bar" style="align-items:end">
+            <div class="filter-group" style="flex:1;min-width:260px">
                 <label class="form-label">Plan Adı</label>
                 <input class="form-control" @bind="_planTitle" placeholder="örn. 2026 Yıllık Denetim Programı" />
             </div>
-            <div style="flex:2;min-width:260px">
+            <div class="filter-group" style="flex:2;min-width:260px">
                 <label class="form-label">Açıklama (isteğe bağlı)</label>
                 <input class="form-control" @bind="_planDesc" placeholder="Kısa açıklama…" />
             </div>
@@ -71,46 +63,52 @@
             </div>
         </div>
         @if (!string.IsNullOrEmpty(_formError))
-        { <div style="color:#dc2626;font-size:12px;margin-top:8px">@_formError</div> }
+        { <div class="field-error" style="margin-top:8px">@_formError</div> }
     </div>
 }
 
 @if (_plan == null && !_showCreatePlan)
 {
-    <div class="card" style="padding:60px;text-align:center">
-        <div style="font-size:40px;margin-bottom:12px"></div>
-        <div style="font-size:15px;font-weight:700;color:var(--text-2)">@_year için denetim planı bulunamadı</div>
-        <div style="font-size:13px;color:var(--text-3);margin-top:6px;margin-bottom:20px">
-            Yıllık denetim programınızı oluşturarak başlayın.
+    <div class="card" style="padding:60px">
+        <div class="empty-state">
+            <div class="empty-state-icon-wrap">
+                <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="var(--gray-300)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+                </svg>
+            </div>
+            <div class="empty-state-title">@_year için denetim planı bulunamadı</div>
+            <div class="empty-state-sub">Yıllık denetim programınızı oluşturarak başlayın.</div>
+            <div class="empty-state-action">
+                <button class="btn btn-primary btn-sm" @onclick="ShowCreatePlan">+ @_year Planı Oluştur</button>
+            </div>
         </div>
-        <button class="btn btn-primary btn-sm" @onclick="ShowCreatePlan">+ @_year Planı Oluştur</button>
     </div>
 }
 
 @if (_plan != null)
 {
     @* ── Özet kartlar ── *@
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px;margin-bottom:20px">
+    <div class="app-summary-grid" style="margin-bottom:20px">
         @foreach (var (label, count, color, icon) in SummaryCards())
         {
-            <div class="card" style="padding:14px 16px;border-top:3px solid @color">
+            <div class="card app-summary-card" style="border-top:3px solid @color">
                 <div style="font-size:22px;font-weight:800;color:@color">@count</div>
-                <div style="font-size:11px;color:var(--text-3);margin-top:2px">@icon @label</div>
+                <div style="font-size:11px;color:var(--text-3);margin-top:2px">@label</div>
             </div>
         }
     </div>
 
     @* ── Gantt çizelgesi ── *@
     <div class="card" style="padding:16px;margin-bottom:20px;overflow-x:auto">
-        <div style="font-size:13px;font-weight:700;margin-bottom:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
-            <span>Zaman Çizelgesi — @_year</span>
-            <span style="font-size:11px;font-weight:400;color:var(--text-3);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-                <span><span style="display:inline-block;width:12px;height:4px;background:#c7d2fe;border-radius:2px;vertical-align:middle"></span> Planlanan</span>
-                <span><span style="display:inline-block;width:12px;height:4px;background:#22c55e;border-radius:2px;vertical-align:middle"></span> Tamamlandı</span>
-                <span><span style="display:inline-block;width:12px;height:4px;background:#3b82f6;border-radius:2px;vertical-align:middle"></span> Devam Ediyor</span>
-                <span><span style="display:inline-block;width:12px;height:4px;background:#f59e0b;border-radius:2px;vertical-align:middle"></span> Gecikmeli Tamam</span>
-                <span><span style="display:inline-block;width:12px;height:4px;background:#ef4444;border-radius:2px;vertical-align:middle"></span> Gecikmiş</span>
-            </span>
+        <div class="gantt-header">
+            <div class="card-title" style="margin-bottom:0">Zaman Çizelgesi — @_year</div>
+            <div class="gantt-legend">
+                <span><span class="gantt-legend-dot" style="background:#c7d2fe"></span> Planlanan</span>
+                <span><span class="gantt-legend-dot" style="background:#22c55e"></span> Tamamlandı</span>
+                <span><span class="gantt-legend-dot" style="background:#3b82f6"></span> Devam Ediyor</span>
+                <span><span class="gantt-legend-dot" style="background:#f59e0b"></span> Gecikmeli Tamam</span>
+                <span><span class="gantt-legend-dot" style="background:#ef4444"></span> Gecikmiş</span>
+            </div>
         </div>
 
         <div style="min-width:700px">
@@ -520,6 +518,14 @@
     </div>
 }
 
+<style>
+    .app-summary-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px }
+    .app-summary-card  { padding:14px 16px }
+
+    .gantt-header { display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px }
+    .gantt-legend { display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--text-3);font-weight:400 }
+    .gantt-legend-dot { display:inline-block;width:12px;height:4px;border-radius:2px;vertical-align:middle;margin-right:3px }
+</style>
 
 @code {
     private int UserId => int.TryParse(

@@ -8,50 +8,52 @@
 <PageTitle>Veritabanı Migration</PageTitle>
 
 <div style="max-width:760px">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px">
-        <a href="/admin/config" class="btn btn-outline btn-sm">← Yapılandırma</a>
+    <div class="page-header">
         <div>
-            <h1 style="margin:0;font-size:22px;font-weight:800">Veritabanı Migration</h1>
-            <div style="font-size:12px;color:var(--text-3);margin-top:2px">
-                Bekleyen migration'ları uygula ve tablo durumunu kontrol et
-            </div>
+            <h1>Veritabanı Migration</h1>
+            <div class="page-toolbar-sub">Bekleyen migration'ları uygula ve tablo durumunu kontrol et</div>
         </div>
+        <a href="/admin/config" class="btn btn-outline btn-sm">← Yapılandırma</a>
     </div>
 
     @* ── Durum ── *@
-    <div class="card" style="padding:20px;margin-bottom:16px">
-        <div style="font-size:13px;font-weight:700;margin-bottom:14px">Migration Durumu</div>
+    <div class="card" style="margin-bottom:16px">
+        <div class="card-title">Migration Durumu</div>
 
         @if (_pending.Count == 0 && _applied.Count > 0)
         {
-            <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
-                        background:#f0fdf4;border:1px solid #86efac;border-radius:8px;margin-bottom:12px">
-                <span style="font-size:20px">OK</span>
+            <div class="alert alert-success" style="margin-bottom:12px">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
+                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                </svg>
                 <div>
-                    <div style="font-size:13px;font-weight:700;color:#166534">Tüm migration'lar uygulanmış</div>
-                    <div style="font-size:12px;color:#16a34a">@_applied.Count migration uygulandı.</div>
+                    <div style="font-weight:700">Tüm migration'lar uygulanmış</div>
+                    <div style="font-size:12px;margin-top:2px">@_applied.Count migration uygulandı.</div>
                 </div>
             </div>
         }
 
         @if (_pending.Count > 0)
         {
-            <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
-                        background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;margin-bottom:12px">
-                <span style="font-size:20px"></span>
+            <div class="alert alert-warning" style="margin-bottom:12px">
+                <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
                 <div>
-                    <div style="font-size:13px;font-weight:700;color:#92400e">@_pending.Count bekleyen migration</div>
-                    <div style="font-size:12px;color:#b45309">Bu migration'lar henüz uygulanmadı.</div>
+                    <div style="font-weight:700">@_pending.Count bekleyen migration</div>
+                    <div style="font-size:12px;margin-top:2px">Bu migration'lar henüz uygulanmadı.</div>
                 </div>
             </div>
 
             <div style="margin-bottom:14px">
                 @foreach (var m in _pending)
                 {
-                    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;
-                                background:#fffbeb;border-radius:6px;margin-bottom:4px;font-size:12px">
-                        <span></span>
-                        <code style="font-family:monospace">@m</code>
+                    <div class="dm-migration-row dm-migration-row--pending">
+                        <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#92400e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
+                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                        <code>@m</code>
                     </div>
                 }
             </div>
@@ -59,16 +61,16 @@
 
         @if (_applied.Count > 0)
         {
-            <details>
-                <summary style="font-size:12px;color:var(--text-3);cursor:pointer;margin-bottom:8px">
-                    Uygulanmış migration'ları göster (@_applied.Count)
-                </summary>
+            <details class="dm-details">
+                <summary>Uygulanmış migration'ları göster (@_applied.Count)</summary>
                 <div style="margin-top:8px">
                     @foreach (var m in _applied)
                     {
-                        <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;
-                                    font-size:11px;font-family:monospace;color:var(--text-3)">
-                            <span style="color:#22c55e">OK</span> @m
+                        <div class="dm-migration-row dm-migration-row--applied">
+                            <svg width="12" height="12" fill="none" viewBox="0 0 24 24" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">
+                                <polyline points="20 6 9 17 4 12"/>
+                            </svg>
+                            <code>@m</code>
                         </div>
                     }
                 </div>
@@ -77,31 +79,22 @@
 
         @if (_loadError != null)
         {
-            <div style="padding:10px 14px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;
-                        font-size:12px;color:#991b1b;margin-bottom:12px">
-                <strong>Durum okunamadı:</strong> @_loadError
-            </div>
+            <div class="alert alert-error" style="margin-bottom:12px">@_loadError</div>
         }
 
-        <div style="display:flex;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+        <div class="dm-action-bar">
             <button class="btn btn-primary" @onclick="RunMigrations" disabled="@_running">
                 @(_running ? "Çalışıyor…" : "Migration Çalıştır")
             </button>
-            <button class="btn btn-outline" @onclick="Refresh" disabled="@_running">
-                Yenile
-            </button>
-            <button class="btn btn-outline" style="color:#dc2626;border-color:#fca5a5"
-                    @onclick="RestartApp" disabled="@_restarting">
+            <button class="btn btn-outline" @onclick="Refresh" disabled="@_running">Yenile</button>
+            <button class="btn btn-ghost-danger" @onclick="RestartApp" disabled="@_restarting">
                 @(_restarting ? "Yeniden başlatılıyor…" : "Uygulamayı Yeniden Başlat")
             </button>
         </div>
 
         @if (!string.IsNullOrEmpty(_restartMsg))
         {
-            <div style="margin-top:10px;padding:10px 14px;background:#fef3c7;border:1px solid #fcd34d;
-                        border-radius:8px;font-size:13px;color:#92400e">
-                @_restartMsg
-            </div>
+            <div class="alert alert-warning" style="margin-top:10px">@_restartMsg</div>
         }
     </div>
 
@@ -109,18 +102,15 @@
     @if (_result != null)
     {
         var isOk = !_result.StartsWith("Hata");
-        <div style="padding:14px 16px;border-radius:8px;margin-bottom:16px;
-                    background:@(isOk?"#f0fdf4":"#fef2f2");border:1px solid @(isOk?"#86efac":"#fca5a5")">
-            <div style="font-size:13px;font-weight:700;color:@(isOk?"#166534":"#991b1b");margin-bottom:4px">
-                @(isOk ? "OK Başarılı" : "X Hata")
-            </div>
-            <div style="font-size:12px;white-space:pre-wrap;font-family:monospace;color:@(isOk?"#16a34a":"#b91c1c")">@_result</div>
+        <div class="alert @(isOk ? "alert-success" : "alert-error")" style="flex-direction:column;align-items:flex-start;margin-bottom:16px">
+            <div style="font-weight:700;margin-bottom:4px">@(isOk ? "Başarılı" : "Hata")</div>
+            <div style="font-size:12px;white-space:pre-wrap;font-family:var(--font-mono)">@_result</div>
         </div>
     }
 
     @* ── Tablo kontrol ── *@
-    <div class="card" style="padding:20px">
-        <div style="font-size:13px;font-weight:700;margin-bottom:14px">Kritik Tablo Kontrolü</div>
+    <div class="card">
+        <div class="card-title">Kritik Tablo Kontrolü</div>
 
         @if (_tableChecks.Count == 0)
         {
@@ -128,24 +118,62 @@
         }
         else
         {
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+            <div class="dm-table-grid">
                 @foreach (var (table, ok, detail) in _tableChecks)
                 {
-                    <div style="padding:10px 12px;border-radius:6px;
-                                background:@(ok?"#f0fdf4":"#fef2f2");border:1px solid @(ok?"#86efac":"#fca5a5")">
+                    <div class="alert @(ok ? "alert-success" : "alert-error")" style="flex-direction:column;align-items:flex-start;padding:10px 12px;margin-bottom:0">
                         <div style="display:flex;gap:6px;align-items:center">
-                            <span>@(ok?"OK":"X")</span>
-                            <code style="font-size:12px">@table</code>
+                            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                @if (ok) { <polyline points="20 6 9 17 4 12"/> }
+                                else     { <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/> }
+                            </svg>
+                            <code>@table</code>
                         </div>
                         @if (!string.IsNullOrEmpty(detail))
-                        { <div style="font-size:11px;color:@(ok?"#16a34a":"#b91c1c");margin-top:4px">@detail</div> }
+                        { <div style="font-size:11px;margin-top:4px">@detail</div> }
                     </div>
                 }
             </div>
-            <button class="btn btn-outline btn-sm" @onclick="CheckTables">Tekrar Kontrol Et</button>
+            <button class="btn btn-outline btn-sm" style="margin-top:10px" @onclick="CheckTables">Tekrar Kontrol Et</button>
         }
     </div>
 </div>
+
+<style>
+    .dm-migration-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px;
+        border-radius: var(--r-sm);
+        margin-bottom: 4px;
+        font-size: 12px;
+    }
+    .dm-migration-row--pending { background: var(--yellow-50); }
+    .dm-migration-row--applied { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+
+    .dm-details summary {
+        font-size: 12px;
+        color: var(--text-3);
+        cursor: pointer;
+        margin-bottom: 8px;
+    }
+    .dm-action-bar {
+        display: flex;
+        gap: 10px;
+        margin-top: 14px;
+        padding-top: 14px;
+        border-top: 1px solid var(--border);
+        flex-wrap: wrap;
+    }
+    .dm-table-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 12px;
+    }
+    @@media (max-width: 600px) { .dm-table-grid { grid-template-columns: 1fr; } }
+</style>
 
 @code {
     private List<string> _pending  = [];
@@ -180,7 +208,6 @@
         _running = true;
         _result  = null;
         StateHasChanged();
-
         try
         {
             await Task.Run(() => Db.Database.Migrate());
@@ -195,10 +222,7 @@
             _result = $"Hata: {ex.Message}";
             Refresh();
         }
-        finally
-        {
-            _running = false;
-        }
+        finally { _running = false; }
     }
 
     private async Task RestartApp()
@@ -206,16 +230,8 @@
         _restarting = true;
         _restartMsg = "Yeniden başlatma komutu verildi. 10 saniye içinde site tekrar açılacak, lütfen bekleyin…";
         StateHasChanged();
-
-        // Kısa gecikme — Blazor mesajı render etsin
         await Task.Delay(300);
-
-        // Systemd Restart=on-failure veya Restart=always ile otomatik yeniden başlar
-        _ = Task.Run(async () =>
-        {
-            await Task.Delay(500);
-            Environment.Exit(0);
-        });
+        _ = Task.Run(async () => { await Task.Delay(500); Environment.Exit(0); });
     }
 
     private void CheckTables()
@@ -223,21 +239,19 @@
         _tableChecks.Clear();
         var checks = new[]
         {
-            ("AuditPlans",     "SELECT COUNT(*) FROM AuditPlans"),
-            ("AuditPlanItems", "SELECT COUNT(*) FROM AuditPlanItems"),
-            ("InternalAudits", "SELECT DepartmentId FROM InternalAudits LIMIT 1"),
-            ("Users",          "SELECT COUNT(*) FROM Users"),
-            ("Departments",    "SELECT COUNT(*) FROM Departments"),
+            ("AuditPlans",      "SELECT COUNT(*) FROM AuditPlans"),
+            ("AuditPlanItems",  "SELECT COUNT(*) FROM AuditPlanItems"),
+            ("InternalAudits",  "SELECT DepartmentId FROM InternalAudits LIMIT 1"),
+            ("Users",           "SELECT COUNT(*) FROM Users"),
+            ("Departments",     "SELECT COUNT(*) FROM Departments"),
             ("RiskLibraryItems","SELECT COUNT(*) FROM RiskLibraryItems"),
         };
-
         foreach (var (table, sql) in checks)
         {
             try
             {
                 var conn = Db.Database.GetDbConnection();
-                if (conn.State != System.Data.ConnectionState.Open)
-                    conn.Open();
+                if (conn.State != System.Data.ConnectionState.Open) conn.Open();
                 using var cmd = conn.CreateCommand();
                 cmd.CommandText = sql;
                 var val = cmd.ExecuteScalar();

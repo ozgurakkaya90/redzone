@@ -541,6 +541,55 @@ code {
 }
 
 /* ══════════════════════════════════════════════════════════
+   Card title — section header inside a card
+   ══════════════════════════════════════════════════════════ */
+.card-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Inset form — inline add/edit panel inside a card
+   ══════════════════════════════════════════════════════════ */
+.inset-form {
+  background: var(--blue-50);
+  border: 1px solid var(--blue-100);
+  border-radius: var(--r-lg);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+}
+.inset-form--warning {
+  background: var(--yellow-50);
+  border-color: var(--yellow-100);
+}
+.inset-form--success {
+  background: var(--green-50);
+  border-color: var(--green-100);
+}
+
+/* ══════════════════════════════════════════════════════════
+   Page aside layout — main + sidebar column
+   ══════════════════════════════════════════════════════════ */
+.page-aside-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .page-aside-layout { grid-template-columns: 1fr; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   Semantic text helpers
+   ══════════════════════════════════════════════════════════ */
+.text-success { color: var(--color-success-fg); }
+.text-danger  { color: var(--color-danger-fg); }
+.text-warning { color: var(--color-warning-fg); }
+
+/* ══════════════════════════════════════════════════════════
    Auth state icons — success/error/warning in auth pages
    ══════════════════════════════════════════════════════════ */
 .auth-state-icon {
