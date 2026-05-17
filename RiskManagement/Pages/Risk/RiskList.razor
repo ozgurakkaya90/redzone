@@ -304,30 +304,6 @@
     }
 </div>
 
-<style>
-    .sort-btn { background:none;border:none;cursor:pointer;font-weight:600;font-size:12px;color:inherit;padding:0;display:flex;align-items:center;gap:4px;white-space:nowrap }
-    .sort-btn:hover { color:#E1251B }
-    .risk-filter-grid { display:grid;grid-template-columns:1fr 1fr 1fr 1fr 2fr;gap:10px;align-items:end }
-    .risk-stat-grid   { display:grid;grid-template-columns:repeat(5,1fr);gap:10px }
-    .export-dropdown { position:relative;display:inline-block }
-    .export-dropdown:hover .export-menu { display:block }
-    .export-btn { white-space:nowrap }
-    .export-menu { display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:100;min-width:160px;padding:4px }
-    .export-item { display:block;padding:8px 12px;font-size:13px;color:var(--text-1);text-decoration:none;border-radius:6px;white-space:nowrap }
-    .export-item:hover { background:#f1f5f9 }
-    @@media (max-width:1100px) {
-        .risk-filter-grid { grid-template-columns:1fr 1fr 1fr; }
-        .risk-stat-grid   { grid-template-columns:repeat(3,1fr); }
-    }
-    @@media (max-width:768px) {
-        .risk-filter-grid { grid-template-columns:1fr 1fr; }
-        .risk-stat-grid   { grid-template-columns:repeat(2,1fr); }
-    }
-    @@media (max-width:480px) {
-        .risk-filter-grid { grid-template-columns:1fr; }
-        .risk-stat-grid   { grid-template-columns:1fr 1fr; }
-    }
-</style>
 
 @code {
     private List<RiskManagement.Models.Risk> _risks = [];

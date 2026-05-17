@@ -600,6 +600,100 @@
 }
 
 /* ══════════════════════════════════════════════════════════
+   Sidebar — nav section toggle header
+   ══════════════════════════════════════════════════════════ */
+.nav-section-toggle {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  user-select: none;
+}
+.nav-section-arrow {
+  font-size: 11px;
+  color: var(--gray-500);
+  transition: transform .15s;
+  flex-shrink: 0;
+}
+.sidebar-roles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.sidebar-logo-img {
+  height: 32px;
+  max-width: 32px;
+  object-fit: contain;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.sidebar-logout {
+  margin-top: 10px;
+  width: 100%;
+  justify-content: center;
+  gap: 6px;
+}
+
+/* ══════════════════════════════════════════════════════════
+   Sort button — table column headers
+   ══════════════════════════════════════════════════════════ */
+.sort-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 12px;
+  color: inherit;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.sort-btn:hover { color: var(--red-500); }
+
+/* ══════════════════════════════════════════════════════════
+   Risk list — filter grid + stat grid
+   ══════════════════════════════════════════════════════════ */
+.risk-filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr 2fr;
+  gap: 10px;
+  align-items: end;
+}
+.risk-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-top: 8px;
+}
+@media (max-width: 1100px) {
+  .risk-filter-grid { grid-template-columns: 1fr 1fr 1fr; }
+  .risk-stat-grid   { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 768px) {
+  .risk-filter-grid { grid-template-columns: 1fr 1fr; }
+  .risk-stat-grid   { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 480px) {
+  .risk-filter-grid { grid-template-columns: 1fr; }
+  .risk-stat-grid   { grid-template-columns: 1fr 1fr; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   List pages — compact stat mini-cards (bottom of lists)
+   ══════════════════════════════════════════════════════════ */
+.list-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+.list-stat-card  { padding: 14px; text-align: center; }
+.list-stat-val   { font-size: 28px; font-weight: 700; }
+
+/* ══════════════════════════════════════════════════════════
    Workflow diagram grid
    ══════════════════════════════════════════════════════════ */
 .wf-grid {

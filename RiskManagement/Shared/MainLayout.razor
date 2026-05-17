@@ -18,7 +18,7 @@
         <div class="sidebar-logo">
             @if (!string.IsNullOrEmpty(_logoPath))
             {
-                <img src="@_logoPath" style="height:32px;max-width:32px;object-fit:contain;border-radius:6px;flex-shrink:0" alt="Logo" />
+                <img src="@_logoPath" class="sidebar-logo-img" alt="Logo" />
             }
             else
             {
@@ -60,9 +60,9 @@
             {
                 <div class="nav-section nav-section-toggle"
                      @onclick="() => _riskOpen = !_riskOpen"
-                     style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+         >
                     <span class="nav-label">Risk Yönetimi</span>
-                    <span style="font-size:11px;color:var(--text-3);transition:transform .15s;transform:rotate(@(_riskOpen ? "90" : "0")deg)">▶</span>
+                    <span class="nav-section-arrow" style="transform:rotate(@(_riskOpen ? "90" : "0")deg)">▶</span>
                 </div>
                 @if (_riskOpen)
                 {
@@ -101,9 +101,9 @@
             {
                 <div class="nav-section nav-section-toggle"
                      @onclick="() => _auditOpen = !_auditOpen"
-                     style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+         >
                     <span class="nav-label">İç Denetim</span>
-                    <span style="font-size:11px;color:var(--text-3);transition:transform .15s;transform:rotate(@(_auditOpen ? "90" : "0")deg)">▶</span>
+                    <span class="nav-section-arrow" style="transform:rotate(@(_auditOpen ? "90" : "0")deg)">▶</span>
                 </div>
                 @if (_auditOpen)
                 {
@@ -137,9 +137,9 @@
             {
                 <div class="nav-section nav-section-toggle"
                      @onclick="() => _externalOpen = !_externalOpen"
-                     style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+         >
                     <span class="nav-label">Dış Denetim</span>
-                    <span style="font-size:11px;color:var(--text-3);transition:transform .15s;transform:rotate(@(_externalOpen ? "90" : "0")deg)">▶</span>
+                    <span class="nav-section-arrow" style="transform:rotate(@(_externalOpen ? "90" : "0")deg)">▶</span>
                 </div>
                 @if (_externalOpen)
                 {
@@ -162,9 +162,9 @@
             {
                 <div class="nav-section nav-section-toggle"
                      @onclick="() => _ethicsOpen = !_ethicsOpen"
-                     style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+         >
                     <span class="nav-label">Etik Yönetimi</span>
-                    <span style="font-size:11px;color:var(--text-3);transition:transform .15s;transform:rotate(@(_ethicsOpen ? "90" : "0")deg)">▶</span>
+                    <span class="nav-section-arrow" style="transform:rotate(@(_ethicsOpen ? "90" : "0")deg)">▶</span>
                 </div>
                 @if (_ethicsOpen)
                 {
@@ -193,9 +193,9 @@
             {
                 <div class="nav-section nav-section-toggle"
                      @onclick="() => _adminOpen = !_adminOpen"
-                     style="cursor:pointer;display:flex;align-items:center;justify-content:space-between;user-select:none">
+         >
                     <span class="nav-label">Yönetim</span>
-                    <span style="font-size:11px;color:var(--text-3);transition:transform .15s;transform:rotate(@(_adminOpen ? "90" : "0")deg)">▶</span>
+                    <span class="nav-section-arrow" style="transform:rotate(@(_adminOpen ? "90" : "0")deg)">▶</span>
                 </div>
                 @if (_adminOpen)
                 {
@@ -219,13 +219,12 @@
             <div class="sidebar-footer-info">
                 <span class="sidebar-footer-name">@FullName</span>
                 <span class="sidebar-footer-dept">@Department</span>
-                <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">
+                <div class="sidebar-roles">
                     @foreach (var r in AllRoles)
-                    { <span class="role-badge" style="font-size:10px">@(RoleLabels.GetValueOrDefault(r, r))</span> }
+                    { <span class="role-badge">@(RoleLabels.GetValueOrDefault(r, r))</span> }
                 </div>
             </div>
-            <a href="/logout" class="btn btn-outline btn-sm"
-               style="margin-top:10px;width:100%;justify-content:center;gap:6px">
+            <a href="/logout" class="btn btn-outline btn-sm sidebar-logout">
                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                 <span class="nav-label">Çıkış</span>
             </a>
