@@ -22,36 +22,69 @@ else
 {
     <div style="max-width:900px">
 
-        @* ── Başlık ── *@
-        <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:14px">
-            <div style="flex:1;min-width:0">
-                <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;flex-wrap:wrap">
-                    <code style="font-size:11px;background:#f1f5f9;padding:2px 8px;border-radius:4px;color:#6b7280;flex-shrink:0">@_risk.Code</code>
-                    <span class="badge @StatusBadge(_risk.Status)">@StatusLabel(_risk.Status)</span>
-                    @if (_risk.Category != null) { <span class="tag">@_risk.Category</span> }
-                    @if (_risk.Department != null) { <span class="tag" style="color:#0369a1">@_risk.Department.Name</span> }
-                    else if (_risk.Organization != null) { <span class="tag" style="color:#0369a1">@_risk.Organization.Name</span> }
+        @* ── Premium Başlık Şeridi ── *@
+        <div class="detail-header-strip">
+            <div class="detail-header-top">
+                <div style="flex:1;min-width:0">
+                    <div class="detail-header-badges">
+                        <code style="font-size:11px;background:var(--gray-100);padding:2px 8px;border-radius:4px;color:var(--text-3)">@_risk.Code</code>
+                        <span class="badge @StatusBadge(_risk.Status)">@StatusLabel(_risk.Status)</span>
+                        @if (_risk.Category != null) { <span class="tag">@_risk.Category</span> }
+                    </div>
+                    <h2 class="detail-header-title">@_risk.Title</h2>
                 </div>
-                <h2 style="font-size:20px;font-weight:700;margin:0 0 4px;line-height:1.3">@_risk.Title</h2>
-                <div style="font-size:12px;color:var(--text-3)">
-                    Öneren: <strong>@(_risk.ProposedBy?.FullName ?? _risk.ProposerName ?? "Anonim")</strong>
-                    · <span title="@_risk.ProposedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")">@RelativeDate(_risk.ProposedAt)</span>
-                    @if (_risk.Owner != null) { <span> · Sahip: <strong>@_risk.Owner.FullName</strong></span> }
+                <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+                    <div class="detail-nav">
+                        @if (_prevId.HasValue)
+                        { <a href="/risk/@_prevId" class="detail-nav-btn" title="Önceki risk">&#8249;</a> }
+                        else
+                        { <span class="detail-nav-btn disabled">&#8249;</span> }
+                        @if (_nextId.HasValue)
+                        { <a href="/risk/@_nextId" class="detail-nav-btn" title="Sonraki risk">&#8250;</a> }
+                        else
+                        { <span class="detail-nav-btn disabled">&#8250;</span> }
+                    </div>
+                    <a href="/risk" class="btn btn-outline btn-sm">&#8592; Liste</a>
                 </div>
             </div>
-            @* Prev / Next + Listeye Dön *@
-            <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-                <div class="detail-nav">
-                    @if (_prevId.HasValue)
-                    { <a href="/risk/@_prevId" class="detail-nav-btn" title="Önceki risk">‹</a> }
-                    else
-                    { <span class="detail-nav-btn disabled">‹</span> }
-                    @if (_nextId.HasValue)
-                    { <a href="/risk/@_nextId" class="detail-nav-btn" title="Sonraki risk">›</a> }
-                    else
-                    { <span class="detail-nav-btn disabled">›</span> }
+            <div class="detail-header-meta">
+                <div class="detail-meta-item">
+                    <span class="detail-meta-label">Risk Sahibi</span>
+                    <span class="detail-meta-value">@(_risk.Owner?.FullName ?? "—")</span>
                 </div>
-                <a href="/risk" class="btn btn-outline btn-sm">← Liste</a>
+                @if (_risk.Department != null || _risk.Organization != null)
+                {
+                    <div class="detail-meta-item">
+                        <span class="detail-meta-label">Birim</span>
+                        <span class="detail-meta-value">@(_risk.Department?.Name ?? _risk.Organization?.Name ?? "—")</span>
+                    </div>
+                }
+                @if (_initial != null)
+                {
+                    <div class="detail-meta-item">
+                        <span class="detail-meta-label">İlk Risk Skoru</span>
+                        <span class="detail-meta-value" style="color:@(_risk.Evaluations.FirstOrDefault(e=>e.EvalType=="initial")?.RiskLevel switch { "Çok Yüksek Risk"=>"#7f1d1d","Yüksek Risk"=>"#dc2626","Önemli Risk"=>"#c2410c","Orta Risk"=>"#ca8a04",_=>"#15803d"})">
+                            @_initial.Score.ToString("0.##") · @_initial.RiskLevel
+                        </span>
+                    </div>
+                }
+                @if (_residual != null)
+                {
+                    <div class="detail-meta-item">
+                        <span class="detail-meta-label">Kalan Risk</span>
+                        <span class="detail-meta-value" style="color:@(_risk.Evaluations.LastOrDefault(e=>e.EvalType=="residual")?.RiskLevel switch { "Çok Yüksek Risk"=>"#7f1d1d","Yüksek Risk"=>"#dc2626","Önemli Risk"=>"#c2410c","Orta Risk"=>"#ca8a04",_=>"#15803d"})">
+                            @_residual.Score.ToString("0.##") · @_residual.RiskLevel
+                        </span>
+                    </div>
+                }
+                <div class="detail-meta-item">
+                    <span class="detail-meta-label">Öneren</span>
+                    <span class="detail-meta-value">@(_risk.ProposedBy?.FullName ?? _risk.ProposerName ?? "Anonim")</span>
+                </div>
+                <div class="detail-meta-item">
+                    <span class="detail-meta-label">Tarih</span>
+                    <span class="detail-meta-value" title="@_risk.ProposedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")">@RelativeDate(_risk.ProposedAt)</span>
+                </div>
             </div>
         </div>
 
@@ -76,7 +109,7 @@ else
                         var isNext    = idx == si + 1;
                         <div class="step2 @(isDone ? "done" : isCurrent ? "current" : isNext ? "next" : "")">
                             <div class="step2-dot">
-                                @if (isDone) { <span>✓</span> }
+                                @if (isDone) { <span>&#10003;</span> }
                                 else         { <span>@(idx+1)</span> }
                             </div>
                             <div class="step2-body">
@@ -100,11 +133,11 @@ else
         @* ════════════════════════════════════════════════════════
            KART 1 — Risk Önerisi
         ════════════════════════════════════════════════════════ *@
-        <div class="card" style="border-top:3px solid #6366f1;padding-bottom:@(_expanded[0]?"18px":"2px")">
+        <div class="card card-section" style="padding-bottom:@(_expanded[0]?"18px":"2px")">
             <div class="card-hdr" @onclick="() => ToggleCard(0)">
                 <div class="card-title">
                     @CardDot(0)
-                    <span class="section-title" style="color:#6366f1;margin-bottom:0">① Risk Önerisi</span>
+                    <span class="section-title" style="margin-bottom:0">1. Risk Önerisi</span>
                 </div>
                 <span class="card-chevron" style="transform:rotate(@(_expanded[0]?"180deg":"0deg"))">▼</span>
             </div>
@@ -112,24 +145,24 @@ else
 
             @* Açıklama *@
             <div style="margin-bottom:12px">
-                <div class="field-label">Açıklama</div>
+                <div class="fl">Açıklama</div>
                 @if (!string.IsNullOrEmpty(_risk.Description))
                 { <p style="font-size:14px;line-height:1.6;margin:0;white-space:pre-wrap">@_risk.Description</p> }
                 else { <span class="empty-val">—</span> }
             </div>
 
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px">
+            <div class="meta-grid mg-3">
                 <div>
-                    <div class="field-label">Kategori</div>
+                    <div class="fl">Kategori</div>
                     @if (!string.IsNullOrEmpty(_risk.Category)) { <span class="tag">@_risk.Category</span> }
                     else { <span class="empty-val">—</span> }
                 </div>
                 <div>
-                    <div class="field-label">Öneren</div>
+                    <div class="fl">Öneren</div>
                     <div style="font-size:13px">@(_risk.ProposedBy?.FullName ?? _risk.ProposerName ?? "Anonim")</div>
                 </div>
                 <div>
-                    <div class="field-label">Öneri Tarihi</div>
+                    <div class="fl">Öneri Tarihi</div>
                     <div style="font-size:13px" title="@_risk.ProposedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")">
                         @RelativeDate(_risk.ProposedAt)
                     </div>
@@ -163,10 +196,10 @@ else
             {
                 <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
                     <div style="font-size:12px;color:#92400e;font-weight:600;margin-bottom:8px;background:#fffbeb;padding:8px 12px;border-radius:6px;border:1px solid #fcd34d">
-                        ⏳ Bu risk komite onayı bekliyor.
+                        Bu risk komite onayı bekliyor.
                     </div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap">
-                        <button class="btn btn-success btn-sm" @onclick='() => DoStatus("approved")' disabled="@_loading">✓ Onayla</button>
+                        <button class="btn btn-success btn-sm" @onclick='() => DoStatus("approved")' disabled="@_loading">Onayla</button>
                         <button class="btn btn-danger btn-sm" @onclick="ToggleRejectForm" disabled="@_loading">Reddet</button>
                     </div>
                     @if (_showReject)
@@ -187,9 +220,9 @@ else
         @* ════════════════════════════════════════════════════════
            KART 2 — Risk Detayları
         ════════════════════════════════════════════════════════ *@
-        <div class="card" style="border-top:3px solid #0ea5e9;padding-bottom:@(_expanded[1]?"18px":"2px")">
+        <div class="card card-section" style="padding-bottom:@(_expanded[1]?"18px":"2px")">
             <div class="card-hdr" @onclick="() => ToggleCard(1)">
-                <div class="card-title">@CardDot(1)<span class="section-title" style="color:#0ea5e9;margin-bottom:0">② Risk Detayları</span></div>
+                <div class="card-title">@CardDot(1)<span class="section-title" style="margin-bottom:0">2. Risk Detayları</span></div>
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if ((IsOwner || IsRiskManager) && HasRiskDetailData)
                     { <button class="btn btn-outline btn-sm" @onclick="() => _showFields = !_showFields">@(_showFields ? "İptal" : "Düzenle")</button> }
@@ -198,7 +231,7 @@ else
             @if (_expanded[1]) { <div style="margin-top:14px">
             @if (_showFields)
             {
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+                <div class="meta-grid mg-2" style="margin-bottom:12px">
                     <div style="grid-column:span 2">
                         <label class="form-label">Kategori</label>
                         <select class="form-control" @bind="_fCategory">
@@ -258,44 +291,44 @@ else
             }
             else
             {
-                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                <div class="meta-grid mg-2">
                     <div style="grid-column:span 2">
-                        <div class="field-label">Kategori</div>
+                        <div class="fl">Kategori</div>
                         @if (!string.IsNullOrEmpty(_risk.Category)) { <span class="tag">@_risk.Category</span> }
                         else { <span class="empty-val">—</span> }
                     </div>
                     @if (_fieldVisible["source_type"]) {
                     <div>
-                        <div class="field-label">Kaynak Türü</div>
+                        <div class="fl">Kaynak Türü</div>
                         <span class="tag">@(_risk.SourceType == "external" ? "Dış Kaynak" : "İç Kaynak")</span>
                     </div> }
                     @if (_fieldVisible["source"]) {
                     <div>
-                        <div class="field-label">Kaynak</div>
+                        <div class="fl">Kaynak</div>
                         @if (!string.IsNullOrEmpty(_risk.Source)) { <div style="font-size:13px">@_risk.Source</div> }
                         else { <span class="empty-val">—</span> }
                     </div> }
                     @if (_fieldVisible["hazard"]) {
                     <div>
-                        <div class="field-label">Tehlike</div>
+                        <div class="fl">Tehlike</div>
                         @if (!string.IsNullOrEmpty(_risk.Hazard)) { <div style="font-size:13px">@_risk.Hazard</div> }
                         else { <span class="empty-val">—</span> }
                     </div> }
                     @if (_fieldVisible["possible_impact"]) {
                     <div>
-                        <div class="field-label">Olası Etki</div>
+                        <div class="fl">Olası Etki</div>
                         @if (!string.IsNullOrEmpty(_risk.PossibleImpact)) { <div style="font-size:13px">@_risk.PossibleImpact</div> }
                         else { <span class="empty-val">—</span> }
                     </div> }
                     @if (_fieldVisible["relevant_legislation"]) {
                     <div style="grid-column:span 2">
-                        <div class="field-label">İlgili Mevzuat / Doküman</div>
+                        <div class="fl">İlgili Mevzuat / Doküman</div>
                         @if (!string.IsNullOrEmpty(_risk.RelevantLegislation)) { <div style="font-size:13px">@_risk.RelevantLegislation</div> }
                         else { <span class="empty-val">—</span> }
                     </div> }
                     @if (_fieldVisible["affected_persons"]) {
                     <div style="grid-column:span 2">
-                        <div class="field-label">Etkilenecek Kişiler</div>
+                        <div class="fl">Etkilenecek Kişiler</div>
                         @{ var persons = string.IsNullOrEmpty(_risk.AffectedPersons) ? [] : (System.Text.Json.JsonSerializer.Deserialize<List<string>>(_risk.AffectedPersons) ?? []); }
                         @if (persons.Any())
                         { <div style="display:flex;gap:6px;flex-wrap:wrap">@foreach (var p in persons) { <span class="badge badge-blue">@p</span> }</div> }
@@ -308,9 +341,9 @@ else
         @* ════════════════════════════════════════════════════════
            KART 3 — İlk Değerlendirme
         ════════════════════════════════════════════════════════ *@
-        <div class="card" style="border-top:3px solid #f59e0b;padding-bottom:@(_expanded[2]?"18px":"2px")">
+        <div class="card card-section" style="padding-bottom:@(_expanded[2]?"18px":"2px")">
             <div class="card-hdr" @onclick="() => ToggleCard(2)">
-                <div class="card-title">@CardDot(2)<span class="section-title" style="color:#d97706;margin-bottom:0">③ İlk Değerlendirme</span></div>
+                <div class="card-title">@CardDot(2)<span class="section-title" style="margin-bottom:0">3. İlk Değerlendirme</span></div>
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if (IsRiskManager && _initial != null)
                     { <button class="btn btn-outline btn-sm" @onclick="ToggleEvalForm">Güncelle</button> }
@@ -337,9 +370,9 @@ else
         @* ════════════════════════════════════════════════════════
            KART 4 — Sorumluluk & Strateji
         ════════════════════════════════════════════════════════ *@
-        <div class="card" style="border-top:3px solid #eab308;padding-bottom:@(_expanded[3]?"18px":"2px")">
+        <div class="card card-section" style="padding-bottom:@(_expanded[3]?"18px":"2px")">
             <div class="card-hdr" @onclick="() => ToggleCard(3)">
-                <div class="card-title">@CardDot(3)<span class="section-title" style="color:#ca8a04;margin-bottom:0">④ Sorumluluk & Strateji</span></div>
+                <div class="card-title">@CardDot(3)<span class="section-title" style="margin-bottom:0">4. Sorumluluk & Strateji</span></div>
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if (IsRiskManager && HasMeta)
                     { <button class="btn btn-outline btn-sm" @onclick="ToggleMeta">Güncelle</button> }
@@ -347,25 +380,25 @@ else
             </div>
             @if (_expanded[3]) { <div style="margin-top:14px">
 
-            <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:14px">
+            <div class="meta-grid mg-4">
                 <div>
-                    <div class="field-label">Sorumlu Organizasyon</div>
+                    <div class="fl">Sorumlu Organizasyon</div>
                     @if (_risk.Organization != null)
                     { <div style="font-size:13px">@_risk.Organization.Name@(_risk.Organization.Company != null ? $" · {_risk.Organization.Company.Name}" : "")</div> }
                     else { <span class="empty-val">—</span> }
                 </div>
                 <div>
-                    <div class="field-label">Sorumlu Departman</div>
+                    <div class="fl">Sorumlu Departman</div>
                     @if (_risk.Department != null) { <div style="font-size:13px">@_risk.Department.Name</div> }
                     else { <span class="empty-val">—</span> }
                 </div>
                 <div>
-                    <div class="field-label">Risk Stratejisi</div>
+                    <div class="fl">Risk Stratejisi</div>
                     @if (!string.IsNullOrEmpty(_risk.RiskStrategy)) { <span class="tag">@_risk.RiskStrategy</span> }
                     else { <span class="empty-val">—</span> }
                 </div>
                 <div>
-                    <div class="field-label">Risk Sahibi</div>
+                    <div class="fl">Risk Sahibi</div>
                     @if (_risk.Owner != null) { <div style="font-size:13px">@_risk.Owner.FullName</div> }
                     else { <span class="empty-val">—</span> }
                 </div>
@@ -374,7 +407,7 @@ else
             @if (_showMeta)
             {
                 <div style="margin-top:14px;background:#fffbeb;padding:14px;border-radius:8px;border:1px solid #fcd34d">
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;flex-wrap:wrap">
+                    <div class="meta-grid mg-2">
                         <div class="form-group" style="margin-bottom:0">
                             <label class="form-label">Sorumlu Organizasyon</label>
                             <select class="form-control" @bind="_metaOrgId" @bind:after="OnMetaOrgChanged">
@@ -419,9 +452,9 @@ else
         @* ════════════════════════════════════════════════════════
            KART 5 — Kontroller
         ════════════════════════════════════════════════════════ *@
-        <div class="card" style="border-top:3px solid #10b981;padding-bottom:@(_expanded[4]?"18px":"2px")">
+        <div class="card card-section" style="padding-bottom:@(_expanded[4]?"18px":"2px")">
             <div class="card-hdr" @onclick="() => ToggleCard(4)">
-                <div class="card-title">@CardDot(4)<span class="section-title" style="color:#059669;margin-bottom:0">⑤ Kontroller</span></div>
+                <div class="card-title">@CardDot(4)<span class="section-title" style="margin-bottom:0">5. Kontroller</span></div>
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if (IsOwner || IsRiskManager)
                     { <button class="btn btn-outline btn-sm" @onclick="ToggleControlForm">@(_showControl ? "İptal" : "+ Kontrol Ekle")</button> }
@@ -431,12 +464,12 @@ else
 
             @if (_showControl)
             {
-                <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:16px;border:1px solid var(--border)">
+                <div class="form-panel">
                     <div class="form-group">
                         <label class="form-label">Kontrol Açıklaması *</label>
                         <textarea class="form-control" rows="2" @bind="_ctrlDesc"></textarea>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+                    <div class="meta-grid mg-3" style="margin-bottom:10px">
                         <div class="form-group" style="margin-bottom:0">
                             <label class="form-label">Tür</label>
                             <select class="form-control" @bind="_ctrlType">
@@ -479,12 +512,12 @@ else
                     <div style="padding:10px 0;border-bottom:1px solid #f3f4f6">
                         @if (_editControlId == cid)
                         {
-                            <div style="background:#f8fafc;padding:14px;border-radius:8px;border:1px solid var(--border)">
+                            <div class="form-panel">
                                 <div class="form-group">
                                     <label class="form-label">Açıklama</label>
                                     <textarea class="form-control" rows="2" @bind="_editCtrlDesc"></textarea>
                                 </div>
-                                <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:10px">
+                                <div class="meta-grid mg-3" style="margin-bottom:10px">
                                     <div class="form-group" style="margin-bottom:0">
                                         <label class="form-label">Tür</label>
                                         <select class="form-control" @bind="_editCtrlType">
@@ -527,8 +560,8 @@ else
                                     <div style="margin-top:3px;display:flex;gap:6px;flex-wrap:wrap">
                                         <span class="tag">@c.ControlType</span>
                                         @if (!string.IsNullOrEmpty(c.Effectiveness)) { <span class="badge badge-green">@c.Effectiveness</span> }
-                                        @if (!string.IsNullOrEmpty(c.Frequency))    { <span class="badge badge-blue">⏱ @c.Frequency</span> }
-                                        @if (c.OwnerDept != null) { <span class="badge badge-orange">🏢 @c.OwnerDept.Name</span> }
+                                        @if (!string.IsNullOrEmpty(c.Frequency))    { <span class="badge badge-blue">@c.Frequency</span> }
+                                        @if (c.OwnerDept != null) { <span class="badge badge-orange">@c.OwnerDept.Name</span> }
                                         <span style="font-size:11px;color:#9ca3af">· @c.EnteredBy?.FullName</span>
                                     </div>
                                 </div>
@@ -550,9 +583,9 @@ else
         @* ════════════════════════════════════════════════════════
            KART 6 — Kalan Risk Değerlendirmesi
         ════════════════════════════════════════════════════════ *@
-        <div class="card" style="border-top:3px solid #f97316;padding-bottom:@(_expanded[5]?"18px":"2px")">
+        <div class="card card-section" style="padding-bottom:@(_expanded[5]?"18px":"2px")">
             <div class="card-hdr" @onclick="() => ToggleCard(5)">
-                <div class="card-title">@CardDot(5)<span class="section-title" style="color:#ea580c;margin-bottom:0">⑥ Kalan Risk Değerlendirmesi</span></div>
+                <div class="card-title">@CardDot(5)<span class="section-title" style="margin-bottom:0">6. Kalan Risk Değerlendirmesi</span></div>
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if (IsRiskManager && _residual != null)
                     { <button class="btn btn-outline btn-sm" @onclick="ToggleResidualForm">Güncelle</button> }
@@ -579,9 +612,9 @@ else
         @* ════════════════════════════════════════════════════════
            KART 7 — Aksiyonlar
         ════════════════════════════════════════════════════════ *@
-        <div class="card" style="border-top:3px solid #8b5cf6;padding-bottom:@(_expanded[6]?"18px":"2px")">
+        <div class="card card-section" style="padding-bottom:@(_expanded[6]?"18px":"2px")">
             <div class="card-hdr" @onclick="() => ToggleCard(6)">
-                <div class="card-title">@CardDot(6)<span class="section-title" style="color:#7c3aed;margin-bottom:0">⑦ Aksiyon Planları</span></div>
+                <div class="card-title">@CardDot(6)<span class="section-title" style="margin-bottom:0">7. Aksiyon Planları</span></div>
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if ((IsOwner || IsRiskManager) && _risk?.Status != "risk_accepted")
                     { <button class="btn btn-outline btn-sm" @onclick="() => _showAction = !_showAction">@(_showAction ? "İptal" : "+ Aksiyon Ekle")</button> }
@@ -591,12 +624,12 @@ else
 
             @if (_showAction)
             {
-                <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:16px;border:1px solid var(--border)">
+                <div class="form-panel">
                     <div class="form-group">
                         <label class="form-label">Açıklama *</label>
                         <textarea class="form-control" rows="2" @bind="_actDesc"></textarea>
                     </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+                    <div class="meta-grid mg-2">
                         <div class="form-group">
                             <label class="form-label">Sorumlu Departman *</label>
                             <select class="form-control" @bind="_actOwnerId">
@@ -623,12 +656,12 @@ else
                     <div style="padding:12px 0;border-bottom:1px solid #f3f4f6">
                         @if (_editActionId == aid)
                         {
-                            <div style="background:#f8fafc;padding:14px;border-radius:8px;border:1px solid var(--border)">
+                            <div class="form-panel">
                                 <div class="form-group">
                                     <label class="form-label">Açıklama</label>
                                     <textarea class="form-control" rows="2" @bind="_editActDesc"></textarea>
                                 </div>
-                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+                                <div class="meta-grid mg-2" style="margin-bottom:10px">
                                     <div class="form-group" style="margin-bottom:0">
                                         <label class="form-label">Sorumlu Departman</label>
                                         <select class="form-control" @bind="_editActOwnerId">
@@ -653,10 +686,10 @@ else
                                 <div style="flex:1">
                                     <div style="font-size:13px;margin-bottom:4px">@a.Description</div>
                                     <div style="font-size:12px;color:var(--text-3);display:flex;gap:8px;flex-wrap:wrap">
-                                        @if (a.OwnerDept != null) { <span>🏢 @a.OwnerDept.Name</span> }
-                                        @if (a.DueDate.HasValue) { <span>📅 @a.DueDate</span> }
+                                        @if (a.OwnerDept != null) { <span>@a.OwnerDept.Name</span> }
+                                        @if (a.DueDate.HasValue) { <span>Hedef: @a.DueDate</span> }
                                         <span>· @a.CreatedBy?.FullName</span>
-                                        @if (a.CompletedAt.HasValue) { <span style="color:#16a34a">✓ @a.CompletedAt.Value.ToLocalTime().ToString("dd.MM.yyyy")</span> }
+                                        @if (a.CompletedAt.HasValue) { <span style="color:#16a34a">@a.CompletedAt.Value.ToLocalTime().ToString("dd.MM.yyyy")</span> }
                                     </div>
                                 </div>
                                 <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
@@ -664,7 +697,7 @@ else
                                     @if ((IsOwner || IsRiskManager) && a.Status is not "completed" and not "cancelled")
                                     {
                                         <button class="btn btn-outline btn-sm" @onclick="() => StartEditAction(a)">Düzenle</button>
-                                        <button class="btn btn-success btn-sm" @onclick='() => UpdateAction(aid, "completed")'>✓ Tamamlandı</button>
+                                        <button class="btn btn-success btn-sm" @onclick='() => UpdateAction(aid, "completed")'>Tamamlandı</button>
                                     }
                                     @if (IsOwner || IsRiskManager)
                                     { <button class="btn btn-ghost-danger btn-sm" @onclick="() => AskDeleteAction(aid)">Sil</button> }
@@ -680,7 +713,7 @@ else
                 @if (_risk.Status == "risk_accepted")
                 {
                     <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;padding:10px 14px;border-radius:8px;border:1px solid #86efac">
-                        <span style="font-size:13px;font-weight:600;color:#166534">✓ Kalıntı Risk Kabul Edildi</span>
+                        <span style="font-size:13px;font-weight:600;color:#166534">Kalıntı Risk Kabul Edildi</span>
                         @if (!string.IsNullOrEmpty(_risk.RejectionReason))
                         { <span style="font-size:12px;color:#166534;opacity:.8">— @_risk.RejectionReason</span> }
                     </div>
@@ -712,12 +745,12 @@ else
         @* ════════════════════════════════════════════════════════
            KART 8 — Gözden Geçirmeler (Komite Onay Mercii)
         ════════════════════════════════════════════════════════ *@
-        <div class="card" style="border-top:3px solid #64748b;padding-bottom:@(_expanded[7]?"18px":"2px")">
+        <div class="card card-section" style="padding-bottom:@(_expanded[7]?"18px":"2px")">
             <div class="card-hdr" @onclick="() => ToggleCard(7)">
                 <div class="card-title">
                     @CardDot(7)
                     <div>
-                        <div class="section-title" style="color:#475569;margin-bottom:1px">⑧ Komite Gözden Geçirme</div>
+                        <div class="section-title" style="margin-bottom:1px">8. Komite Gözden Geçirme</div>
                         <div style="font-size:11px;color:var(--text-3)">Riskin Erken Tespiti Komitesi toplantı kayıtları</div>
                     </div>
                 </div>
@@ -729,7 +762,7 @@ else
             @if (_expanded[7]) { <div style="margin-top:14px">
             @if (_showReview)
             {
-                <div style="background:#f8fafc;padding:16px;border-radius:8px;margin-bottom:16px;border:1px solid var(--border)">
+                <div class="form-panel">
                     <div class="form-group">
                         <label class="form-label">Toplantı Tarihi *</label>
                         <input type="date" class="form-control" style="max-width:200px"
@@ -787,11 +820,11 @@ else
         @* ════════════════════════════════════════════════════════
            KART 9 — Tarihçe
         ════════════════════════════════════════════════════════ *@
-        <div class="card" style="border-top:3px solid #94a3b8;padding-bottom:@(_expanded[8]?"18px":"2px")">
+        <div class="card card-section" style="padding-bottom:@(_expanded[8]?"18px":"2px")">
             <div class="card-hdr" @onclick="() => ToggleCard(8)">
                 <div class="card-title">
                     <div>
-                        <div class="section-title" style="color:#64748b;margin-bottom:1px">⑨ Tarihçe</div>
+                        <div class="section-title" style="margin-bottom:1px">9. Tarihçe</div>
                         <div style="font-size:11px;color:var(--text-3)">Tüm değişiklikler — gün, saat, işlemi yapan</div>
                     </div>
                 </div>
@@ -802,19 +835,19 @@ else
             { <div class="empty-state"><p>Henüz kayıt yok.</p></div> }
             else
             {
-                <div style="display:flex;flex-direction:column;gap:0">
+                <div>
                     @foreach (var log in _risk.AuditLogs.OrderByDescending(l => l.Timestamp))
                     {
-                        <div style="display:grid;grid-template-columns:160px 1fr;gap:12px;padding:10px 0;border-bottom:1px solid #f3f4f6;align-items:start">
+                        <div class="audit-row">
                             <div>
-                                <div style="font-size:12px;font-weight:600;color:var(--text-1)">@log.Timestamp.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
-                                <div style="font-size:11px;color:var(--text-3)">@(log.User?.FullName ?? "Sistem")</div>
+                                <div class="audit-row-ts">@log.Timestamp.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
+                                <div class="audit-row-by">@(log.User?.FullName ?? "Sistem")</div>
                             </div>
                             <div>
-                                <div style="font-size:12px;font-weight:600;color:var(--text-1)">@log.Action</div>
+                                <div class="audit-row-action">@log.Action</div>
                                 @if (!string.IsNullOrEmpty(log.FieldName))
                                 {
-                                    <div style="font-size:11px;color:var(--text-3);margin-top:2px">
+                                    <div class="audit-row-detail">
                                         @log.FieldName:
                                         @if (!string.IsNullOrEmpty(log.OldValue) && !string.IsNullOrEmpty(log.NewValue))
                                         {
@@ -843,7 +876,6 @@ else
 }
 
 <style>
-    .field-label  { font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3);margin-bottom:4px }
     .empty-val    { font-size:12px;color:var(--text-3) }
     .card-hdr     { display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none;margin-bottom:0 }
     .card-hdr:hover .card-title { opacity:.8 }
@@ -855,7 +887,7 @@ else
 <ConfirmModal Visible="_confirmVisible"
               Title="@_confirmTitle"
               Message="@_confirmMessage"
-              Icon="⚠"
+              Icon=""
               ConfirmLabel="Evet, Sil"
               OnConfirm="ExecuteConfirmedDelete"
               OnCancel="@(() => _confirmVisible = false)" />
@@ -1008,7 +1040,7 @@ else
     {
         "proposed"=>0,"under_review"=>1,"approved"=>2,"strategy_set"=>3,
         "controlled"=>4,"residual_evaluated"=>5,"action_planned"=>6,
-        "risk_accepted"=>8, // tüm adımlar ✓
+        "risk_accepted"=>8, // tüm adımlar OK
         _=>0
     };
 

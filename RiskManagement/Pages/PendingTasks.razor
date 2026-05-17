@@ -7,10 +7,10 @@
 
 <PageTitle>Bekleyen İşler</PageTitle>
 
-<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+<div class="page-header">
     <div>
-        <h1 style="margin:0">Bekleyen İşler</h1>
-        <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+        <h1>Bekleyen İşler</h1>
+        <div class="page-toolbar-sub">
             @if (_tasks.Count == 0)
             { <span>Bekleyen işiniz yok.</span> }
             else
@@ -25,35 +25,34 @@
 
 @if (_tasks.Count == 0)
 {
-    <div class="card" style="padding:48px;text-align:center">
-        <div style="font-size:40px;margin-bottom:12px;opacity:.4">✓</div>
-        <div style="font-size:16px;font-weight:600;color:var(--text-2);margin-bottom:6px">Tüm işler tamamlandı</div>
-        <div style="font-size:13px;color:var(--text-3)">Şu an bekleyen bir göreviniz yok.</div>
+    <div class="card" style="padding:48px">
+        <div class="empty-state">
+            <div class="empty-state-icon-wrap">
+                <svg width="40" height="40" fill="none" viewBox="0 0 24 24" stroke="var(--gray-300)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+            </div>
+            <div class="empty-state-title">Tüm işler tamamlandı</div>
+            <div class="empty-state-sub">Şu an bekleyen bir göreviniz yok.</div>
+        </div>
     </div>
 }
 else
 {
-    @* Kategori bazlı grupla *@
     @foreach (var group in _tasks.GroupBy(t => t.Category).OrderBy(g => g.Key))
     {
-        <div style="margin-bottom:8px">
-            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);padding:4px 0 8px">
+        <div class="task-group">
+            <div class="task-group-label">
                 @group.Key
-                <span style="font-size:10px;background:var(--gray-200);color:var(--gray-600);border-radius:10px;padding:1px 7px;margin-left:6px;font-weight:600;letter-spacing:0">
-                    @group.Count()
-                </span>
+                <span class="task-group-count">@group.Count()</span>
             </div>
-            <div style="display:flex;flex-direction:column;gap:6px">
+            <div class="task-list">
                 @foreach (var task in group)
                 {
-                    <a href="@task.Url" style="display:flex;align-items:flex-start;gap:12px;padding:12px 16px;background:var(--surface);border:1px solid var(--border);border-left:4px solid @task.Color;border-radius:8px;text-decoration:none;color:inherit;transition:box-shadow .12s,transform .12s"
-                       onmouseover="this.style.boxShadow='0 2px 8px rgba(0,0,0,.08)';this.style.transform='translateY(-1px)'"
-                       onmouseout="this.style.boxShadow='';this.style.transform=''">
-                        <div style="flex:1;min-width:0">
-                            <div style="font-size:13px;font-weight:600;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px">
-                                @task.Title
-                            </div>
-                            <div style="font-size:12px;color:var(--text-3)">@task.Detail</div>
+                    <a href="@task.Url" class="task-item" style="border-left-color:@task.Color">
+                        <div class="task-item-body">
+                            <div class="task-item-title">@task.Title</div>
+                            <div class="task-item-detail">@task.Detail</div>
                         </div>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><polyline points="9 18 15 12 9 6"/></svg>
                     </a>

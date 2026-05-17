@@ -12,8 +12,8 @@
         <div class="export-dropdown">
             <button class="btn btn-outline btn-sm">⬇ Dışa Aktar</button>
             <div class="export-menu">
-                <a href="/export/ethics/excel" class="export-item">📊 Excel (.xlsx)</a>
-                <a href="/export/ethics/pdf" class="export-item">📄 PDF</a>
+                <a href="/export/ethics/excel" class="export-item">Excel (.xlsx)</a>
+                <a href="/export/ethics/pdf" class="export-item">PDF</a>
             </div>
         </div>
         <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
@@ -48,7 +48,7 @@
             }
             @if (!_reports.Any())
             {
-                <EmptyState Colspan="6" Icon="🏛️" Title="Etik bildirim bulunamadı" Subtitle="Henüz bildirim girilmemiş veya filtreyle eşleşen kayıt yok." />
+                <EmptyState Colspan="6" Icon="" Title="Etik bildirim bulunamadı" Subtitle="Henüz bildirim girilmemiş veya filtreyle eşleşen kayıt yok." />
             }
         </tbody>
     </table>

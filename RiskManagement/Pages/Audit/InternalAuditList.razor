@@ -20,7 +20,7 @@
     @if (HasRole("auditor","audit_manager","admin"))
     {
         <div style="display:flex;gap:8px">
-            <a href="/audit/plan"     class="btn btn-outline btn-sm">📅 Denetim Planı</a>
+            <a href="/audit/plan"     class="btn btn-outline btn-sm"> Denetim Planı</a>
             <a href="/audit/internal/new" class="btn btn-primary btn-sm">+ Yeni Denetim</a>
         </div>
     }
@@ -105,7 +105,7 @@
                         @if (a.AuditPlanItem != null)
                         {
                             <div style="font-size:9px;color:#0369a1;margin-top:1px">
-                                📅 @a.AuditPlanItem.Plan.Year planı
+                                 @a.AuditPlanItem.Plan.Year planı
                             </div>
                         }
                     </td>
@@ -165,7 +165,7 @@
             {
                 <tr>
                     <td colspan="9" style="text-align:center;padding:40px;color:var(--text-3)">
-                        <div style="font-size:24px;margin-bottom:8px">📋</div>
+                        <div style="font-size:24px;margin-bottom:8px"></div>
                         <div style="font-weight:600">Denetim bulunamadı</div>
                         <div style="font-size:12px;margin-top:4px">Farklı filtre kriterleri deneyin.</div>
                     </td>

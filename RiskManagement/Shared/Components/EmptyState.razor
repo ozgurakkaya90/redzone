@@ -1,10 +1,27 @@
 @* Tutarlı boş durum bileşeni — tüm listeleme sayfalarında kullanılır *@
 <tr>
     <td colspan="@Colspan" style="text-align:center;padding:48px 20px;border:none">
-        <div style="font-size:36px;margin-bottom:10px">@Icon</div>
-        <div style="font-size:14px;font-weight:600;color:var(--text-2);margin-bottom:5px">@Title</div>
+        <div class="empty-state-icon-wrap">
+            @if (!string.IsNullOrEmpty(Icon))
+            {
+                <span style="font-size:28px;opacity:.4">@Icon</span>
+            }
+            else
+            {
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24"
+                     fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+                     stroke-linejoin="round" style="color:var(--gray-400);margin-bottom:4px">
+                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                    <polyline points="14 2 14 8 20 8"/>
+                    <line x1="16" y1="13" x2="8" y2="13"/>
+                    <line x1="16" y1="17" x2="8" y2="17"/>
+                    <polyline points="10 9 9 9 8 9"/>
+                </svg>
+            }
+        </div>
+        <div class="empty-state-title">@Title</div>
         @if (!string.IsNullOrEmpty(Subtitle))
-        { <div style="font-size:13px;color:var(--text-3);margin-bottom:14px">@Subtitle</div> }
+        { <div class="empty-state-sub" style="margin-bottom:14px">@Subtitle</div> }
         @if (!string.IsNullOrEmpty(ActionHref) && !string.IsNullOrEmpty(ActionLabel))
         { <a href="@ActionHref" class="btn btn-primary btn-sm">@ActionLabel</a> }
         @if (ActionContent != null)
@@ -14,7 +31,7 @@
 
 @code {
     [Parameter] public int    Colspan     { get; set; } = 6;
-    [Parameter] public string Icon        { get; set; } = "📋";
+    [Parameter] public string Icon        { get; set; } = "";
     [Parameter] public string Title       { get; set; } = "Kayıt bulunamadı";
     [Parameter] public string Subtitle    { get; set; } = "";
     [Parameter] public string ActionHref  { get; set; } = "";

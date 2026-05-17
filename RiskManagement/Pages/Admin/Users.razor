@@ -49,11 +49,11 @@
                         </td>
                         <td style="font-size:12px;line-height:1.7">
                             @foreach (var uc in u.UserCompanies)
-                            { <div style="color:var(--text-3)">🏛 @uc.Company?.Name</div> }
+                            { <div style="color:var(--text-3)">@uc.Company?.Name</div> }
                             @foreach (var uo in u.UserOrganizations)
-                            { <div>🏢 @uo.Organization?.Name</div> }
+                            { <div>@uo.Organization?.Name</div> }
                             @foreach (var ud in u.UserDepartments)
-                            { <div>📂 @ud.Department?.Name</div> }
+                            { <div>@ud.Department?.Name</div> }
                         </td>
                         <td>
                             <span class="badge @(u.IsActive ? "badge-green" : "badge-red")">
@@ -76,7 +76,7 @@
         <div class="card" style="padding:18px;position:sticky;top:16px;min-width:420px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
                 <span style="font-weight:700;font-size:14px">@(_isNew ? "Yeni Kullanıcı" : "Kullanıcı Düzenle")</span>
-                <button style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-3)" @onclick="CloseEdit">✕</button>
+                <button style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--text-3)" @onclick="CloseEdit">&#10005;</button>
             </div>
 
             <div style="display:flex;flex-direction:column;gap:12px">

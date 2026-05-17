@@ -40,7 +40,7 @@
 @if (!string.IsNullOrEmpty(_pageError))
 {
     <div class="alert alert-error" style="margin-bottom:16px;display:flex;gap:12px;align-items:flex-start">
-        <span style="font-size:18px">⚠️</span>
+        <span style="font-size:18px"></span>
         <div>
             <div style="font-weight:700;margin-bottom:4px">Veritabanı Hatası</div>
             <div style="font-size:13px">@_pageError</div>
@@ -78,7 +78,7 @@
 @if (_plan == null && !_showCreatePlan)
 {
     <div class="card" style="padding:60px;text-align:center">
-        <div style="font-size:40px;margin-bottom:12px">📅</div>
+        <div style="font-size:40px;margin-bottom:12px"></div>
         <div style="font-size:15px;font-weight:700;color:var(--text-2)">@_year için denetim planı bulunamadı</div>
         <div style="font-size:13px;color:var(--text-3);margin-top:6px;margin-bottom:20px">
             Yıllık denetim programınızı oluşturarak başlayın.
@@ -103,7 +103,7 @@
     @* ── Gantt çizelgesi ── *@
     <div class="card" style="padding:16px;margin-bottom:20px;overflow-x:auto">
         <div style="font-size:13px;font-weight:700;margin-bottom:14px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px">
-            <span>📊 Zaman Çizelgesi — @_year</span>
+            <span>Zaman Çizelgesi — @_year</span>
             <span style="font-size:11px;font-weight:400;color:var(--text-3);display:flex;gap:12px;align-items:center;flex-wrap:wrap">
                 <span><span style="display:inline-block;width:12px;height:4px;background:#c7d2fe;border-radius:2px;vertical-align:middle"></span> Planlanan</span>
                 <span><span style="display:inline-block;width:12px;height:4px;background:#22c55e;border-radius:2px;vertical-align:middle"></span> Tamamlandı</span>
@@ -190,7 +190,7 @@
     <div class="card" style="padding:0;overflow-x:auto;margin-bottom:20px">
         <div style="padding:12px 16px;font-size:13px;font-weight:700;border-bottom:1px solid #f1f5f9;
                     display:flex;justify-content:space-between;align-items:center">
-            <span>📋 Planlanan Denetimler</span>
+            <span>Planlanan Denetimler</span>
             <span style="font-size:11px;font-weight:400;color:var(--text-3)">@_plan.Items.Count denetim</span>
         </div>
         @if (!_plan.Items.Any())
@@ -286,7 +286,7 @@
                                            class="btn btn-outline btn-sm"
                                            style="padding:2px 8px;font-size:11px;color:#0369a1;border-color:#bae6fd"
                                            title="Bağlı denetim: @linkedAudit.Code">
-                                            📋 @linkedAudit.Code
+                                            @linkedAudit.Code
                                         </a>
                                     }
                                     else if (st is "planned" or "late")
@@ -401,7 +401,7 @@
                 var pDays = (int)(_fPlannedEnd.Value - _fPlannedStart.Value).TotalDays + 1;
                 <div style="grid-column:1/-1">
                     <span style="font-size:12px;background:#eff6ff;color:#1d4ed8;padding:4px 10px;border-radius:6px">
-                        📅 Planlanan süre: <strong>@pDays gün</strong>
+                        Planlanan süre: <strong>@pDays gün</strong>
                     </span>
                 </div>
             }
@@ -426,7 +426,7 @@
                 var diffColor = diff.HasValue ? (diff.Value > 0 ? "#dc2626" : diff.Value < 0 ? "#16a34a" : "#1d4ed8") : "#1d4ed8";
                 <div style="grid-column:1/-1">
                     <span style="font-size:12px;background:#f0fdf4;color:#166534;padding:4px 10px;border-radius:6px">
-                        ✅ Gerçekleşen süre: <strong>@aDays gün</strong>
+                        Gerçekleşen süre: <strong>@aDays gün</strong>
                         @if (diff.HasValue && diff.Value != 0)
                         {
                             <span style="color:@diffColor;margin-left:6px">
@@ -502,7 +502,7 @@
     <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;
                 display:flex;align-items:center;justify-content:center">
         <div class="card" style="padding:24px;max-width:380px;width:92%">
-            <div style="font-size:14px;font-weight:700;margin-bottom:8px">🗑 Denetimi Sil</div>
+            <div style="font-size:14px;font-weight:700;margin-bottom:8px">Denetimi Sil</div>
             <div style="font-size:13px;color:var(--text-3);margin-bottom:16px">
                 Bu planlanan denetim kaydı silinecek. Bu işlem geri alınamaz.
             </div>
@@ -868,13 +868,13 @@
         var late     = items.Count(i => AuditService.GetItemStatus(i) == "late");
         var planned  = items.Count(i => AuditService.GetItemStatus(i) == "planned");
 
-        yield return ("Toplam",      items.Count, "#64748b", "📋");
-        yield return ("Tamamlandı",  comp,        "#22c55e", "✅");
-        yield return ("Devam Ediyor",inProg,       "#3b82f6", "🔄");
-        yield return ("Planlandı",   planned,      "#8b5cf6", "📅");
-        yield return ("Gecikmiş",    late,         "#ef4444", "⚠️");
+        yield return ("Toplam",      items.Count, "#64748b", "");
+        yield return ("Tamamlandı",  comp,        "#22c55e", "");
+        yield return ("Devam Ediyor",inProg,       "#3b82f6", "");
+        yield return ("Planlandı",   planned,      "#8b5cf6", "");
+        yield return ("Gecikmiş",    late,         "#ef4444", "");
         if (compLate > 0)
-            yield return ("Gecikmeli Tamam", compLate, "#f59e0b", "⏱️");
+            yield return ("Gecikmeli Tamam", compLate, "#f59e0b", "");
     }
 
     private static RenderFragment StatusDot(string status) => status switch

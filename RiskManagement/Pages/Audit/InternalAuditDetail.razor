@@ -19,36 +19,54 @@
 else
 {
     <div style="max-width:860px">
-        <div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:20px">
-            <div style="flex:1">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px;flex-wrap:wrap">
-                    <code style="font-size:13px;color:#6b7280">@_audit.Code</code>
-                    <span class="badge @StatusBadge(_audit.Status)">@StatusLabel(_audit.Status)</span>
-                    @if (_audit.AuditType != null) { <span class="tag">@_audit.AuditType</span> }
-                    @if (_audit.AuditedUnit != null) { <span class="badge badge-blue">🏢 @_audit.AuditedUnit</span> }
+        <div class="detail-header-strip">
+            <div class="detail-header-top">
+                <div style="flex:1;min-width:0">
+                    <div class="detail-header-badges">
+                        <code style="font-size:11px;background:var(--gray-100);padding:2px 8px;border-radius:4px;color:var(--text-3)">@_audit.Code</code>
+                        <span class="badge @StatusBadge(_audit.Status)">@StatusLabel(_audit.Status)</span>
+                        @if (_audit.AuditType != null) { <span class="tag">@_audit.AuditType</span> }
+                    </div>
+                    <h2 class="detail-header-title">@_audit.Title</h2>
                 </div>
-                <h2 style="font-size:22px;font-weight:700">@_audit.Title</h2>
-                <div class="text-muted" style="margin-top:4px">
-                    Dönem: <strong>@_audit.Period</strong>
-                    &nbsp;• Baş Denetçi: <strong>@_audit.LeadAuditor.FullName</strong>
-                    @if (_audit.StartDate.HasValue)
-                    {
-                        <span> &nbsp;• @_audit.StartDate.Value.ToString("dd.MM.yyyy")
-                        @if (_audit.EndDate.HasValue) { <span> – @_audit.EndDate.Value.ToString("dd.MM.yyyy")</span> }
-                        </span>
-                    }
-                    @if (_audit.AuditPlanItem != null)
-                    {
-                        <span> &nbsp;•
-                            <a href="/audit/plan"
-                               style="color:#0369a1;font-size:12px">
-                                📅 @_audit.AuditPlanItem.Plan.Year Denetim Planı'ndan
-                            </a>
-                        </span>
-                    }
-                </div>
+                <a href="/audit/internal" class="btn btn-outline btn-sm">&#8592; Listeye Dön</a>
             </div>
-            <a href="/audit/internal" class="btn btn-outline btn-sm">← Listeye Dön</a>
+            <div class="detail-header-meta">
+                <div class="detail-meta-item">
+                    <span class="detail-meta-label">Dönem</span>
+                    <span class="detail-meta-value">@_audit.Period</span>
+                </div>
+                <div class="detail-meta-item">
+                    <span class="detail-meta-label">Baş Denetçi</span>
+                    <span class="detail-meta-value">@_audit.LeadAuditor.FullName</span>
+                </div>
+                @if (_audit.StartDate.HasValue)
+                {
+                    <div class="detail-meta-item">
+                        <span class="detail-meta-label">Tarih Aralığı</span>
+                        <span class="detail-meta-value">
+                            @_audit.StartDate.Value.ToString("dd.MM.yyyy")
+                            @if (_audit.EndDate.HasValue) { <span> – @_audit.EndDate.Value.ToString("dd.MM.yyyy")</span> }
+                        </span>
+                    </div>
+                }
+                @if (_audit.AuditedUnit != null || _audit.Department != null)
+                {
+                    <div class="detail-meta-item">
+                        <span class="detail-meta-label">Denetlenen Birim</span>
+                        <span class="detail-meta-value">@(_audit.Department?.Name ?? _audit.AuditedUnit ?? "—")</span>
+                    </div>
+                }
+                @if (_audit.AuditPlanItem != null)
+                {
+                    <div class="detail-meta-item">
+                        <span class="detail-meta-label">Denetim Planı</span>
+                        <span class="detail-meta-value">
+                            <a href="/audit/plan" style="color:var(--navy-700)">@_audit.AuditPlanItem.Plan.Year Planı</a>
+                        </span>
+                    </div>
+                }
+            </div>
         </div>
 
         @if (!string.IsNullOrEmpty(_error))   { <div class="alert alert-error">@_error</div> }
@@ -63,7 +81,7 @@ else
                         <div class="form-label">Denetlenen Birim</div>
                         @if (_audit.Department != null)
                         {
-                            <span class="badge badge-blue" style="font-size:13px">🏢 @_audit.Department.Name</span>
+                            <span class="badge badge-blue" style="font-size:13px">@_audit.Department.Name</span>
                             @if (_audit.Department.Organization != null)
                             {
                                 <span style="font-size:11px;color:var(--text-3);margin-left:6px">
@@ -75,7 +93,7 @@ else
                         }
                         else
                         {
-                            <span class="badge badge-blue" style="font-size:13px">🏢 @_audit.AuditedUnit</span>
+                            <span class="badge badge-blue" style="font-size:13px">@_audit.AuditedUnit</span>
                         }
                     </div>
                 }
@@ -100,7 +118,7 @@ else
                     {
                         <button class="btn btn-success btn-sm" @onclick='() => UpdateStatus("completed")'>Tamamlandı</button>
                     }
-                    <button class="btn btn-outline btn-sm" @onclick="ToggleEdit">✏️ Düzenle</button>
+                    <button class="btn btn-outline btn-sm" @onclick="ToggleEdit">Düzenle</button>
                 </div>
             </div>
         }
@@ -165,7 +183,7 @@ else
                 </div>
                 @if (HasRole("auditor", "admin"))
                 {
-                    <a href="/audit/findings/new" class="btn btn-outline btn-sm">➕ Bulgu Ekle</a>
+                    <a href="/audit/findings/new" class="btn btn-outline btn-sm">Bulgu Ekle</a>
                 }
             </div>
 

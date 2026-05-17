@@ -10,75 +10,67 @@
     {
         var nodes = _workflows[key];
         <div class="card wf-col" style="padding:20px;min-width:0">
-            <div style="font-size:14px;font-weight:700;color:#1e3a5f;margin-bottom:16px;padding-bottom:12px;border-bottom:2px solid #e5e7eb">
-                @label
-            </div>
+            <div class="wf-col-title">@label</div>
             @for (var i = 0; i < nodes.Length; i++)
             {
                 var node = nodes[i];
                 @if (i > 0)
                 {
-                    <div style="display:flex;justify-content:center;margin:0">
-                        <div style="display:flex;flex-direction:column;align-items:center">
-                            <div style="width:1px;height:16px;background:var(--border-strong)"></div>
+                    <div class="wf-connector">
+                        <div class="wf-connector-inner">
+                            <div class="wf-connector-line"></div>
                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top:-3px"><polyline points="6 9 12 15 18 9"/></svg>
                         </div>
                     </div>
                 }
                 @if (node.Type == "start")
                 {
-                    <div style="display:flex;justify-content:center">
-                        <div style="display:inline-flex;align-items:center;padding:6px 20px;border-radius:100px;background:#1e3a5f;color:#f8fafc;font-size:11px;font-weight:600;letter-spacing:.3px">
-                            @node.Label
-                        </div>
+                    <div class="wf-node-pill">
+                        <div class="wf-node-pill-inner wf-node-pill--start">@node.Label</div>
                     </div>
                 }
                 else if (node.Type == "end")
                 {
-                    <div style="display:flex;justify-content:center">
-                        <div style="display:inline-flex;align-items:center;padding:6px 20px;border-radius:100px;background:var(--gray-100);color:var(--gray-500);border:1px solid var(--border-strong);font-size:11px;font-weight:600;letter-spacing:.3px">
-                            @node.Label
-                        </div>
+                    <div class="wf-node-pill">
+                        <div class="wf-node-pill-inner wf-node-pill--end">@node.Label</div>
                     </div>
                 }
                 else if (node.Type == "step")
                 {
                     var s = RoleStyle(node.Role);
-                    <div style="background:#fff;border:1px solid var(--border);border-left:3px solid @s.Color;border-radius:6px;padding:10px 12px">
-                        <div style="display:flex;align-items:center;gap:4px;margin-bottom:5px;flex-wrap:wrap">
-                            <span style="font-size:10px;font-weight:600;color:@s.Color;background:@s.Bg;padding:1px 7px;border-radius:4px;letter-spacing:.2px;white-space:nowrap">@s.Label</span>
+                    <div class="wf-step" style="border-left:3px solid @s.Color">
+                        <div class="wf-step-meta">
+                            <span class="wf-step-role" style="color:@s.Color;background:@s.Bg">@s.Label</span>
                             @if (node.Role2 != null)
                             {
                                 var s2 = RoleStyle(node.Role2);
-                                <span style="font-size:9px;color:var(--gray-400);font-weight:400">+</span>
-                                <span style="font-size:10px;font-weight:600;color:@s2.Color;background:@s2.Bg;padding:1px 7px;border-radius:4px;letter-spacing:.2px;white-space:nowrap">@s2.Label</span>
+                                <span class="wf-step-sep">+</span>
+                                <span class="wf-step-role" style="color:@s2.Color;background:@s2.Bg">@s2.Label</span>
                             }
                             @if (!string.IsNullOrEmpty(node.Status))
                             {
-                                <span style="margin-left:auto;font-size:9px;color:var(--gray-400);font-family:var(--font-mono);background:var(--gray-50);padding:1px 5px;border-radius:3px;border:1px solid var(--border);white-space:nowrap">@node.Status</span>
+                                <span class="wf-step-status">@node.Status</span>
                             }
                         </div>
-                        <div style="font-size:12px;font-weight:600;color:#1e3a5f;margin-bottom:2px">@node.Title</div>
-                        <div style="font-size:11px;color:var(--text-2);line-height:1.5">@node.Desc</div>
+                        <div class="wf-step-title">@node.Title</div>
+                        <div class="wf-step-desc">@node.Desc</div>
                     </div>
                 }
                 else if (node.Type == "decision")
                 {
-                    <div style="display:flex;flex-direction:column;align-items:center;width:100%">
-                        <div style="padding:7px 16px;background:#fefce8;border:1px solid #fde047;border-radius:4px;font-size:11px;font-weight:700;color:#713f12;width:100%;text-align:center">
-                            @node.Question
-                        </div>
-                        <div style="display:flex;gap:6px;margin-top:6px;width:100%">
-                            <div style="flex:1;padding:8px 10px;background:@(node.NoIsEnd?"#fef2f2":"#fff7ed");border:1px solid @(node.NoIsEnd?"#fca5a5":"#fed7aa");border-radius:6px;font-size:11px;text-align:center">
-                                <div style="font-weight:600;color:@(node.NoIsEnd?"#dc2626":"#c2410c");margin-bottom:3px">@node.NoLabel</div>
-                                <div style="color:var(--text-2);font-size:10px">@node.NoNote</div>
-                                @if (node.NoIsEnd) { <div style="margin-top:4px;font-size:9px;font-weight:700;color:#991b1b;background:#fee2e2;border-radius:3px;padding:1px 6px;display:inline-block">son</div> }
-                                @if (node.NoLoop)  { <div style="margin-top:4px;font-size:10px;color:#92400e">↩ tekrar</div> }
+                    <div class="wf-decision">
+                        <div class="wf-decision-q">@node.Question</div>
+                        <div class="wf-decision-branches">
+                            <div class="wf-decision-branch wf-decision-branch--no">
+                                <div class="wf-decision-no-label">@node.NoLabel</div>
+                                <div class="wf-decision-note">@node.NoNote</div>
+                                @if (node.NoIsEnd) { <div class="wf-decision-end-badge">son</div> }
+                                @if (node.NoLoop)  { <div class="wf-decision-loop">↩ tekrar</div> }
                             </div>
-                            <div style="flex:1;padding:8px 10px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;font-size:11px;text-align:center">
-                                <div style="font-weight:600;color:#15803d;margin-bottom:3px">@node.YesLabel</div>
-                                <div style="color:var(--text-2);font-size:10px">@node.YesNote</div>
-                                @if (!string.IsNullOrEmpty(node.YesStatus)) { <div style="margin-top:4px;font-size:9px;color:#166534;font-family:var(--font-mono);background:#dcfce7;border-radius:3px;padding:1px 5px;display:inline-block">@node.YesStatus</div> }
+                            <div class="wf-decision-branch wf-decision-branch--yes">
+                                <div class="wf-decision-yes-label">@node.YesLabel</div>
+                                <div class="wf-decision-note">@node.YesNote</div>
+                                @if (!string.IsNullOrEmpty(node.YesStatus)) { <div class="wf-decision-status">@node.YesStatus</div> }
                             </div>
                         </div>
                     </div>
@@ -88,33 +80,18 @@
     }
 </div>
 
-@* Rol renk açıklaması *@
 <div class="card" style="margin-top:16px;padding:14px 18px">
     <div class="section-title" style="margin-bottom:10px">Roller</div>
     <div style="display:flex;flex-wrap:wrap;gap:6px">
         @foreach (var (_, style) in _roleStyles)
         {
-            <span style="font-size:11px;font-weight:500;color:@style.Color;background:@style.Bg;padding:3px 10px;border-radius:4px">
+            <span class="wf-step-role" style="color:@style.Color;background:@style.Bg;padding:3px 10px">
                 @style.Label
             </span>
         }
     </div>
 </div>
 
-<style>
-    .wf-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px;
-        align-items: start;
-    }
-    @@media (max-width: 1024px) {
-        .wf-grid { grid-template-columns: repeat(2, 1fr); }
-    }
-    @@media (max-width: 640px) {
-        .wf-grid { grid-template-columns: 1fr; }
-    }
-</style>
 
 @code {
     private record RoleStyleDef(string Label, string Color, string Bg);

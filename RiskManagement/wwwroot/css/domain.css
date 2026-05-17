@@ -600,6 +600,49 @@
 }
 
 /* ══════════════════════════════════════════════════════════
+   Workflow diagram grid
+   ══════════════════════════════════════════════════════════ */
+.wf-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1024px) { .wf-grid { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .wf-grid { grid-template-columns: 1fr; } }
+
+/* ══════════════════════════════════════════════════════════
+   Export dropdown — reusable across list pages
+   ══════════════════════════════════════════════════════════ */
+.export-dropdown { position: relative; display: inline-block; }
+.export-dropdown:hover .export-menu,
+.export-dropdown:focus-within .export-menu { display: block; }
+.export-menu {
+  display: none;
+  position: absolute;
+  right: 0; top: 100%;
+  margin-top: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  min-width: 160px;
+  padding: 4px;
+}
+.export-item {
+  display: block;
+  padding: 8px 12px;
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: none;
+  border-radius: var(--r-sm);
+  white-space: nowrap;
+  transition: background .1s;
+}
+.export-item:hover { background: var(--gray-100); }
+
+/* ══════════════════════════════════════════════════════════
    Risk Control Matrix — rcm-* classes
    ══════════════════════════════════════════════════════════ */
 .rcm-filter-grid {

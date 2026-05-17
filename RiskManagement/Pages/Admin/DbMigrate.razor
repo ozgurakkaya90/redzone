@@ -20,13 +20,13 @@
 
     @* ── Durum ── *@
     <div class="card" style="padding:20px;margin-bottom:16px">
-        <div style="font-size:13px;font-weight:700;margin-bottom:14px">📊 Migration Durumu</div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:14px">Migration Durumu</div>
 
         @if (_pending.Count == 0 && _applied.Count > 0)
         {
             <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
                         background:#f0fdf4;border:1px solid #86efac;border-radius:8px;margin-bottom:12px">
-                <span style="font-size:20px">✅</span>
+                <span style="font-size:20px">OK</span>
                 <div>
                     <div style="font-size:13px;font-weight:700;color:#166534">Tüm migration'lar uygulanmış</div>
                     <div style="font-size:12px;color:#16a34a">@_applied.Count migration uygulandı.</div>
@@ -38,7 +38,7 @@
         {
             <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;
                         background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;margin-bottom:12px">
-                <span style="font-size:20px">⚠️</span>
+                <span style="font-size:20px"></span>
                 <div>
                     <div style="font-size:13px;font-weight:700;color:#92400e">@_pending.Count bekleyen migration</div>
                     <div style="font-size:12px;color:#b45309">Bu migration'lar henüz uygulanmadı.</div>
@@ -50,7 +50,7 @@
                 {
                     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;
                                 background:#fffbeb;border-radius:6px;margin-bottom:4px;font-size:12px">
-                        <span style="color:#f59e0b">⏳</span>
+                        <span></span>
                         <code style="font-family:monospace">@m</code>
                     </div>
                 }
@@ -68,7 +68,7 @@
                     {
                         <div style="display:flex;align-items:center;gap:8px;padding:4px 8px;
                                     font-size:11px;font-family:monospace;color:var(--text-3)">
-                            <span style="color:#22c55e">✓</span> @m
+                            <span style="color:#22c55e">OK</span> @m
                         </div>
                     }
                 </div>
@@ -85,14 +85,14 @@
 
         <div style="display:flex;gap:10px;margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
             <button class="btn btn-primary" @onclick="RunMigrations" disabled="@_running">
-                @(_running ? "⏳ Çalışıyor…" : "▶ Migration Çalıştır")
+                @(_running ? "Çalışıyor…" : "Migration Çalıştır")
             </button>
             <button class="btn btn-outline" @onclick="Refresh" disabled="@_running">
-                🔄 Yenile
+                Yenile
             </button>
             <button class="btn btn-outline" style="color:#dc2626;border-color:#fca5a5"
                     @onclick="RestartApp" disabled="@_restarting">
-                @(_restarting ? "⏳ Yeniden başlatılıyor…" : "🔁 Uygulamayı Yeniden Başlat")
+                @(_restarting ? "Yeniden başlatılıyor…" : "Uygulamayı Yeniden Başlat")
             </button>
         </div>
 
@@ -112,7 +112,7 @@
         <div style="padding:14px 16px;border-radius:8px;margin-bottom:16px;
                     background:@(isOk?"#f0fdf4":"#fef2f2");border:1px solid @(isOk?"#86efac":"#fca5a5")">
             <div style="font-size:13px;font-weight:700;color:@(isOk?"#166534":"#991b1b");margin-bottom:4px">
-                @(isOk ? "✅ Başarılı" : "❌ Hata")
+                @(isOk ? "OK Başarılı" : "X Hata")
             </div>
             <div style="font-size:12px;white-space:pre-wrap;font-family:monospace;color:@(isOk?"#16a34a":"#b91c1c")">@_result</div>
         </div>
@@ -120,7 +120,7 @@
 
     @* ── Tablo kontrol ── *@
     <div class="card" style="padding:20px">
-        <div style="font-size:13px;font-weight:700;margin-bottom:14px">🔍 Kritik Tablo Kontrolü</div>
+        <div style="font-size:13px;font-weight:700;margin-bottom:14px">Kritik Tablo Kontrolü</div>
 
         @if (_tableChecks.Count == 0)
         {
@@ -134,7 +134,7 @@
                     <div style="padding:10px 12px;border-radius:6px;
                                 background:@(ok?"#f0fdf4":"#fef2f2");border:1px solid @(ok?"#86efac":"#fca5a5")">
                         <div style="display:flex;gap:6px;align-items:center">
-                            <span>@(ok?"✅":"❌")</span>
+                            <span>@(ok?"OK":"X")</span>
                             <code style="font-size:12px">@table</code>
                         </div>
                         @if (!string.IsNullOrEmpty(detail))
@@ -204,7 +204,7 @@
     private async Task RestartApp()
     {
         _restarting = true;
-        _restartMsg = "✅ Yeniden başlatma komutu verildi. 10 saniye içinde site tekrar açılacak, lütfen bekleyin…";
+        _restartMsg = "Yeniden başlatma komutu verildi. 10 saniye içinde site tekrar açılacak, lütfen bekleyin…";
         StateHasChanged();
 
         // Kısa gecikme — Blazor mesajı render etsin

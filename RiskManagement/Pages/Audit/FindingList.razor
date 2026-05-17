@@ -15,8 +15,8 @@
         <div class="export-dropdown">
             <button class="btn btn-outline btn-sm">⬇ Dışa Aktar</button>
             <div class="export-menu">
-                <a href="/export/findings/excel" class="export-item">📊 Excel (.xlsx)</a>
-                <a href="/export/findings/pdf" class="export-item">📄 PDF</a>
+                <a href="/export/findings/excel" class="export-item"> Excel (.xlsx)</a>
+                <a href="/export/findings/pdf" class="export-item"> PDF</a>
             </div>
         </div>
         @if (HasRole("auditor","admin"))
@@ -76,7 +76,7 @@
             }
             @if (!Filtered.Any())
             {
-                <EmptyState Colspan="6" Icon="🔍" Title="Bulgu bulunamadı" Subtitle="Farklı filtre kriterleri deneyin veya yeni bulgu girin." ActionHref="/audit/findings/new" ActionLabel="+ Bulgu Gir" />
+                <EmptyState Colspan="6" Icon="" Title="Bulgu bulunamadı" Subtitle="Farklı filtre kriterleri deneyin veya yeni bulgu girin." ActionHref="/audit/findings/new" ActionLabel="+ Bulgu Gir" />
             }
         </tbody>
     </table>

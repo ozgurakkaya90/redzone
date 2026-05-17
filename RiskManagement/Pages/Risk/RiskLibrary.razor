@@ -18,24 +18,22 @@
     <div class="alert alert-error" style="margin-bottom:12px">@_errorMsg</div>
 }
 
-<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+<div class="page-header">
     <div>
-        <h1 style="margin:0;font-size:22px;font-weight:800">Risk Kütüphanesi</h1>
-        <div style="font-size:12px;color:var(--text-3);margin-top:2px">
-            @_filtered.Count kayıt · Beğendiğiniz riskleri envanterinize önerebilirsiniz
-        </div>
+        <h1>Risk Kütüphanesi</h1>
+        <div class="page-toolbar-sub">@_filtered.Count kayıt · Beğendiğiniz riskleri envanterinize önerebilirsiniz</div>
     </div>
     <div style="display:flex;gap:8px;align-items:center">
-        <a href="/export/library/excel" class="btn btn-outline btn-sm">⬇ Dışa Aktar</a>
+        <a href="/export/library/excel" class="btn btn-outline btn-sm">Dışa Aktar</a>
         @if (IsAdmin)
         {
-            <a href="/risk/library/admin" class="btn btn-outline btn-sm">⚙ Yönet</a>
+            <a href="/risk/library/admin" class="btn btn-outline btn-sm">Yönet</a>
         }
     </div>
 </div>
 
 @* ── Kategori hızlı filtreler ── *@
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px">
+<div class="lib-cat-pills">
     <button class="btn @(_filterCat==""?"btn-primary":"btn-outline") btn-sm"
             @onclick='() => { _filterCat=""; _filterSub=""; ApplyFilter(); }'>
         Tümü (@_allItems.Count)
@@ -45,37 +43,37 @@
         var c = cat;
         <button class="btn @(_filterCat==c?"btn-primary":"btn-outline") btn-sm"
                 @onclick='() => { _filterCat=c; _filterSub=""; ApplyFilter(); }'>
-            @CatIcon(c) @c (@cnt)
+            @c (@cnt)
         </button>
     }
 </div>
 
 @* ── Filtre ve arama ── *@
 <div class="card" style="padding:14px 16px;margin-bottom:16px">
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
-        <div style="flex:2;min-width:200px">
-            <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Arama</div>
+    <div class="filter-bar">
+        <div class="filter-group" style="flex:2;min-width:200px">
+            <label class="filter-label">Arama</label>
             <input class="form-control" placeholder="Başlık, tehlike, etiket…"
                    @bind="_search" @bind:event="oninput" @bind:after="ApplyFilter" />
         </div>
-        <div style="min-width:180px">
-            <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Alt Kategori</div>
+        <div class="filter-group" style="min-width:180px">
+            <label class="filter-label">Alt Kategori</label>
             <select class="form-control" @bind="_filterSub" @bind:after="ApplyFilter">
                 <option value="">Tümü</option>
                 @foreach (var s in _subCats)
                 { <option value="@s">@s</option> }
             </select>
         </div>
-        <div style="min-width:140px">
-            <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Kaynak</div>
+        <div class="filter-group" style="min-width:140px">
+            <label class="filter-label">Kaynak</label>
             <select class="form-control" @bind="_filterSource" @bind:after="ApplyFilter">
                 <option value="">Tümü</option>
                 <option value="internal">İç</option>
                 <option value="external">Dış</option>
             </select>
         </div>
-        <div style="min-width:140px">
-            <div style="font-size:11px;font-weight:600;color:var(--text-3);margin-bottom:4px;text-transform:uppercase">Görünüm</div>
+        <div class="filter-group" style="min-width:140px">
+            <label class="filter-label">Görünüm</label>
             <select class="form-control" @bind="_view">
                 <option value="card">Kart</option>
                 <option value="table">Tablo</option>
@@ -83,17 +81,21 @@
         </div>
         @if (HasFilter)
         {
-            <button class="btn btn-outline btn-sm" @onclick="ClearFilter">Temizle</button>
+            <div class="filter-group">
+                <label class="filter-label" style="opacity:0;user-select:none">—</label>
+                <button class="btn btn-outline btn-sm" @onclick="ClearFilter">Temizle</button>
+            </div>
         }
     </div>
 </div>
 
 @if (!_filtered.Any())
 {
-    <div class="card" style="padding:40px;text-align:center">
-        <div style="font-size:32px;margin-bottom:8px">📚</div>
-        <div style="font-size:14px;font-weight:600;color:var(--text-2)">Sonuç bulunamadı</div>
-        <div style="font-size:13px;color:var(--text-3);margin-top:6px">Farklı arama kriterleri deneyin.</div>
+    <div class="card" style="padding:40px">
+        <div class="empty-state">
+            <div class="empty-state-title">Sonuç bulunamadı</div>
+            <div class="empty-state-sub">Farklı arama kriterleri deneyin.</div>
+        </div>
     </div>
 }
 else if (_view == "card")
@@ -102,46 +104,46 @@ else if (_view == "card")
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
         @foreach (var item in PagedItems)
         {
-            <div class="card lib-card" style="padding:16px;display:flex;flex-direction:column;gap:10px">
-                <div style="display:flex;align-items:flex-start;gap:8px">
+            <div class="card lib-card">
+                <div class="lib-card-top">
                     <div style="flex:1;min-width:0">
-                        <div style="font-size:13px;font-weight:700;color:var(--text-1);line-height:1.3">@item.Title</div>
+                        <div class="lib-card-title">@item.Title</div>
                         @if (!string.IsNullOrEmpty(item.Category))
                         {
-                            <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:5px">
-                                <span class="tag" style="font-size:10px">@CatIcon(item.Category) @item.Category</span>
+                            <div class="lib-card-tags">
+                                <span class="tag">@item.Category</span>
                                 @if (!string.IsNullOrEmpty(item.SubCategory))
-                                { <span class="tag" style="font-size:10px;background:#f1f5f9">@item.SubCategory</span> }
+                                { <span class="tag">@item.SubCategory</span> }
                             </div>
                         }
                     </div>
-                    <span class="badge @(item.SourceType=="external"?"badge-blue":"badge-gray")" style="font-size:10px;flex-shrink:0;white-space:nowrap">
+                    <span class="badge @(item.SourceType=="external"?"badge-blue":"badge-gray") lib-source-badge">
                         @(item.SourceType == "external" ? "Dış" : "İç")
                     </span>
                 </div>
 
                 @if (!string.IsNullOrEmpty(item.Hazard))
                 {
-                    <div style="font-size:11px;color:var(--text-3)">
-                        <span style="font-weight:600;color:#92400e">⚠ Tehlike:</span> @item.Hazard
+                    <div class="lib-card-meta">
+                        <span class="lib-card-meta-label lib-card-meta-label--hazard">Tehlike:</span> @item.Hazard
                     </div>
                 }
                 @if (!string.IsNullOrEmpty(item.PossibleImpact))
                 {
-                    <div style="font-size:11px;color:var(--text-3)">
-                        <span style="font-weight:600;color:#991b1b">→ Etki:</span> @item.PossibleImpact
+                    <div class="lib-card-meta">
+                        <span class="lib-card-meta-label lib-card-meta-label--impact">Etki:</span> @item.PossibleImpact
                     </div>
                 }
 
-                <div style="display:flex;align-items:center;justify-content:space-between;margin-top:auto;padding-top:8px;border-top:1px solid #f1f5f9">
+                <div class="lib-card-footer">
                     @if (item.UsageCount > 0)
                     {
-                        <span style="font-size:11px;color:var(--text-3)">@item.UsageCount kez kullanıldı</span>
+                        <span class="lib-usage-count">@item.UsageCount kez kullanıldı</span>
                     }
                     else { <span></span> }
                     @if (_proposedIds.Contains(item.Id))
                     {
-                        <span style="font-size:12px;font-weight:600;color:#16a34a">✓ Daha önce önerildi</span>
+                        <span class="lib-proposed-label">Daha önce önerildi</span>
                     }
                     else
                     {
@@ -184,7 +186,7 @@ else
                         <td>
                             @if (_proposedIds.Contains(item.Id))
                             {
-                                <span style="font-size:12px;font-weight:600;color:#16a34a;white-space:nowrap">✓ Daha önce önerildi</span>
+                                <span style="font-size:12px;font-weight:600;color:#16a34a;white-space:nowrap">Daha önce önerildi</span>
                             }
                             else
                             {
@@ -231,8 +233,27 @@ else
 }
 
 <style>
-    .lib-card { transition:box-shadow .15s,transform .1s }
-    .lib-card:hover { box-shadow:0 4px 20px rgba(0,0,0,.1);transform:translateY(-1px) }
+    .lib-cat-pills { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+
+    .lib-card { padding:16px; display:flex; flex-direction:column; gap:10px; transition:box-shadow .15s,transform .1s; }
+    .lib-card:hover { box-shadow:0 4px 20px rgba(0,0,0,.1); transform:translateY(-1px); }
+
+    .lib-card-top    { display:flex; align-items:flex-start; gap:8px; }
+    .lib-card-title  { font-size:13px; font-weight:700; color:var(--text); line-height:1.3; }
+    .lib-card-tags   { display:flex; gap:4px; flex-wrap:wrap; margin-top:5px; }
+    .lib-source-badge { font-size:10px; flex-shrink:0; white-space:nowrap; }
+
+    .lib-card-meta   { font-size:11px; color:var(--text-3); }
+    .lib-card-meta-label { font-weight:600; }
+    .lib-card-meta-label--hazard { color:#92400e; }
+    .lib-card-meta-label--impact { color:#991b1b; }
+
+    .lib-card-footer {
+        display:flex; align-items:center; justify-content:space-between;
+        margin-top:auto; padding-top:8px; border-top:1px solid var(--border);
+    }
+    .lib-usage-count  { font-size:11px; color:var(--text-3); }
+    .lib-proposed-label { font-size:12px; font-weight:600; color:#16a34a; }
 </style>
 
 @code {
@@ -303,18 +324,4 @@ else
         }
     }
 
-    private static string CatIcon(string cat) => cat switch
-    {
-        "Operasyonel"           => "⚙️",
-        "Finansal"              => "💰",
-        "BT ve Siber Güvenlik" => "🔒",
-        "İş Sağlığı ve Güvenliği" => "🦺",
-        "Yasal ve Uyum"        => "⚖️",
-        "İnsan Kaynakları"     => "👥",
-        "Çevresel"             => "🌿",
-        "Stratejik"            => "🎯",
-        "Tedarik Zinciri"      => "🔗",
-        "İtibar ve İletişim"   => "📢",
-        _                       => "📋"
-    };
 }

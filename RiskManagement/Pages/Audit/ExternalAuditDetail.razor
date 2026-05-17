@@ -21,31 +21,43 @@
 }
 else
 {
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px">
-        <a href="/audit/external" class="btn btn-outline btn-sm">← Geri</a>
-        <div style="flex:1">
-            <h1 style="margin:0;font-size:22px;font-weight:800">
-                <code style="font-size:18px">@_audit.Code</code>
-                <span style="margin-left:8px">@_audit.Subject</span>
-            </h1>
-            <div style="font-size:12px;color:var(--text-3);margin-top:2px">
-                <span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700">@_audit.AuditingBody</span>
-                @if (!string.IsNullOrEmpty(_audit.Standard))
-                { <span class="tag" style="margin-left:6px">@_audit.Standard</span> }
-                <span style="margin-left:10px">@_audit.AuditDate.ToString("dd.MM.yyyy")</span>
+    <div class="detail-header-strip">
+        <div class="detail-header-top">
+            <div style="flex:1;min-width:0">
+                <div class="detail-header-badges">
+                    <code style="font-size:11px;background:var(--gray-100);padding:2px 8px;border-radius:4px;color:var(--text-3)">@_audit.Code</code>
+                    <span class="badge @StatusBadge(_audit.Status)">@StatusLabel(_audit.Status)</span>
+                    @if (!string.IsNullOrEmpty(_audit.Standard)) { <span class="tag">@_audit.Standard</span> }
+                </div>
+                <h2 class="detail-header-title">@_audit.Subject</h2>
             </div>
+            <a href="/audit/external" class="btn btn-outline btn-sm">&#8592; Geri</a>
         </div>
-        <span class="badge @StatusBadge(_audit.Status)" style="font-size:13px;padding:6px 12px">
-            @StatusLabel(_audit.Status)
-        </span>
+        <div class="detail-header-meta">
+            <div class="detail-meta-item">
+                <span class="detail-meta-label">Denetim Kuruluşu</span>
+                <span class="detail-meta-value">@_audit.AuditingBody</span>
+            </div>
+            <div class="detail-meta-item">
+                <span class="detail-meta-label">Denetim Tarihi</span>
+                <span class="detail-meta-value">@_audit.AuditDate.ToString("dd.MM.yyyy")</span>
+            </div>
+            @if (!string.IsNullOrEmpty(_audit.Standard))
+            {
+                <div class="detail-meta-item">
+                    <span class="detail-meta-label">Standart</span>
+                    <span class="detail-meta-value">@_audit.Standard</span>
+                </div>
+            }
+        </div>
     </div>
 
-    <div style="display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start">
+    <div class="ead-layout">
         <div>
             @* ─── Findings ─── *@
             <div class="card" style="padding:18px;margin-bottom:16px">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-                    <h2 style="margin:0;font-size:16px;font-weight:700">📋 Dış Denetim Bulguları (@_findings.Count)</h2>
+                <div class="page-toolbar" style="margin-bottom:14px">
+                    <h2 class="page-toolbar-title" style="font-size:16px">Dış Denetim Bulguları (@_findings.Count)</h2>
                     @if (_canEdit && !_addingFinding)
                     {
                         <button class="btn btn-primary btn-sm" @onclick="() => _addingFinding = true">+ Bulgu Ekle</button>
@@ -109,9 +121,8 @@ else
 
                 @if (!_findings.Any() && !_addingFinding)
                 {
-                    <div style="text-align:center;padding:24px;color:var(--text-3)">
-                        <div style="font-size:24px;margin-bottom:6px">📭</div>
-                        <div>Henüz bulgu eklenmemiş.</div>
+                    <div class="empty-state">
+                        <div class="empty-state-title">Henüz bulgu eklenmemiş.</div>
                     </div>
                 }
                 else
@@ -119,37 +130,35 @@ else
                     @foreach (var f in _findings)
                     {
                         var actions = _actionsByFinding.TryGetValue(f.Id, out var lst) ? lst : new List<AuditFindingAction>();
-                        <div style="border:1px solid #e5e7eb;border-radius:8px;padding:14px;margin-bottom:10px;background:#fff">
-                            <div style="display:flex;justify-content:space-between;align-items:start;gap:12px">
+                        <div class="ead-finding-card">
+                            <div class="ead-finding-top">
                                 <div style="flex:1">
-                                    <div style="font-weight:700;font-size:14px">
-                                        <code style="font-size:11px">@f.Code</code>
+                                    <div class="ead-finding-title">
+                                        <code>@f.Code</code>
                                         <span style="margin-left:6px">@f.Title</span>
                                     </div>
                                     @if (!string.IsNullOrEmpty(f.Description))
                                     {
-                                        <div style="font-size:12px;color:var(--text-2);margin-top:6px;white-space:pre-wrap">@f.Description</div>
+                                        <div class="text-muted" style="margin-top:6px;white-space:pre-wrap">@f.Description</div>
                                     }
-                                    <div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px;color:var(--text-3);margin-top:8px">
+                                    <div class="ead-finding-meta">
                                         @if (!string.IsNullOrEmpty(f.Severity))
                                         { <span class="badge @SeverityBadge(f.Severity)">@SeverityLabel(f.Severity)</span> }
                                         @if (f.Owner != null)
-                                        { <span>👤 @f.Owner.FullName</span> }
+                                        { <span class="tag">@f.Owner.FullName</span> }
                                         @if (f.Department != null)
-                                        { <span>🏢 @f.Department.Name</span> }
+                                        { <span class="tag">@f.Department.Name</span> }
                                         @if (f.DueDate.HasValue)
-                                        { <span>⏰ @f.DueDate.Value.ToString("dd.MM.yyyy")</span> }
+                                        { <span class="tag">@f.DueDate.Value.ToString("dd.MM.yyyy")</span> }
                                     </div>
                                 </div>
-                                <span class="badge @FindingStatusBadge(f.Status)" style="font-size:11px">@FindingStatusLabel(f.Status)</span>
+                                <span class="badge @FindingStatusBadge(f.Status)">@FindingStatusLabel(f.Status)</span>
                             </div>
 
                             @* Actions *@
-                            <div style="margin-top:10px;padding-top:10px;border-top:1px dashed #e5e7eb">
-                                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-                                    <div style="font-size:12px;font-weight:600;color:var(--text-3)">
-                                        Aksiyonlar (@actions.Count)
-                                    </div>
+                            <div class="ead-actions-section">
+                                <div class="ead-actions-header">
+                                    <span class="section-title" style="margin-bottom:0">Aksiyonlar (@actions.Count)</span>
                                     @if (_canEdit)
                                     {
                                         <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px"
@@ -158,18 +167,18 @@ else
                                 </div>
                                 @foreach (var a in actions)
                                 {
-                                    <div style="font-size:12px;padding:6px 8px;background:#f8fafc;border-radius:6px;margin-bottom:4px">
-                                        <span class="badge @ActionStatusBadge(a.Status)" style="font-size:10px;margin-right:6px">@ActionStatusLabel(a.Status)</span>
-                                        @a.Description
+                                    <div class="ead-action-row">
+                                        <span class="badge @ActionStatusBadge(a.Status)" style="font-size:10px">@ActionStatusLabel(a.Status)</span>
+                                        <span>@a.Description</span>
                                         @if (!string.IsNullOrEmpty(a.Responsible))
-                                        { <span style="color:var(--text-3);margin-left:6px">— @a.Responsible</span> }
+                                        { <span class="text-muted">— @a.Responsible</span> }
                                         @if (a.DueDate.HasValue)
-                                        { <span style="color:var(--text-3);margin-left:6px">⏰ @a.DueDate.Value.ToString("dd.MM.yyyy")</span> }
+                                        { <span class="text-muted">@a.DueDate.Value.ToString("dd.MM.yyyy")</span> }
                                     </div>
                                 }
                                 @if (_addActionFor == f.Id)
                                 {
-                                    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:6px;padding:10px;margin-top:6px">
+                                    <div class="ead-add-action-form">
                                         <input class="form-control" placeholder="Aksiyon açıklaması…"
                                                @bind="_newAction.Description" maxlength="1000" style="margin-bottom:6px" />
                                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:6px">
@@ -193,7 +202,7 @@ else
         @* ─── Right panel: meta + status ─── *@
         <div>
             <div class="card" style="padding:16px;margin-bottom:14px">
-                <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:10px">Durum</div>
+                <div class="section-title">Durum</div>
                 @if (_canEdit)
                 {
                     <select class="form-control" @bind="_audit.Status" @bind:after="SaveStatus">
@@ -210,8 +219,8 @@ else
             </div>
 
             <div class="card" style="padding:16px;margin-bottom:14px">
-                <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:10px">Bilgiler</div>
-                <div style="font-size:12px;line-height:1.7">
+                <div class="section-title">Bilgiler</div>
+                <div class="ead-info-list">
                     <div><strong>Kurum:</strong> @_audit.AuditingBody</div>
                     @if (!string.IsNullOrEmpty(_audit.Standard))
                     { <div><strong>Standart:</strong> @_audit.Standard</div> }
@@ -232,28 +241,26 @@ else
             @if (!string.IsNullOrEmpty(_audit.Notes))
             {
                 <div class="card" style="padding:16px;margin-bottom:14px">
-                    <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:10px">Notlar</div>
-                    <div style="font-size:12px;white-space:pre-wrap">@_audit.Notes</div>
+                    <div class="section-title">Notlar</div>
+                    <div class="text-muted" style="white-space:pre-wrap">@_audit.Notes</div>
                 </div>
             }
 
             @if (_canEdit)
             {
-                <div class="card" style="padding:14px;background:#fef2f2;border-color:#fecaca">
-                    <div style="font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;margin-bottom:8px">Tehlikeli Bölge</div>
+                <div class="card ead-danger-zone">
+                    <div class="ead-danger-title">Tehlikeli Bölge</div>
                     @if (!_confirmDelete)
                     {
-                        <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#dc2626"
-                                @onclick="() => _confirmDelete = true">🗑 Denetimi Sil</button>
+                        <button class="btn btn-ghost-danger btn-sm" @onclick="() => _confirmDelete = true">Denetimi Sil</button>
                     }
                     else
                     {
-                        <div style="font-size:12px;color:#7f1d1d;margin-bottom:8px">
+                        <div class="text-muted" style="margin-bottom:8px;color:var(--color-danger-fg)">
                             Bu işlem denetimi, tüm bulgularını ve aksiyonlarını siler. Emin misiniz?
                         </div>
                         <div style="display:flex;gap:6px">
-                            <button class="btn btn-primary btn-sm" style="background:#dc2626;border-color:#dc2626"
-                                    @onclick="ConfirmDelete">Evet, sil</button>
+                            <button class="btn btn-danger btn-sm" @onclick="ConfirmDelete">Evet, sil</button>
                             <button class="btn btn-outline btn-sm" @onclick="() => _confirmDelete = false">Vazgeç</button>
                         </div>
                     }
@@ -264,7 +271,43 @@ else
 }
 
 <style>
-    .form-label { font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;display:block;margin-bottom:4px }
+    .ead-layout { display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start }
+    @@media (max-width:900px) { .ead-layout { grid-template-columns:1fr } }
+
+    .ead-finding-card {
+        border: 1px solid var(--border);
+        border-radius: var(--r-lg);
+        padding: 14px;
+        margin-bottom: 10px;
+        background: var(--surface);
+    }
+    .ead-finding-top    { display:flex;justify-content:space-between;align-items:flex-start;gap:12px }
+    .ead-finding-title  { font-weight:700;font-size:14px }
+    .ead-finding-meta   { display:flex;gap:6px;flex-wrap:wrap;margin-top:8px }
+
+    .ead-actions-section { margin-top:10px;padding-top:10px;border-top:1px dashed var(--border) }
+    .ead-actions-header  { display:flex;justify-content:space-between;align-items:center;margin-bottom:6px }
+    .ead-action-row {
+        font-size: 12px;
+        padding: 6px 8px;
+        background: var(--gray-50);
+        border-radius: var(--r-sm);
+        margin-bottom: 4px;
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        align-items: center;
+    }
+    .ead-add-action-form {
+        background: var(--blue-50);
+        border: 1px solid var(--blue-100);
+        border-radius: var(--r-md);
+        padding: 10px;
+        margin-top: 6px;
+    }
+    .ead-info-list   { font-size:12px;line-height:1.8 }
+    .ead-danger-zone { padding:14px;background:#fef2f2;border-color:#fecaca }
+    .ead-danger-title { font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px }
 </style>
 
 @code {

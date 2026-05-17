@@ -15,56 +15,56 @@
 
 <!-- Filtre Paneli -->
 <div class="card" style="margin-bottom:16px;padding:16px">
-    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-        <div style="display:flex;flex-direction:column;gap:4px">
-            <label style="font-size:12px;font-weight:600;color:#374151">Arama</label>
-            <input class="form-control" style="width:210px" placeholder="Kod, başlık, birim..." @bind="_search" @bind:event="oninput" />
+    <div class="rcm-filter-grid">
+        <div class="filter-group">
+            <label class="filter-label">Arama</label>
+            <input class="form-control" style="width:220px" placeholder="Kod, başlık, birim..." @bind="_search" @bind:event="oninput" />
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-            <label style="font-size:12px;font-weight:600;color:#374151">Kategori</label>
+        <div class="filter-group">
+            <label class="filter-label">Kategori</label>
             <select class="form-control" style="width:180px" @bind="_filterCat">
                 <option value="">Tüm Kategoriler</option>
                 @foreach (var c in _categories) { <option value="@c">@c</option> }
             </select>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-            <label style="font-size:12px;font-weight:600;color:#374151">İlk Risk Seviyesi</label>
+        <div class="filter-group">
+            <label class="filter-label">İlk Risk Seviyesi</label>
             <select class="form-control" style="width:180px" @bind="_filterInitLevel">
                 <option value="">Tüm Seviyeler</option>
                 @foreach (var l in _levels) { <option value="@l">@l</option> }
             </select>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-            <label style="font-size:12px;font-weight:600;color:#374151">Kalan Risk Seviyesi</label>
+        <div class="filter-group">
+            <label class="filter-label">Kalan Risk Seviyesi</label>
             <select class="form-control" style="width:180px" @bind="_filterResLevel">
                 <option value="">Tüm Seviyeler</option>
                 @foreach (var l in _levels) { <option value="@l">@l</option> }
             </select>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-            <label style="font-size:12px;font-weight:600;color:#374151">Kontrol Durumu</label>
+        <div class="filter-group">
+            <label class="filter-label">Kontrol Durumu</label>
             <select class="form-control" style="width:160px" @bind="_filterCtrl">
                 <option value="">Tümü</option>
                 <option value="has">Kontrol Var</option>
                 <option value="none">Kontrol Yok</option>
             </select>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-            <label style="font-size:12px;font-weight:600;color:#374151">Kontrol Türü</label>
+        <div class="filter-group">
+            <label class="filter-label">Kontrol Türü</label>
             <select class="form-control" style="width:160px" @bind="_filterCtrlType">
                 <option value="">Tüm Türler</option>
                 @foreach (var t in _controlTypes) { <option value="@t">@t</option> }
             </select>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-            <label style="font-size:12px;font-weight:600;color:#374151">Strateji</label>
+        <div class="filter-group">
+            <label class="filter-label">Strateji</label>
             <select class="form-control" style="width:160px" @bind="_filterStrategy">
                 <option value="">Tüm Stratejiler</option>
                 @foreach (var s in _strategies) { <option value="@s">@s</option> }
             </select>
         </div>
-        <div style="display:flex;flex-direction:column;gap:4px">
-            <label style="font-size:12px;font-weight:600;color:#374151">Aksiyon</label>
+        <div class="filter-group">
+            <label class="filter-label">Aksiyon</label>
             <select class="form-control" style="width:160px" @bind="_filterAction">
                 <option value="">Tümü</option>
                 <option value="has">Aksiyon Var</option>
@@ -73,7 +73,10 @@
                 <option value="none">Aksiyon Yok</option>
             </select>
         </div>
-        <button class="btn btn-outline btn-sm" @onclick="ResetFilters" style="height:36px">Filtreleri Temizle</button>
+        <div class="filter-group" style="justify-content:flex-end">
+            <label class="filter-label" style="opacity:0;user-select:none">—</label>
+            <button class="btn btn-outline btn-sm" @onclick="ResetFilters">Filtreleri Temizle</button>
+        </div>
     </div>
 </div>
 
@@ -173,126 +176,103 @@
 
                 <tr style="vertical-align:top">
                     <!-- Kod -->
-                    <td style="padding-top:10px">
-                        <code style="font-size:11px;background:#f3f4f6;padding:2px 5px;border-radius:4px">@r.Code</code>
+                    <td>
+                        <code class="rcm-code">@r.Code</code>
                     </td>
 
                     <!-- Risk başlık + birim + tarih -->
-                    <td style="max-width:200px;padding-top:10px">
-                        <a href="/risk/@r.Id" style="color:#111827;font-weight:600;text-decoration:none;line-height:1.3">@r.Title</a>
+                    <td style="max-width:200px">
+                        <a href="/risk/@r.Id" style="color:var(--text);font-weight:600;text-decoration:none;line-height:1.3">@r.Title</a>
                         @if (r.Organization != null)
                         {
-                            <div style="font-size:11px;color:#6b7280;margin-top:2px">🏢 @r.Organization.Name</div>
+                            <div class="rcm-score-detail" style="margin-top:2px">@r.Organization.Name</div>
                         }
                         @if (!string.IsNullOrEmpty(r.ProposerName))
                         {
-                            <div style="font-size:11px;color:#9ca3af">👤 @r.ProposerName</div>
+                            <div class="rcm-score-detail">@r.ProposerName</div>
                         }
-                        <div style="font-size:10px;color:#d1d5db;margin-top:2px">@r.ProposedAt.ToString("dd.MM.yyyy")</div>
+                        <div style="font-size:10px;color:var(--gray-300);margin-top:2px">@r.ProposedAt.ToString("dd.MM.yyyy")</div>
                     </td>
 
                     <!-- Kategori -->
-                    <td style="padding-top:10px">
-                        <span class="tag">@(r.Category ?? "—")</span>
-                    </td>
+                    <td><span class="tag">@(r.Category ?? "—")</span></td>
 
                     <!-- Strateji -->
-                    <td style="padding-top:10px;font-size:12px">
+                    <td>
                         @if (!string.IsNullOrEmpty(r.RiskStrategy))
                         {
-                            <span style="background:#ede9fe;color:#6d28d9;padding:2px 7px;border-radius:10px;font-size:11px;font-weight:600">@r.RiskStrategy</span>
+                            <span class="badge badge-blue" style="background:#ede9fe;color:#6d28d9;border-color:#ddd6fe">@r.RiskStrategy</span>
                         }
-                        else { <span style="color:#9ca3af">—</span> }
+                        else { <span class="rcm-score-detail">—</span> }
                     </td>
 
                     <!-- İlk Skor -->
-                    <td style="text-align:center;padding-top:10px">
+                    <td style="text-align:center">
                         @if (initial != null)
                         {
-                            <div style="font-weight:700;font-size:16px;color:@RiskCalc.GetRiskLevelColor(initial.RiskLevel)">
-                                @initial.Score.ToString("0.##")
-                            </div>
-                            <div style="font-size:10px;font-weight:600;color:@RiskCalc.GetRiskLevelColor(initial.RiskLevel);background:@RiskCalc.GetRiskLevelColor(initial.RiskLevel)15;padding:1px 6px;border-radius:8px;display:inline-block;margin-top:2px">
-                                @initial.RiskLevel
-                            </div>
-                            <div style="font-size:10px;color:#9ca3af;margin-top:2px">
-                                O:@initial.Probability / M:@initial.Exposure / S:@initial.Consequence
-                            </div>
+                            <div class="rcm-score" style="color:@RiskCalc.GetRiskLevelColor(initial.RiskLevel)">@initial.Score.ToString("0.##")</div>
+                            <div class="rcm-level-badge" style="color:@RiskCalc.GetRiskLevelColor(initial.RiskLevel);background:@RiskCalc.GetRiskLevelColor(initial.RiskLevel)15">@initial.RiskLevel</div>
+                            <div class="rcm-score-detail">O:@initial.Probability / M:@initial.Exposure / S:@initial.Consequence</div>
                         }
-                        else { <span style="color:#9ca3af">—</span> }
+                        else { <span class="rcm-score-detail">—</span> }
                     </td>
 
                     <!-- Kontrol sayısı -->
-                    <td style="text-align:center;padding-top:10px">
+                    <td style="text-align:center">
                         @if (r.Controls.Any())
                         {
-                            <span style="font-size:20px;font-weight:700;color:#2563eb">@r.Controls.Count</span>
-                            <div style="font-size:10px;color:#6b7280;margin-top:2px">kontrol</div>
+                            <div class="rcm-ctrl-count">@r.Controls.Count</div>
+                            <div class="rcm-ctrl-sub">kontrol</div>
                         }
                         else
                         {
-                            <span style="background:#fee2e2;color:#dc2626;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">Yok</span>
+                            <span class="badge badge-red">Yok</span>
                         }
                     </td>
 
                     <!-- Kontrol Detayları -->
-                    <td style="max-width:240px;padding-top:8px">
+                    <td style="max-width:240px">
                         @if (r.Controls.Any())
                         {
                             <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px">
-                                @if (preventive > 0)
-                                {
-                                    <span style="background:#dbeafe;color:#1d4ed8;padding:1px 7px;border-radius:10px;font-size:11px">Önleyici ×@preventive</span>
-                                }
-                                @if (detective > 0)
-                                {
-                                    <span style="background:#fef3c7;color:#92400e;padding:1px 7px;border-radius:10px;font-size:11px">Tespit ×@detective</span>
-                                }
-                                @if (corrective > 0)
-                                {
-                                    <span style="background:#d1fae5;color:#065f46;padding:1px 7px;border-radius:10px;font-size:11px">Düzeltici ×@corrective</span>
-                                }
+                                @if (preventive > 0) { <span class="badge badge-blue">Önleyici ×@preventive</span> }
+                                @if (detective > 0)  { <span class="badge badge-yellow">Tespit ×@detective</span> }
+                                @if (corrective > 0) { <span class="badge badge-green">Düzeltici ×@corrective</span> }
                             </div>
                             @foreach (var ctrl in r.Controls.Take(3))
                             {
-                                <div style="font-size:11px;color:#374151;border-left:2px solid #e5e7eb;padding-left:6px;margin-bottom:3px;line-height:1.4">
+                                <div class="rcm-ctrl-desc">
                                     @(ctrl.Description.Length > 70 ? ctrl.Description[..70] + "…" : ctrl.Description)
                                     @if (!string.IsNullOrEmpty(ctrl.Effectiveness))
                                     {
-                                        <span style="color:#6b7280"> · @ctrl.Effectiveness</span>
+                                        <span class="rcm-score-detail"> · @ctrl.Effectiveness</span>
                                     }
                                 </div>
                             }
                             @if (r.Controls.Count > 3)
                             {
-                                <div style="font-size:11px;color:#9ca3af">+@(r.Controls.Count - 3) kontrol daha...</div>
+                                <div class="rcm-ctrl-more">+@(r.Controls.Count - 3) kontrol daha</div>
                             }
                         }
                         else
                         {
-                            <span style="font-size:11px;color:#9ca3af">Henüz kontrol girilmemiş</span>
+                            <span class="rcm-score-detail">Henüz kontrol girilmemiş</span>
                         }
                     </td>
 
                     <!-- Kalan Skor -->
-                    <td style="text-align:center;padding-top:10px">
+                    <td style="text-align:center">
                         @if (residual != null)
                         {
-                            <div style="font-weight:700;font-size:16px;color:@RiskCalc.GetRiskLevelColor(residual.RiskLevel)">
-                                @residual.Score.ToString("0.##")
-                            </div>
-                            <div style="font-size:10px;font-weight:600;color:@RiskCalc.GetRiskLevelColor(residual.RiskLevel);background:@RiskCalc.GetRiskLevelColor(residual.RiskLevel)15;padding:1px 6px;border-radius:8px;display:inline-block;margin-top:2px">
-                                @residual.RiskLevel
-                            </div>
-                            <div style="font-size:10px;color:#9ca3af;margin-top:2px">
-                                O:@residual.Probability / M:@residual.Exposure / S:@residual.Consequence
-                            </div>
+                            <div class="rcm-score" style="color:@RiskCalc.GetRiskLevelColor(residual.RiskLevel)">@residual.Score.ToString("0.##")</div>
+                            <div class="rcm-level-badge" style="color:@RiskCalc.GetRiskLevelColor(residual.RiskLevel);background:@RiskCalc.GetRiskLevelColor(residual.RiskLevel)15">@residual.RiskLevel</div>
+                            <div class="rcm-score-detail">O:@residual.Probability / M:@residual.Exposure / S:@residual.Consequence</div>
                         }
-                        else { <span style="color:#9ca3af">—</span> }
+                        else { <span class="rcm-score-detail">—</span> }
                     </td>
 
                     <!-- Azalma -->
-                    <td style="text-align:center;padding-top:10px">
+                    <td style="text-align:center">
                         @if (initial != null && residual != null)
                         {
                             var pct = initial.Score > 0 ? (reduction / initial.Score * 100) : 0;
@@ -301,31 +281,21 @@
                                 @(reduction > 0 ? "▼" : reduction < 0 ? "▲" : "=") @Math.Abs(reduction).ToString("0.##")
                             </div>
                             <div style="font-size:10px;color:@col">%@pct.ToString("0")</div>
-                            <!-- Mini bar -->
-                            <div style="width:60px;height:5px;background:#e5e7eb;border-radius:3px;margin:4px auto 0">
-                                <div style="width:@(Math.Min(100,Math.Abs(pct)))%;height:100%;background:@col;border-radius:3px"></div>
+                            <div class="rcm-reduction-bar-wrap">
+                                <div class="rcm-reduction-bar" style="width:@(Math.Min(100,Math.Abs(pct)))%;background:@col"></div>
                             </div>
                         }
-                        else { <span style="color:#9ca3af">—</span> }
+                        else { <span class="rcm-score-detail">—</span> }
                     </td>
 
                     <!-- Aksiyonlar -->
-                    <td style="text-align:center;padding-top:10px">
+                    <td style="text-align:center">
                         @if (r.ActionPlans.Any())
                         {
                             <div style="display:flex;flex-direction:column;gap:3px;align-items:center">
-                                @if (doneAct > 0)
-                                {
-                                    <span style="background:#d1fae5;color:#065f46;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600">✓ @doneAct tamamlandı</span>
-                                }
-                                @if (openAct > 0)
-                                {
-                                    <span style="background:#fef3c7;color:#92400e;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:600">⏳ @openAct açık</span>
-                                }
-                                @if (cancelAct > 0)
-                                {
-                                    <span style="background:#f3f4f6;color:#9ca3af;padding:1px 8px;border-radius:10px;font-size:11px">✗ @cancelAct iptal</span>
-                                }
+                                @if (doneAct > 0)   { <span class="badge badge-green">@doneAct tamamlandı</span> }
+                                @if (openAct > 0)   { <span class="badge badge-yellow">@openAct açık</span> }
+                                @if (cancelAct > 0) { <span class="badge badge-gray">@cancelAct iptal</span> }
                                 @{
                                     var nearest = r.ActionPlans
                                         .Where(a => a.Status is "planned" or "in_progress" && a.DueDate.HasValue)
@@ -335,18 +305,18 @@
                                 @if (nearest != null)
                                 {
                                     var overdue = nearest.DueDate!.Value < DateOnly.FromDateTime(DateTime.Today);
-                                    <div style="font-size:10px;color:@(overdue ? "#dc2626" : "#6b7280");margin-top:2px">
-                                        @(overdue ? "⚠ Geçmiş: " : "⏱ ") @nearest.DueDate!.Value.ToString("dd.MM.yyyy")
+                                    <div class="rcm-score-detail" style="color:@(overdue ? "#dc2626" : "var(--text-3)")">
+                                        @(overdue ? "Geçmiş: " : "")@nearest.DueDate!.Value.ToString("dd.MM.yyyy")
                                     </div>
                                 }
                             </div>
                         }
-                        else { <span style="color:#9ca3af;font-size:12px">—</span> }
+                        else { <span class="rcm-score-detail">—</span> }
                     </td>
 
                     <!-- Detay linki -->
-                    <td style="text-align:center;padding-top:10px">
-                        <a href="/risk/@r.Id" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 8px">Aç →</a>
+                    <td style="text-align:center">
+                        <a href="/risk/@r.Id" class="btn btn-outline btn-sm" style="font-size:11px;padding:3px 10px">Aç →</a>
                     </td>
                 </tr>
             }
@@ -359,9 +329,10 @@
 </div>
 
 <!-- Sayfalama bilgisi -->
-<div style="margin-top:8px;font-size:12px;color:#9ca3af;text-align:right">
+<div class="rcm-footer-info">
     @Filtered.Count() risk · @Filtered.Sum(r => r.Controls.Count) toplam kontrol
 </div>
+
 
 @code {
     private List<RiskManagement.Models.Risk> _risks = [];

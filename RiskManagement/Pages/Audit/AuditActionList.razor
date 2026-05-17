@@ -13,13 +13,13 @@
     <h1>Denetim Aksiyon Planları</h1>
     <div style="display:flex;gap:8px;align-items:center">
         <div class="export-dropdown">
-            <button class="btn btn-outline btn-sm">⬇ Dışa Aktar</button>
+            <button class="btn btn-outline btn-sm">Dışa Aktar</button>
             <div class="export-menu">
-                <a href="/export/audit-actions/excel" class="export-item">📊 Excel (.xlsx)</a>
-                <a href="/export/audit-actions/pdf" class="export-item">📄 PDF</a>
+                <a href="/export/audit-actions/excel" class="export-item">Excel (.xlsx)</a>
+                <a href="/export/audit-actions/pdf" class="export-item">PDF</a>
             </div>
         </div>
-        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
+        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">İçe Aktar</button>
     </div>
 </div>
 
@@ -70,13 +70,13 @@
                         </div>
                         @if (a.Finding.InternalAudit != null)
                         {
-                            <div style="font-size:10px;color:#9ca3af">📋 @a.Finding.InternalAudit.Code</div>
+                            <div style="font-size:10px;color:#9ca3af">@a.Finding.InternalAudit.Code</div>
                         }
                     </td>
                     <td style="max-width:260px">@a.Description</td>
                     <td>
                         @if (!string.IsNullOrEmpty(a.Responsible))
-                        { <span class="badge badge-orange" style="font-size:10px">🏢 @a.Responsible</span> }
+                        { <span class="badge badge-orange" style="font-size:10px">@a.Responsible</span> }
                         else { <span style="color:#9ca3af">—</span> }
                     </td>
                     <td><span class="badge @StatusBadge(a.Status)">@StatusLabel(a.Status)</span></td>

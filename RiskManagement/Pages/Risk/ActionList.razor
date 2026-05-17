@@ -10,48 +10,62 @@
 
 <ImportModal Visible="_showImport" Title="Risk Aksiyon Planları" Module="action-plans" OnClose="@(() => _showImport = false)" />
 
-<div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+<div class="page-header">
     <h1>Aksiyon Planları</h1>
     <div style="display:flex;gap:8px;align-items:center">
         <div class="export-dropdown">
-            <button class="btn btn-outline btn-sm">⬇ Dışa Aktar</button>
+            <button class="btn btn-outline btn-sm">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Dışa Aktar
+            </button>
             <div class="export-menu">
-                <a href="/export/action-plans/excel" class="export-item">📊 Excel (.xlsx)</a>
-                <a href="/export/action-plans/pdf" class="export-item">📄 PDF</a>
+                <a href="/export/action-plans/excel" class="export-item">Excel (.xlsx)</a>
+                <a href="/export/action-plans/pdf" class="export-item">PDF</a>
             </div>
         </div>
-        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
+        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">
+            <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>
+            </svg>
+            İçe Aktar
+        </button>
     </div>
 </div>
 
-<style>
-    .export-dropdown { position:relative;display:inline-block }
-    .export-dropdown:hover .export-menu { display:block }
-    .export-menu { display:none;position:absolute;right:0;top:100%;margin-top:4px;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.12);z-index:100;min-width:160px;padding:4px }
-    .export-item { display:block;padding:8px 12px;font-size:13px;color:var(--text-1);text-decoration:none;border-radius:6px;white-space:nowrap }
-    .export-item:hover { background:#f1f5f9 }
-</style>
-
 <div class="card" style="margin-bottom:16px">
-    <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <select class="form-control" style="width:160px" @bind="_filterStatus">
-            <option value="">Tüm Durumlar</option>
-            <option value="planned">Planlandı</option>
-            <option value="in_progress">Devam Ediyor</option>
-            <option value="completed">Tamamlandı</option>
-            <option value="cancelled">İptal</option>
-        </select>
-        <select class="form-control" style="width:200px" @bind="_filterDept">
-            <option value="">Tüm Departmanlar</option>
-            @foreach (var d in _departments) { <option value="@d.Id.ToString()">@d.Name</option> }
-        </select>
-        <select class="form-control" style="width:140px" @bind="_filterOverdue">
-            <option value="">Tümü</option>
-            <option value="overdue">Vadesi Geçmiş</option>
-            <option value="upcoming">Yaklaşan (7 gün)</option>
-        </select>
-        <input class="form-control" style="flex:1;min-width:180px" placeholder="Risk veya aksiyon ara…"
-               @bind="_search" @bind:event="oninput" />
+    <div class="filter-bar">
+        <div class="filter-group">
+            <label class="filter-label">Durum</label>
+            <select class="form-control" style="width:160px" @bind="_filterStatus">
+                <option value="">Tüm Durumlar</option>
+                <option value="planned">Planlandı</option>
+                <option value="in_progress">Devam Ediyor</option>
+                <option value="completed">Tamamlandı</option>
+                <option value="cancelled">İptal</option>
+            </select>
+        </div>
+        <div class="filter-group">
+            <label class="filter-label">Departman</label>
+            <select class="form-control" style="width:200px" @bind="_filterDept">
+                <option value="">Tüm Departmanlar</option>
+                @foreach (var d in _departments) { <option value="@d.Id.ToString()">@d.Name</option> }
+            </select>
+        </div>
+        <div class="filter-group">
+            <label class="filter-label">Vade</label>
+            <select class="form-control" style="width:160px" @bind="_filterOverdue">
+                <option value="">Tümü</option>
+                <option value="overdue">Vadesi Geçmiş</option>
+                <option value="upcoming">Yaklaşan (7 gün)</option>
+            </select>
+        </div>
+        <div class="filter-group" style="flex:1;min-width:180px">
+            <label class="filter-label">Arama</label>
+            <input class="form-control" placeholder="Risk veya aksiyon ara…"
+                   @bind="_search" @bind:event="oninput" />
+        </div>
     </div>
 </div>
 
@@ -93,7 +107,7 @@
                         @if (a.DueDate.HasValue)
                         {
                             <span style="font-size:12px;color:@(overdue ? "#dc2626" : "#374151");font-weight:@(overdue ? "700" : "400")">
-                                @(overdue ? "⚠️ " : "")@a.DueDate.Value.ToString("dd.MM.yyyy")
+                                @a.DueDate.Value.ToString("dd.MM.yyyy")
                             </span>
                         }
                         else { <span style="color:#9ca3af">—</span> }
@@ -107,36 +121,42 @@
             }
             @if (!Filtered.Any())
             {
-                <EmptyState Colspan="7" Icon="✅" Title="Aksiyon bulunamadı" Subtitle="Filtreyi temizleyin veya risk detayından yeni aksiyon ekleyin." />
+                <EmptyState Colspan="7" Icon="" Title="Aksiyon bulunamadı" Subtitle="Filtreyi temizleyin veya risk detayından yeni aksiyon ekleyin." />
             }
         </tbody>
     </table>
 </div>
 
-<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px">
-    <div class="card" style="padding:14px;text-align:center">
+<div class="al-stats-grid">
+    <div class="card al-stat">
         <div class="stat-label">Toplam</div>
-        <div style="font-size:28px;font-weight:700">@Filtered.Count()</div>
+        <div class="al-stat-val">@Filtered.Count()</div>
     </div>
-    <div class="card" style="padding:14px;text-align:center">
+    <div class="card al-stat">
         <div class="stat-label">Planlandı</div>
-        <div style="font-size:28px;font-weight:700;color:#2563eb">@Filtered.Count(a => a.Status == "planned")</div>
+        <div class="al-stat-val" style="color:#2563eb">@Filtered.Count(a => a.Status == "planned")</div>
     </div>
-    <div class="card" style="padding:14px;text-align:center">
+    <div class="card al-stat">
         <div class="stat-label">Devam Ediyor</div>
-        <div style="font-size:28px;font-weight:700;color:#ca8a04">@Filtered.Count(a => a.Status == "in_progress")</div>
+        <div class="al-stat-val" style="color:#ca8a04">@Filtered.Count(a => a.Status == "in_progress")</div>
     </div>
-    <div class="card" style="padding:14px;text-align:center">
+    <div class="card al-stat">
         <div class="stat-label">Tamamlandı</div>
-        <div style="font-size:28px;font-weight:700;color:#16a34a">@Filtered.Count(a => a.Status == "completed")</div>
+        <div class="al-stat-val" style="color:#16a34a">@Filtered.Count(a => a.Status == "completed")</div>
     </div>
-    <div class="card" style="padding:14px;text-align:center">
+    <div class="card al-stat">
         <div class="stat-label">Vadesi Geçmiş</div>
-        <div style="font-size:28px;font-weight:700;color:#dc2626">
+        <div class="al-stat-val" style="color:#dc2626">
             @Filtered.Count(a => a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress")
         </div>
     </div>
 </div>
+
+<style>
+    .al-stats-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px }
+    .al-stat       { padding:14px;text-align:center }
+    .al-stat-val   { font-size:28px;font-weight:700 }
+</style>
 
 @code {
     private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";

@@ -59,13 +59,13 @@ public class AuthService(AppDbContext db)
     // Grouped structure for the permissions matrix UI
     public static readonly PermGroup[] PermGroups =
     [
-        new("Risk Yönetimi", "📋", "#E1251B", "#fff5f5",
+        new("Risk Yönetimi", "", "#E1251B", "#fff5f5",
         [
             new("risk.read",   "Okuma",      "Görüntüle"),
             new("risk.write",  "Yazma",      "Öner / Oluştur"),
             new("risk.modify", "Düzenleme",  "İncele, Onayla, Değerlendir"),
         ]),
-        new("Kontrol & Aksiyon", "🛡️", "#0369a1", "#f0f9ff",
+        new("Kontrol & Aksiyon", "", "#0369a1", "#f0f9ff",
         [
             new("control.read",   "Okuma",     "Kontrolleri görüntüle"),
             new("control.write",  "Yazma",     "Kontrol ekle"),
@@ -74,20 +74,20 @@ public class AuthService(AppDbContext db)
             new("action.write",   "Yazma",     "Aksiyon planı oluştur"),
             new("action.modify",  "Düzenleme", "Aksiyon güncelle / sil"),
         ]),
-        new("İç Denetim", "🔍", "#0f766e", "#f0fdfa",
+        new("İç Denetim", "", "#0f766e", "#f0fdfa",
         [
             new("audit.read",          "Okuma",     "Denetim ve bulguları görüntüle"),
             new("audit.write",         "Yazma",     "Denetim ve bulgu oluştur"),
             new("audit.modify",        "Düzenleme", "Bulgu güncelle / kapanış başvurusu"),
             new("audit.close_approve", "Onaylama",  "Kapanış başvurularını onayla"),
         ]),
-        new("Dış Denetim", "🏛️", "#b45309", "#fffbeb",
+        new("Dış Denetim", "", "#b45309", "#fffbeb",
         [
             new("external_audit.read",  "Okuma",      "Dış denetim ve bulguları görüntüle (kurum bazlı)"),
             new("external_audit.write", "Yazma",      "Dış denetim, bulgu, aksiyon oluştur (kurum bazlı)"),
             new("external_audit.admin", "Yönetim",    "Tüm kurumları yönet + kurum yetkisi ata"),
         ]),
-        new("Etik Yönetimi", "⚖️", "#7c3aed", "#faf5ff",
+        new("Etik Yönetimi", "", "#7c3aed", "#faf5ff",
         [
             new("ethics.read",         "Okuma",       "Etik bildirimleri görüntüle"),
             new("ethics.write",        "Yazma",       "Etik bildirim oluştur"),

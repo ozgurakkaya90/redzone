@@ -17,28 +17,54 @@
 else
 {
     <div style="max-width:860px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px">
-            <div>
-                <div style="display:flex;gap:10px;align-items:center;margin-bottom:4px;flex-wrap:wrap">
-                    <code>@_finding.Code</code>
-                    <span class="badge @StatusBadge(_finding.Status)">@StatusLabel(_finding.Status)</span>
-                    @if (_finding.Severity != null) { <span class="badge @SevBadge(_finding.Severity)">@_finding.Severity</span> }
-                    @if (_finding.ActionDecision == "risk_accepted")
-                    { <span class="badge badge-gray">✅ Risk Kabul Edildi</span> }
-                    @if (_finding.ActionDecision == "action_planned")
-                    { <span class="badge badge-blue">📌 Aksiyon Planlandı</span> }
+        <div class="detail-header-strip">
+            <div class="detail-header-top">
+                <div style="flex:1;min-width:0">
+                    <div class="detail-header-badges">
+                        <code style="font-size:11px;background:var(--gray-100);padding:2px 8px;border-radius:4px;color:var(--text-3)">@_finding.Code</code>
+                        <span class="badge @StatusBadge(_finding.Status)">@StatusLabel(_finding.Status)</span>
+                        @if (_finding.Severity != null) { <span class="badge @SevBadge(_finding.Severity)">@_finding.Severity</span> }
+                        @if (_finding.ActionDecision == "risk_accepted")  { <span class="badge badge-gray">Risk Kabul Edildi</span> }
+                        @if (_finding.ActionDecision == "action_planned") { <span class="badge badge-blue">Aksiyon Planlandı</span> }
+                    </div>
+                    <h2 class="detail-header-title">@_finding.Title</h2>
                 </div>
-                <h2>@_finding.Title</h2>
-                <div class="text-muted">
-                    Denetçi: @_finding.Auditor?.FullName • @_finding.CreatedAt.ToString("dd.MM.yyyy")
-                    @if (_finding.InternalAudit != null)
-                    {
-                        <span> • Denetim: <a href="/audit/internal/@_finding.InternalAudit.Id"
-                            style="color:#1e40af">@_finding.InternalAudit.Code</a></span>
-                    }
+                <a href="/audit/findings" class="btn btn-outline btn-sm">&#8592; Bulgular</a>
+            </div>
+            <div class="detail-header-meta">
+                <div class="detail-meta-item">
+                    <span class="detail-meta-label">Denetçi</span>
+                    <span class="detail-meta-value">@(_finding.Auditor?.FullName ?? "—")</span>
+                </div>
+                <div class="detail-meta-item">
+                    <span class="detail-meta-label">Sorumlu</span>
+                    <span class="detail-meta-value">@(_finding.Owner?.FullName ?? "—")</span>
+                </div>
+                <div class="detail-meta-item">
+                    <span class="detail-meta-label">Kategori</span>
+                    <span class="detail-meta-value">@(_finding.Category ?? "—")</span>
+                </div>
+                @if (_finding.DueDate.HasValue)
+                {
+                    <div class="detail-meta-item">
+                        <span class="detail-meta-label">Hedef Tarih</span>
+                        <span class="detail-meta-value">@_finding.DueDate.Value.ToString("dd.MM.yyyy")</span>
+                    </div>
+                }
+                @if (_finding.InternalAudit != null)
+                {
+                    <div class="detail-meta-item">
+                        <span class="detail-meta-label">Denetim</span>
+                        <span class="detail-meta-value">
+                            <a href="/audit/internal/@_finding.InternalAudit.Id" style="color:var(--navy-700)">@_finding.InternalAudit.Code</a>
+                        </span>
+                    </div>
+                }
+                <div class="detail-meta-item">
+                    <span class="detail-meta-label">Tarih</span>
+                    <span class="detail-meta-value">@_finding.CreatedAt.ToString("dd.MM.yyyy")</span>
                 </div>
             </div>
-            <a href="/audit/findings" class="btn btn-outline btn-sm">← Bulgular</a>
         </div>
 
         @if (!string.IsNullOrEmpty(_error))   { <div class="alert alert-error">@_error</div> }
@@ -46,10 +72,10 @@ else
 
         <div class="card">
             <div class="section-title">Bulgu Bilgileri</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                <div><div class="form-label">Kategori</div><span class="tag">@(_finding.Category ?? "—")</span></div>
-                <div><div class="form-label">Sorumlu</div><span>@(_finding.Owner?.FullName ?? "—")</span></div>
-                <div><div class="form-label">İlgili Denetim</div>
+            <div class="meta-grid mg-2">
+                <div><div class="fl">Kategori</div><span class="tag">@(_finding.Category ?? "—")</span></div>
+                <div><div class="fl">Sorumlu</div><span>@(_finding.Owner?.FullName ?? "—")</span></div>
+                <div><div class="fl">İlgili Denetim</div>
                     @if (_finding.InternalAudit != null)
                     { <a href="/audit/internal/@_finding.InternalAudit.Id" style="color:#1e40af">@_finding.InternalAudit.Title</a> }
                     else { <span style="color:#9ca3af">—</span> }
@@ -71,11 +97,11 @@ else
                 <div style="font-weight:600;color:#92400e;margin-bottom:8px">Aksiyon Kararı: Bu bulgu için ne yapılacak?</div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap">
                     <button class="btn btn-warning btn-sm" @onclick="() => { _showAction = true; _showAccept = false; }">
-                        📌 Aksiyon Al
+                        Aksiyon Al
                     </button>
                     <button class="btn btn-outline btn-sm" style="border-color:#6b7280;color:#374151"
                             @onclick="() => { _showAccept = !_showAccept; _showAction = false; }">
-                        ✅ Riski Kabul Et
+                        Riski Kabul Et
                     </button>
                 </div>
                 @if (_showAccept)
@@ -98,7 +124,7 @@ else
         @if (_finding.ActionDecision == "risk_accepted")
         {
             <div class="alert" style="background:#f0fdf4;border:1px solid #86efac;display:flex;align-items:center;gap:12px">
-                <span style="font-size:20px">✅</span>
+                <span style="font-size:20px">&#10003;</span>
                 <div>
                     <div style="font-weight:600;color:#166534">Kalıntı Risk Kabul Edildi</div>
                     <div style="font-size:12px;color:#166534;margin-top:2px">Bu bulgu için risk kabul edildi.</div>
@@ -157,7 +183,7 @@ else
                                 <div style="font-size:13px;margin-bottom:4px">@a.Description</div>
                                 <div class="text-muted" style="display:flex;gap:8px;flex-wrap:wrap">
                                     @if (!string.IsNullOrEmpty(a.Responsible))
-                                    { <span class="badge badge-orange" style="font-size:10px">🏢 @a.Responsible</span> }
+                                    { <span class="badge badge-orange" style="font-size:10px">@a.Responsible</span> }
                                 </div>
                             </div>
                             <div style="display:flex;gap:6px;align-items:center">
@@ -185,7 +211,7 @@ else
                 @if (HasRole("auditor","admin"))
                 {
                     <button class="btn btn-outline btn-sm"
-                            @onclick="TriggerFileInput">📎 Dosya Ekle</button>
+                            @onclick="TriggerFileInput">Dosya Ekle</button>
                     <InputFile id="finding-file-input" OnChange="UploadFiles"
                                multiple style="display:none" />
                 }
@@ -200,7 +226,7 @@ else
                 @foreach (var att in _finding.Attachments.OrderByDescending(a => a.UploadedAt))
                 {
                     <div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-bottom:1px solid #f3f4f6">
-                        <span style="font-size:18px">📎</span>
+                        <span style="font-size:18px">▸</span>
                         <div style="flex:1">
                             <a href="/audit/findings/@_finding.Id/attachments/@att.Id/download" target="_blank"
                                style="font-size:13px;color:#1e40af;font-weight:500">@att.FileName</a>
@@ -236,7 +262,7 @@ else
                             @foreach (var f in _closureFiles)
                             {
                                 <div style="font-size:12px;color:#374151;padding:2px 0">
-                                    📎 @f.Name <span style="color:#9ca3af">(@FormatSize(f.Size))</span>
+                                    @f.Name <span style="color:#9ca3af">(@FormatSize(f.Size))</span>
                                 </div>
                             }
                         </div>
@@ -264,7 +290,7 @@ else
                             {
                                 <a href="@ClosureFileUrl(fn)" target="_blank"
                                    style="font-size:12px;color:#1e40af;display:flex;align-items:center;gap:3px">
-                                    📎 @fn
+                                    @fn
                                 </a>
                             }
                         </div>
@@ -301,7 +327,7 @@ else
                                 {
                                     <a href="@ClosureFileUrl(fn)" target="_blank"
                                        style="font-size:11px;color:#1e40af;display:flex;align-items:center;gap:3px">
-                                        📎 @fn
+                                        @fn
                                     </a>
                                 }
                             </div>

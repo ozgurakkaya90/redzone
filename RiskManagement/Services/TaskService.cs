@@ -10,7 +10,8 @@ public record UserTask(
     string Url,
     string Color,   // CSS color for the left border / badge
     string Bg,
-    string Category
+    string Category,
+    string Priority = "normal"   // "urgent" | "normal"
 );
 
 public class TaskService(AppDbContext db, ConfigService config)
@@ -29,7 +30,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 .Select(r => new { r.Id, r.Code, r.Title })
                 .ToList();
             foreach (var r in proposed)
-                tasks.Add(new("📋", $"{r.Code} — {r.Title}",
+                tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "İnceleme bekliyor", $"/risk/{r.Id}",
                     "#7c3aed", "#faf5ff", "Risk İnceleme"));
 
@@ -39,7 +40,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 .Select(r => new { r.Id, r.Code, r.Title })
                 .ToList();
             foreach (var r in awaitingApproval)
-                tasks.Add(new("✅", $"{r.Code} — {r.Title}",
+                tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "Komite onayı bekliyor", $"/risk/{r.Id}",
                     "#7c3aed", "#faf5ff", "Risk Onayı"));
 
@@ -49,7 +50,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 .Select(r => new { r.Id, r.Code, r.Title })
                 .ToList();
             foreach (var r in underReview)
-                tasks.Add(new("📊", $"{r.Code} — {r.Title}",
+                tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "İlk değerlendirme bekliyor", $"/risk/{r.Id}",
                     "#0369a1", "#eff6ff", "Risk Değerlendirme"));
 
@@ -59,7 +60,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 .Select(r => new { r.Id, r.Code, r.Title })
                 .ToList();
             foreach (var r in controlled)
-                tasks.Add(new("🔄", $"{r.Code} — {r.Title}",
+                tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "Kalıntı risk değerlendirmesi bekliyor", $"/risk/{r.Id}",
                     "#0f766e", "#f0fdfa", "Risk Değerlendirme"));
         }
@@ -73,7 +74,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 .Select(r => new { r.Id, r.Code, r.Title })
                 .ToList();
             foreach (var r in approved)
-                tasks.Add(new("🎯", $"{r.Code} — {r.Title}",
+                tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "Strateji ve sorumlu birim belirlenmesi gerekiyor", $"/risk/{r.Id}",
                     "#92400e", "#fffbeb", "Strateji Belirleme"));
 
@@ -84,7 +85,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 .Select(r => new { r.Id, r.Code, r.Title })
                 .ToList();
             foreach (var r in strategySet)
-                tasks.Add(new("🛡️", $"{r.Code} — {r.Title}",
+                tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "Kontrol eklenmesi gerekiyor", $"/risk/{r.Id}",
                     "#0369a1", "#eff6ff", "Kontrol Ekleme"));
 
@@ -95,7 +96,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 .Select(r => new { r.Id, r.Code, r.Title })
                 .ToList();
             foreach (var r in residualEval)
-                tasks.Add(new("📝", $"{r.Code} — {r.Title}",
+                tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "Aksiyon planı oluşturulması gerekiyor", $"/risk/{r.Id}",
                     "#166534", "#f0fdf4", "Aksiyon Planı"));
         }
@@ -110,9 +111,9 @@ public class TaskService(AppDbContext db, ConfigService config)
                                a.Description, a.DueDate })
             .ToList();
         foreach (var a in overdueActions)
-            tasks.Add(new("⚠️", $"{a.RiskCode} — {a.Description}",
+            tasks.Add(new("", $"{a.RiskCode} — {a.Description}",
                 $"Aksiyon vadesi geçti: {a.DueDate:dd.MM.yyyy}", $"/risk/{a.RiskId}",
-                "#991b1b", "#fef2f2", "Geciken Aksiyon"));
+                "#991b1b", "#fef2f2", "Geciken Aksiyon", "urgent"));
 
         // ── Audit tasks ─────────────────────────────────────────────
 
@@ -125,7 +126,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 .Select(c => new { c.Id, c.FindingId, c.Finding.Code, c.Finding.Title })
                 .ToList();
             foreach (var c in closureRequests)
-                tasks.Add(new("✅", $"{c.Code} — {c.Title}",
+                tasks.Add(new("", $"{c.Code} — {c.Title}",
                     "Kapanış başvurusu onay bekliyor", $"/audit/findings/{c.FindingId}",
                     "#065f46", "#f0fdf4", "Kapanış Onayı"));
         }
@@ -140,12 +141,13 @@ public class TaskService(AppDbContext db, ConfigService config)
             foreach (var f in myOpenFindings)
             {
                 var overdue = f.DueDate.HasValue && f.DueDate.Value < DateOnly.FromDateTime(DateTime.Today);
-                tasks.Add(new(overdue ? "🚨" : "🔍", $"{f.Code} — {f.Title}",
+                tasks.Add(new("", $"{f.Code} — {f.Title}",
                     overdue ? $"Vadesi geçmiş: {f.DueDate:dd.MM.yyyy}" : "Açık bulgu — aksiyon alınması gerekiyor",
                     $"/audit/findings/{f.Id}",
                     overdue ? "#991b1b" : "#0369a1",
                     overdue ? "#fef2f2" : "#eff6ff",
-                    "Denetim Bulgusu"));
+                    "Denetim Bulgusu",
+                    overdue ? "urgent" : "normal"));
             }
         }
 
@@ -159,12 +161,13 @@ public class TaskService(AppDbContext db, ConfigService config)
             foreach (var f in assigned)
             {
                 var overdue = f.DueDate.HasValue && f.DueDate.Value < DateOnly.FromDateTime(DateTime.Today);
-                tasks.Add(new(overdue ? "🚨" : "📌", $"{f.Code} — {f.Title}",
+                tasks.Add(new("", $"{f.Code} — {f.Title}",
                     overdue ? $"Vadesi geçmiş: {f.DueDate:dd.MM.yyyy}" : "Size atanan açık bulgu",
                     $"/audit/findings/{f.Id}",
                     overdue ? "#991b1b" : "#92400e",
                     overdue ? "#fef2f2" : "#fffbeb",
-                    "Atanan Bulgu"));
+                    "Atanan Bulgu",
+                    overdue ? "urgent" : "normal"));
             }
         }
 
@@ -177,7 +180,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 .Select(r => new { r.Id, r.Code, r.Subject })
                 .ToList();
             foreach (var r in pendingAuditReview)
-                tasks.Add(new("⚖️", $"{r.Code} — {r.Subject}",
+                tasks.Add(new("", $"{r.Code} — {r.Subject}",
                     "Denetim değerlendirmesi bekliyor", $"/ethics/reports/{r.Id}",
                     "#7c3aed", "#faf5ff", "Etik Değerlendirme"));
         }
@@ -189,7 +192,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 .Select(r => new { r.Id, r.Code, r.Subject })
                 .ToList();
             foreach (var r in pendingBoardReview)
-                tasks.Add(new("⚖️", $"{r.Code} — {r.Subject}",
+                tasks.Add(new("", $"{r.Code} — {r.Subject}",
                     "Kurul değerlendirmesi bekliyor", $"/ethics/reports/{r.Id}",
                     "#7c3aed", "#faf5ff", "Etik Kurul"));
         }
@@ -212,7 +215,7 @@ public class TaskService(AppDbContext db, ConfigService config)
                 var lastStr = r.LastReviewedAt.HasValue
                     ? $"Son inceleme: {r.LastReviewedAt.Value.ToLocalTime():dd.MM.yyyy}"
                     : "Henüz incelenmedi";
-                tasks.Add(new("📅", $"{r.Code} — {r.Title}",
+                tasks.Add(new("", $"{r.Code} — {r.Title}",
                     $"Periyodik inceleme vadesi geçti ({thresholdDays} gün) — {lastStr}",
                     $"/risk/{r.Id}", "#b45309", "#fffbeb", "Periyodik İnceleme"));
             }
@@ -229,7 +232,7 @@ public class TaskService(AppDbContext db, ConfigService config)
             ).ToList();
 
             foreach (var r in resets)
-                tasks.Add(new("🔑", $"{r.FullName} ({r.Username})",
+                tasks.Add(new("", $"{r.FullName} ({r.Username})",
                     $"Şifre sıfırlama talebi — son geçerlilik {r.ExpiresAt.ToLocalTime():dd.MM.yyyy HH:mm}",
                     "/admin/users",
                     "#92400e", "#fffbeb", "Şifre Sıfırlama"));

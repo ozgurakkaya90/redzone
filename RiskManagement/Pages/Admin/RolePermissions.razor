@@ -110,7 +110,7 @@
 </style>
 
 <div class="page-header">
-    <h1 class="page-title">🔐 Yetki Yönetimi</h1>
+    <h1 class="page-title"> Yetki Yönetimi</h1>
     <p class="page-subtitle">Rol bazlı erişim kontrolü — Okuma · Yazma · Düzenleme katmanları</p>
 </div>
 
@@ -123,14 +123,14 @@
         </span>
     }
     <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:5px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;font-weight:600;color:#15803d">
-        ✦ Yönetici — tüm yetkiler sabit
+        * Yönetici — tüm yetkiler sabit
     </span>
 </div>
 
 @if (_saved)
 {
     <div class="alert alert-success" style="margin-bottom:16px;display:flex;align-items:center;gap:8px">
-        <span style="font-size:18px">✅</span> Yetki matrisi başarıyla kaydedildi.
+        Yetki matrisi başarıyla kaydedildi.
     </div>
 }
 
@@ -151,7 +151,7 @@
                     <th style="background:@(isAdmin ? "#f0fdf4" : "var(--gray-50)");border-left:1px solid var(--border);@(isAdmin ? "border-left:2px solid #bbf7d0;" : "")">
                         <div class="role-col-head" style="@(isAdmin ? "color:#15803d" : "")">
                             @AuthService.RoleLabels.GetValueOrDefault(role, role)
-                            @if (isAdmin) { <span style="font-size:9px;opacity:.7"> ✦</span> }
+                            @if (isAdmin) { <span style="font-size:9px;opacity:.7"> *</span> }
                         </div>
                     </th>
                 }
@@ -164,7 +164,7 @@
                 <tr class="group-header-row">
                     <td colspan="@(_roles.Length + 1)"
                         style="background:@group.Bg;color:@group.Color;border-color:@group.Color">
-                        @group.Icon &nbsp;@group.Name
+                        @group.Name
                     </td>
                 </tr>
 
@@ -187,7 +187,7 @@
                         {
                             @if (role == "admin")
                             {
-                                <td class="admin-cell">✦</td>
+                                <td class="admin-cell">*</td>
                             }
                             else
                             {
@@ -238,12 +238,12 @@
     private record LevelBadge(string Key, string Label, string Icon, string Color, string Bg, string Border);
     private static readonly LevelBadge[] _levelBadges =
     [
-        new("Okuma",     "Okuma",     "👁",  "#065f46", "#dcfce7", "#86efac"),
-        new("Yazma",     "Yazma",     "✏️", "#1e40af", "#dbeafe", "#93c5fd"),
-        new("Düzenleme", "Düzenleme", "⚙️", "#92400e", "#fef3c7", "#fcd34d"),
-        new("Onaylama",  "Onaylama",  "✅", "#581c87", "#f3e8ff", "#c4b5fd"),
-        new("Denetim",   "Denetim",   "🔍", "#0f766e", "#ccfbf1", "#5eead4"),
-        new("Kurul",     "Kurul",     "⚖️", "#7c3aed", "#ede9fe", "#c4b5fd"),
+        new("Okuma",     "Okuma",     "",  "#065f46", "#dcfce7", "#86efac"),
+        new("Yazma",     "Yazma",     "", "#1e40af", "#dbeafe", "#93c5fd"),
+        new("Düzenleme", "Düzenleme", "", "#92400e", "#fef3c7", "#fcd34d"),
+        new("Onaylama",  "Onaylama",  "", "#581c87", "#f3e8ff", "#c4b5fd"),
+        new("Denetim",   "Denetim",   "", "#0f766e", "#ccfbf1", "#5eead4"),
+        new("Kurul",     "Kurul",     "", "#7c3aed", "#ede9fe", "#c4b5fd"),
     ];
 
     protected override void OnInitialized() => LoadFromDb();

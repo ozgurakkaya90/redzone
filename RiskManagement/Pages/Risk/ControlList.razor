@@ -18,15 +18,15 @@
         <div class="export-dropdown">
             <button class="btn btn-outline btn-sm export-btn">⬇ Dışa Aktar</button>
             <div class="export-menu">
-                <a href="/export/controls/excel" class="export-item">📊 Excel (.xlsx)</a>
-                <a href="/export/controls/pdf" class="export-item">📄 PDF</a>
+                <a href="/export/controls/excel" class="export-item">Excel (.xlsx)</a>
+                <a href="/export/controls/pdf" class="export-item">PDF</a>
             </div>
         </div>
         <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
         @if (IsCommitteeOrOwner)
         {
             <button class="btn btn-primary" @onclick="() => _showForm = !_showForm">
-                @(_showForm ? "✕ İptal" : "+ Yeni Kontrol Ekle")
+                @(_showForm ? "İptal" : "+ Yeni Kontrol Ekle")
             </button>
         }
     </div>
@@ -140,7 +140,7 @@
                         </div>
                         @if (c.Risk.Organization != null)
                         {
-                            <div style="font-size:10px;color:#9ca3af">🏢 @c.Risk.Organization.Name</div>
+                            <div style="font-size:10px;color:#9ca3af">@c.Risk.Organization.Name</div>
                         }
                     </td>
                     <td style="max-width:260px">@c.Description</td>

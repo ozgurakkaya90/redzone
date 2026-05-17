@@ -44,9 +44,9 @@
 
     private static string Icon(ToastType t) => t switch
     {
-        ToastType.Success => "✓",
-        ToastType.Error   => "✕",
-        ToastType.Warning => "⚠",
+        ToastType.Success => "&#10003;",
+        ToastType.Error   => "&#10005;",
+        ToastType.Warning => "&#9888;",
         _                 => "ℹ",
     };
 
