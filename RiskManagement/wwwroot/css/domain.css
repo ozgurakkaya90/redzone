@@ -737,6 +737,96 @@
 .export-item:hover { background: var(--gray-100); }
 
 /* ══════════════════════════════════════════════════════════
+   DbMigrate — dm-* classes
+   ══════════════════════════════════════════════════════════ */
+.dm-migration-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px; border-radius: var(--r-sm);
+  margin-bottom: 4px; font-size: 12px;
+}
+.dm-migration-row--pending { background: var(--yellow-50); }
+.dm-migration-row--applied { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
+.dm-details summary { font-size: 12px; color: var(--text-3); cursor: pointer; margin-bottom: 8px; }
+.dm-action-bar {
+  display: flex; gap: 10px; flex-wrap: wrap;
+  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
+}
+.dm-table-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+@media (max-width: 600px) { .dm-table-grid { grid-template-columns: 1fr; } }
+
+/* ══════════════════════════════════════════════════════════
+   ExternalAuditConfig — eac-* classes
+   ══════════════════════════════════════════════════════════ */
+.eac-layout       { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.eac-card-left    { padding: 18px; flex: 1; min-width: 360px; }
+.eac-card-right   { padding: 18px; flex: 1.4; min-width: 460px; }
+.eac-checkbox-label {
+  font-size: 12px; display: flex; align-items: center;
+  gap: 6px; cursor: pointer; white-space: nowrap;
+}
+
+/* ══════════════════════════════════════════════════════════
+   AuditPlanPage — gantt + summary classes
+   ══════════════════════════════════════════════════════════ */
+.app-summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.app-summary-card { padding: 14px 16px; }
+.gantt-header     { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+.gantt-legend     { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; font-size: 11px; color: var(--text-3); }
+.gantt-legend-dot { display: inline-block; width: 12px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 3px; }
+
+/* ══════════════════════════════════════════════════════════
+   RiskLibrary — lib-* card classes
+   ══════════════════════════════════════════════════════════ */
+.lib-cat-pills    { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.lib-card         { padding: 16px; display: flex; flex-direction: column; gap: 10px; transition: box-shadow .15s, transform .1s; }
+.lib-card:hover   { box-shadow: 0 4px 20px rgba(0,0,0,.1); transform: translateY(-1px); }
+.lib-card-top     { display: flex; align-items: flex-start; gap: 8px; }
+.lib-card-title   { font-size: 13px; font-weight: 700; color: var(--text); line-height: 1.3; }
+.lib-card-tags    { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 5px; }
+.lib-source-badge { font-size: 10px; flex-shrink: 0; white-space: nowrap; }
+.lib-card-meta    { font-size: 11px; color: var(--text-3); }
+.lib-card-meta-label          { font-weight: 600; }
+.lib-card-meta-label--hazard  { color: #92400e; }
+.lib-card-meta-label--impact  { color: #991b1b; }
+.lib-card-footer  { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--border); }
+.lib-usage-count    { font-size: 11px; color: var(--text-3); }
+.lib-proposed-label { font-size: 12px; font-weight: 600; color: #16a34a; }
+
+/* ══════════════════════════════════════════════════════════
+   EthicsStatus — es-* classes (public-facing status page)
+   ══════════════════════════════════════════════════════════ */
+.es-card       { background: var(--surface); border: 1px solid var(--border); border-radius: var(--r-xl); padding: 20px; margin-bottom: 12px; }
+.es-card-top   { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; gap: 12px; }
+.es-ref-label  { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); margin-bottom: 4px; }
+.es-ref-code   { font-size: 18px; font-weight: 700; font-family: var(--font-mono); color: var(--text); }
+.es-status-badge { font-size: 12px; white-space: nowrap; }
+.es-meta       { font-size: 13px; color: var(--text-2); margin-bottom: 4px; }
+.es-date       { font-size: 12px; color: var(--text-3); margin-top: 8px; }
+.es-notes-card { border: 1px solid #e0e7ff; border-radius: var(--r-lg); padding: 14px; background: #f8faff; margin-bottom: 12px; }
+.es-notes-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: #6366f1; margin-bottom: 10px; }
+.es-note-row   { font-size: 13px; color: var(--text); margin-bottom: 6px; }
+.es-note-row:last-child { margin-bottom: 0; }
+.es-back-link  { color: var(--text-3); font-size: 13px; text-decoration: none; }
+.es-back-link:hover { color: var(--text-2); }
+
+/* ══════════════════════════════════════════════════════════
+   ExternalAuditDetail — ead-* classes
+   ══════════════════════════════════════════════════════════ */
+.ead-layout          { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
+@media (max-width: 900px) { .ead-layout { grid-template-columns: 1fr; } }
+.ead-finding-card    { border: 1px solid var(--border); border-radius: var(--r-lg); padding: 14px; margin-bottom: 10px; background: var(--surface); }
+.ead-finding-top     { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.ead-finding-title   { font-weight: 700; font-size: 14px; }
+.ead-finding-meta    { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.ead-actions-section { margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.ead-actions-header  { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.ead-action-row      { font-size: 12px; padding: 6px 8px; background: var(--gray-50); border-radius: var(--r-sm); margin-bottom: 4px; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.ead-add-action-form { background: var(--blue-50); border: 1px solid var(--blue-100); border-radius: var(--r-md); padding: 10px; margin-top: 6px; }
+.ead-info-list       { font-size: 12px; line-height: 1.8; }
+.ead-danger-zone     { padding: 14px; background: #fef2f2; border-color: #fecaca; }
+.ead-danger-title    { font-size: 11px; font-weight: 700; color: #dc2626; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 8px; }
+
+/* ══════════════════════════════════════════════════════════
    Risk Control Matrix — rcm-* classes
    ══════════════════════════════════════════════════════════ */
 .rcm-filter-grid {

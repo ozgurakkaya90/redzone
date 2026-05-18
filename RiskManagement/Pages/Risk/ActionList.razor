@@ -127,36 +127,30 @@
     </table>
 </div>
 
-<div class="al-stats-grid">
-    <div class="card al-stat">
+<div class="list-stat-grid">
+    <div class="card list-stat-card">
         <div class="stat-label">Toplam</div>
-        <div class="al-stat-val">@Filtered.Count()</div>
+        <div class="list-stat-val">@Filtered.Count()</div>
     </div>
-    <div class="card al-stat">
+    <div class="card list-stat-card">
         <div class="stat-label">Planlandı</div>
-        <div class="al-stat-val" style="color:#2563eb">@Filtered.Count(a => a.Status == "planned")</div>
+        <div class="list-stat-val" style="color:#2563eb">@Filtered.Count(a => a.Status == "planned")</div>
     </div>
-    <div class="card al-stat">
+    <div class="card list-stat-card">
         <div class="stat-label">Devam Ediyor</div>
-        <div class="al-stat-val" style="color:#ca8a04">@Filtered.Count(a => a.Status == "in_progress")</div>
+        <div class="list-stat-val" style="color:#ca8a04">@Filtered.Count(a => a.Status == "in_progress")</div>
     </div>
-    <div class="card al-stat">
+    <div class="card list-stat-card">
         <div class="stat-label">Tamamlandı</div>
-        <div class="al-stat-val" style="color:#16a34a">@Filtered.Count(a => a.Status == "completed")</div>
+        <div class="list-stat-val" style="color:#16a34a">@Filtered.Count(a => a.Status == "completed")</div>
     </div>
-    <div class="card al-stat">
+    <div class="card list-stat-card">
         <div class="stat-label">Vadesi Geçmiş</div>
-        <div class="al-stat-val" style="color:#dc2626">
+        <div class="list-stat-val" style="color:#dc2626">
             @Filtered.Count(a => a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress")
         </div>
     </div>
 </div>
-
-<style>
-    .al-stats-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px }
-    .al-stat       { padding:14px;text-align:center }
-    .al-stat-val   { font-size:28px;font-weight:700 }
-</style>
 
 @code {
     private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";

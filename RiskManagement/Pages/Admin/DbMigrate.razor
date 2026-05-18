@@ -139,41 +139,6 @@
     </div>
 </div>
 
-<style>
-    .dm-migration-row {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 5px 10px;
-        border-radius: var(--r-sm);
-        margin-bottom: 4px;
-        font-size: 12px;
-    }
-    .dm-migration-row--pending { background: var(--yellow-50); }
-    .dm-migration-row--applied { font-family: var(--font-mono); font-size: 11px; color: var(--text-3); }
-
-    .dm-details summary {
-        font-size: 12px;
-        color: var(--text-3);
-        cursor: pointer;
-        margin-bottom: 8px;
-    }
-    .dm-action-bar {
-        display: flex;
-        gap: 10px;
-        margin-top: 14px;
-        padding-top: 14px;
-        border-top: 1px solid var(--border);
-        flex-wrap: wrap;
-    }
-    .dm-table-grid {
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        gap: 8px;
-        margin-bottom: 12px;
-    }
-    @@media (max-width: 600px) { .dm-table-grid { grid-template-columns: 1fr; } }
-</style>
 
 @code {
     private List<string> _pending  = [];

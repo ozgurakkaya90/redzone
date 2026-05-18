@@ -232,29 +232,6 @@ else
     </div>
 }
 
-<style>
-    .lib-cat-pills { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
-
-    .lib-card { padding:16px; display:flex; flex-direction:column; gap:10px; transition:box-shadow .15s,transform .1s; }
-    .lib-card:hover { box-shadow:0 4px 20px rgba(0,0,0,.1); transform:translateY(-1px); }
-
-    .lib-card-top    { display:flex; align-items:flex-start; gap:8px; }
-    .lib-card-title  { font-size:13px; font-weight:700; color:var(--text); line-height:1.3; }
-    .lib-card-tags   { display:flex; gap:4px; flex-wrap:wrap; margin-top:5px; }
-    .lib-source-badge { font-size:10px; flex-shrink:0; white-space:nowrap; }
-
-    .lib-card-meta   { font-size:11px; color:var(--text-3); }
-    .lib-card-meta-label { font-weight:600; }
-    .lib-card-meta-label--hazard { color:#92400e; }
-    .lib-card-meta-label--impact { color:#991b1b; }
-
-    .lib-card-footer {
-        display:flex; align-items:center; justify-content:space-between;
-        margin-top:auto; padding-top:8px; border-top:1px solid var(--border);
-    }
-    .lib-usage-count  { font-size:11px; color:var(--text-3); }
-    .lib-proposed-label { font-size:12px; font-weight:600; color:#16a34a; }
-</style>
 
 @code {
     private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";

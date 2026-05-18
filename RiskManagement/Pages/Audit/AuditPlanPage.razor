@@ -518,14 +518,6 @@
     </div>
 }
 
-<style>
-    .app-summary-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:10px }
-    .app-summary-card  { padding:14px 16px }
-
-    .gantt-header { display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:14px }
-    .gantt-legend { display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:11px;color:var(--text-3);font-weight:400 }
-    .gantt-legend-dot { display:inline-block;width:12px;height:4px;border-radius:2px;vertical-align:middle;margin-right:3px }
-</style>
 
 @code {
     private int UserId => int.TryParse(

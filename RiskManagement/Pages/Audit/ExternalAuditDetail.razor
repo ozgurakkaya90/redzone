@@ -270,45 +270,6 @@ else
     </div>
 }
 
-<style>
-    .ead-layout { display:grid;grid-template-columns:1fr 320px;gap:16px;align-items:start }
-    @@media (max-width:900px) { .ead-layout { grid-template-columns:1fr } }
-
-    .ead-finding-card {
-        border: 1px solid var(--border);
-        border-radius: var(--r-lg);
-        padding: 14px;
-        margin-bottom: 10px;
-        background: var(--surface);
-    }
-    .ead-finding-top    { display:flex;justify-content:space-between;align-items:flex-start;gap:12px }
-    .ead-finding-title  { font-weight:700;font-size:14px }
-    .ead-finding-meta   { display:flex;gap:6px;flex-wrap:wrap;margin-top:8px }
-
-    .ead-actions-section { margin-top:10px;padding-top:10px;border-top:1px dashed var(--border) }
-    .ead-actions-header  { display:flex;justify-content:space-between;align-items:center;margin-bottom:6px }
-    .ead-action-row {
-        font-size: 12px;
-        padding: 6px 8px;
-        background: var(--gray-50);
-        border-radius: var(--r-sm);
-        margin-bottom: 4px;
-        display: flex;
-        gap: 6px;
-        flex-wrap: wrap;
-        align-items: center;
-    }
-    .ead-add-action-form {
-        background: var(--blue-50);
-        border: 1px solid var(--blue-100);
-        border-radius: var(--r-md);
-        padding: 10px;
-        margin-top: 6px;
-    }
-    .ead-info-list   { font-size:12px;line-height:1.8 }
-    .ead-danger-zone { padding:14px;background:#fef2f2;border-color:#fecaca }
-    .ead-danger-title { font-size:11px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px }
-</style>
 
 @code {
     [Parameter] public int Id { get; set; }
