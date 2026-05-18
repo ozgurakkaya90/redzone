@@ -737,6 +737,59 @@
 .export-item:hover { background: var(--gray-100); }
 
 /* ══════════════════════════════════════════════════════════
+   SystemConfig — cfg-* admin panel sınıfları
+   ══════════════════════════════════════════════════════════ */
+.cfg-layout    { display:grid; grid-template-columns:220px 1fr; gap:24px; align-items:start; }
+.cfg-nav       { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-xl); padding:8px; position:sticky; top:80px; }
+.cfg-nav-group { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.06em; color:var(--text-3); padding:12px 12px 4px; }
+.cfg-nav-item  { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:8px; cursor:pointer; border:none; background:none; width:100%; text-align:left; font-size:13px; color:var(--text-2); transition:background .12s, color .12s; }
+.cfg-nav-item:hover  { background:var(--gray-50); color:var(--text); }
+.cfg-nav-item.active { background:var(--blue-50); color:#0369a1; font-weight:600; }
+.cfg-nav-item .cfg-icon  { font-size:16px; width:20px; text-align:center; flex-shrink:0; }
+.cfg-nav-item .cfg-badge { margin-left:auto; background:var(--gray-200); color:var(--text-3); font-size:10px; font-weight:700; padding:1px 6px; border-radius:10px; }
+.cfg-nav-item.active .cfg-badge { background:var(--blue-100); color:#0369a1; }
+
+.cfg-section-hdr    { margin-bottom:20px; }
+.cfg-section-hdr h2 { font-size:18px; font-weight:800; color:var(--text); margin:0 0 4px; }
+.cfg-section-hdr p  { font-size:13px; color:var(--text-3); margin:0; }
+
+.cfg-card      { background:var(--surface); border:1px solid var(--border); border-radius:var(--r-xl); padding:20px 24px; margin-bottom:16px; }
+.cfg-card-hdr  { display:flex; align-items:center; gap:10px; margin-bottom:16px; padding-bottom:14px; border-bottom:1px solid var(--border); }
+.cfg-card-icon { width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:17px; flex-shrink:0; }
+.cfg-card-title { font-size:14px; font-weight:700; color:var(--text); }
+.cfg-card-desc  { font-size:12px; color:var(--text-3); margin-top:1px; }
+
+.preset-btn       { display:flex; align-items:center; gap:8px; padding:10px 14px; border:1px solid var(--border); border-radius:8px; cursor:pointer; background:var(--surface); width:100%; text-align:left; transition:border-color .12s, background .12s; }
+.preset-btn:hover { border-color:var(--blue-500); background:var(--blue-50); }
+.preset-btn .pb-icon { font-size:20px; }
+.preset-btn .pb-name { font-size:13px; font-weight:600; color:var(--text); }
+.preset-btn .pb-host { font-size:11px; color:var(--text-3); }
+
+.color-swatch { width:48px; height:40px; border:1px solid var(--border); border-radius:8px; cursor:pointer; overflow:hidden; padding:0; }
+.field-info   { font-size:11px; color:var(--text-3); margin-top:3px; line-height:1.4; }
+
+.toggle-row   { display:flex; align-items:center; gap:12px; padding:14px 16px; border:1px solid var(--border); border-radius:10px; background:var(--gray-50); cursor:pointer; margin-bottom:16px; }
+.toggle-row input[type=checkbox] { width:18px; height:18px; accent-color:#0369a1; cursor:pointer; }
+.toggle-row label      { font-size:13px; font-weight:600; color:var(--text); cursor:pointer; margin:0; flex:1; }
+.toggle-row .toggle-sub { font-size:11px; color:var(--text-3); font-weight:400; display:block; margin-top:1px; }
+
+.status-pill { display:inline-flex; align-items:center; gap:5px; font-size:11px; font-weight:700; padding:3px 10px; border-radius:20px; }
+.pill-green  { background:var(--green-50); color:#166534; border:1px solid var(--green-100); }
+.pill-red    { background:#fee2e2; color:#991b1b; border:1px solid #fecaca; }
+.pill-gray   { background:var(--gray-100); color:var(--gray-600); border:1px solid var(--border); }
+
+.save-row { display:flex; align-items:center; gap:12px; margin-top:16px; padding-top:14px; border-top:1px solid var(--border); }
+.save-msg { font-size:13px; color:#16a34a; font-weight:600; animation:fadeIn .3s; }
+@keyframes fadeIn { from{opacity:0;transform:translateY(-4px)} to{opacity:1;transform:none} }
+
+@media (max-width:768px) {
+  .cfg-layout { grid-template-columns:1fr; }
+  .cfg-nav    { position:static; display:flex; flex-wrap:wrap; padding:6px; gap:4px; }
+  .cfg-nav-group { display:none; }
+  .cfg-nav-item  { width:auto; padding:6px 10px; font-size:12px; }
+}
+
+/* ══════════════════════════════════════════════════════════
    DbMigrate — dm-* classes
    ══════════════════════════════════════════════════════════ */
 .dm-migration-row {
