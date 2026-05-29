@@ -1972,67 +1972,80 @@
 
         <div class="cfg-card">
             @{
-                var checks = new (bool Done, string Label, string Tab, string Hint)[]
+                var checks = new (bool Done, string Label, string Tab, string Hint, bool Optional)[]
                 {
                     (!string.IsNullOrEmpty(_appName) && _appName != "RED",
                         "Uygulama adı özelleştirildi",
                         "theme",
-                        "Kurumunuza ait bir uygulama adı girin."),
+                        "Kurumunuza ait bir uygulama adı girin.", false),
                     (!string.IsNullOrEmpty(_logoPath),
                         "Logo yüklendi",
                         "theme",
-                        "PNG, JPG veya SVG formatında kurumsal logonuzu yükleyin."),
+                        "PNG, JPG veya SVG formatında kurumsal logonuzu yükleyin.", false),
                     (_companies.Count > 0,
                         "En az bir şirket eklendi",
                         "companies",
-                        "Şirket/organizasyon hiyerarşisini oluşturun."),
+                        "Şirket/organizasyon hiyerarşisini oluşturun.", false),
                     (_departments.Count > 0,
                         "En az bir departman tanımlandı",
                         "departments",
-                        "Kullanıcıların atanacağı departmanları tanımlayın."),
+                        "Kullanıcıların atanacağı departmanları tanımlayın.", false),
                     (_emailSettings.Enabled,
                         "E-posta (SMTP) etkinleştirildi",
                         "email",
-                        "Bildirim e-postalarının gönderilebilmesi için SMTP ayarlayın."),
+                        "Bildirim e-postalarının gönderilebilmesi için SMTP ayarlayın.", false),
                     (_smtpCheckOk,
                         "SMTP bağlantısı test edildi ve başarılı",
                         "health",
-                        "Sistem Sağlığı ekranından SMTP testini çalıştırın."),
+                        "Sistem Sağlığı ekranından SMTP testini çalıştırın.", false),
                     (CfgSvc.GetList("risk_categories").Length > 0,
                         "Risk kategorileri kontrol edildi",
                         "risk",
-                        "Risk kategorilerini kurumunuza göre düzenleyin."),
+                        "Risk kategorilerini kurumunuza göre düzenleyin.", false),
                     (CfgSvc.GetList("audit_types").Length > 0,
                         "Denetim türleri kontrol edildi",
                         "audit",
-                        "Denetim türlerini kurumunuza göre düzenleyin."),
+                        "Denetim türlerini kurumunuza göre düzenleyin.", false),
                     (_appDbTestOk,
                         "Veritabanı bağlantısı doğrulandı",
                         "health",
-                        "Sistem Sağlığı ekranından veritabanı testini çalıştırın."),
+                        "Sistem Sağlığı ekranından veritabanı testini çalıştırın.", false),
                     (_migrPending.Count == 0 && _migrApplied.Count > 0,
                         "Bekleyen migration yok",
                         "health",
-                        "Tüm veritabanı güncellemeleri uygulanmış olmalıdır."),
+                        "Tüm veritabanı güncellemeleri uygulanmış olmalıdır.", false),
+                    (CfgSvc.GetAiSettings().Provider is not ("disabled" or ""),
+                        "Yapay zeka (AI) entegrasyonu yapılandırıldı",
+                        "ai",
+                        "İsteğe bağlı: Risk taslağı üretimi için AI sağlayıcısını (Anthropic / OpenAI uyumlu) ayarlayın.", true),
+                    (McpKeySvc.GetAll().Any(k => k.IsActive),
+                        "MCP bağlantısı için aktif API anahtarı var",
+                        "mcp",
+                        "İsteğe bağlı: Claude/Cursor gibi istemcilerin bağlanabilmesi için bir MCP API anahtarı oluşturun.", true),
                 };
-                var doneCount = checks.Count(c => c.Done);
+                var required   = checks.Where(c => !c.Optional).ToArray();
+                var doneCount  = required.Count(c => c.Done);
+                var totalCount = required.Length;
+                var optDone    = checks.Count(c => c.Optional && c.Done);
+                var optTotal   = checks.Count(c => c.Optional);
             }
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:14px 16px;background:var(--gray-50);border-radius:10px;border:1px solid var(--border)">
-                <div style="font-size:28px;font-weight:800;color:@(doneCount == checks.Length ? "#16a34a" : "#0369a1")">@doneCount/@checks.Length</div>
+                <div style="font-size:28px;font-weight:800;color:@(doneCount == totalCount ? "#16a34a" : "#0369a1")">@doneCount/@totalCount</div>
                 <div>
                     <div style="font-size:13px;font-weight:600">Kurulum tamamlanma durumu</div>
                     <div style="font-size:11px;color:var(--text-3)">
-                        @if (doneCount == checks.Length) { <span>Tüm adımlar tamamlandı — sistem üretime hazır.</span> }
-                        else { <span>@(checks.Length - doneCount) adım kaldı.</span> }
+                        @if (doneCount == totalCount) { <span>Zorunlu adımlar tamamlandı — sistem üretime hazır.</span> }
+                        else { <span>@(totalCount - doneCount) zorunlu adım kaldı.</span> }
+                        <span style="opacity:.8"> · İsteğe bağlı entegrasyon: @optDone/@optTotal</span>
                     </div>
                 </div>
                 <div style="flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
-                    <div style="height:100%;width:@(doneCount * 100 / checks.Length)%;background:@(doneCount == checks.Length ? "#16a34a" : "#0369a1");border-radius:4px;transition:width .3s"></div>
+                    <div style="height:100%;width:@(doneCount * 100 / totalCount)%;background:@(doneCount == totalCount ? "#16a34a" : "#0369a1");border-radius:4px;transition:width .3s"></div>
                 </div>
             </div>
 
             <div style="display:flex;flex-direction:column;gap:8px">
-                @foreach (var (done, label, tab, hint) in checks)
+                @foreach (var (done, label, tab, hint, optional) in checks)
                 {
                     <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:8px;
                                 background:@(done?"#f0fdf4":"#fafafa");border:1px solid @(done?"#bbf7d0":"var(--border)")">
@@ -2041,7 +2054,13 @@
                             @(done ? "✓" : "·")
                         </div>
                         <div style="flex:1;min-width:0">
-                            <div style="font-size:13px;font-weight:@(done?"500":"600");color:@(done?"#166534":"var(--text-1)")">@label</div>
+                            <div style="font-size:13px;font-weight:@(done?"500":"600");color:@(done?"#166534":"var(--text-1)")">
+                                @label
+                                @if (optional)
+                                {
+                                    <span style="margin-left:6px;font-size:10px;font-weight:600;color:#64748b;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:4px;padding:1px 6px;vertical-align:middle">İsteğe bağlı</span>
+                                }
+                            </div>
                             @if (!done)
                             { <div style="font-size:11px;color:var(--text-3);margin-top:2px">@hint</div> }
                         </div>
