@@ -13,7 +13,7 @@ namespace RiskManagement.Migrations
             migrationBuilder.AddColumn<string>(
                 name: "TrackingToken",
                 table: "EthicsReports",
-                type: "TEXT",
+                type: "varchar(64)",
                 maxLength: 64,
                 nullable: true);
 
