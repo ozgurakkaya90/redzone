@@ -255,6 +255,17 @@ using (var scope = app.Services.CreateScope())
         scope.ServiceProvider.GetRequiredService<RiskLibraryService>().SeedIfEmpty();
         AuthService.SeedSystemData(db);
         SyncUserAssignments(db);
+
+        // TrackingToken backfill — token kolonu eklenmeden önce oluşturulmuş etik
+        // bildirimlerine gizli takip token'ı atar (idempotent: yalnızca NULL olanlar).
+        var tokenless = db.EthicsReports.Where(r => r.TrackingToken == null).ToList();
+        if (tokenless.Count > 0)
+        {
+            foreach (var r in tokenless)
+                r.TrackingToken = EthicsService.GenerateTrackingToken();
+            db.SaveChanges();
+            logger.LogInformation("{Count} etik bildirimine takip token'ı atandı.", tokenless.Count);
+        }
     }
     catch (Exception ex)
     {

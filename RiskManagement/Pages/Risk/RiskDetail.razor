@@ -1,6 +1,7 @@
 @page "/risk/{Id:int}"
 @attribute [Authorize]
 @inject RiskService RiskSvc
+@inject AuditService AuditSvc
 @inject ConfigService CfgSvc
 @inject IRiskCalculator RiskCalc
 @inject AppDbContext Db
@@ -1178,6 +1179,7 @@ else
     {
         _user = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
         await LoadAsync();
+        LoadLinkableFindings();
         _departments         = await Db.Departments.OrderBy(d => d.Name).ToListAsync();
         _organizations       = await Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name).ToListAsync();
         _allUsers            = await Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName).ToListAsync();
@@ -1199,7 +1201,7 @@ else
     {
         _risk = RiskSvc.GetByIdForUser(Id, UserId, Role);
         if (_allFindings.Count == 0)
-            _allFindings = [.. Db.AuditFindings.Select(f => new RiskManagement.Models.AuditFinding { Id = f.Id, Code = f.Code, Title = f.Title, Status = f.Status })];
+            LoadLinkableFindings();
         ApplyLoadedRisk();
     }
 
@@ -1220,8 +1222,20 @@ else
         _lastLog = _risk.AuditLogs.OrderByDescending(l => l.Timestamp).FirstOrDefault();
     }
 
+    // Yalnızca kullanıcının erişebildiği bulgular bağlanabilir/aranabilir.
+    // _allFindings tüm bulguları açığa çıkarıyordu (Kod+Başlık) — CanAccessFinding ile hizalandı.
+    private void LoadLinkableFindings()
+    {
+        if (_user == null) { _allFindings = []; return; }
+        _allFindings = AuditSvc.GetFindingsForUser(_user)
+            .Select(f => new RiskManagement.Models.AuditFinding { Id = f.Id, Code = f.Code, Title = f.Title, Status = f.Status })
+            .ToList();
+    }
+
     private async Task LinkFinding(int findingId)
     {
+        // Erişim guard'ı: yalnızca kullanıcının erişebildiği bir bulgu bağlanabilir.
+        if (!_allFindings.Any(f => f.Id == findingId)) return;
         if (Db.RiskFindingLinks.Any(l => l.RiskId == Id && l.FindingId == findingId)) return;
         Db.RiskFindingLinks.Add(new RiskManagement.Models.RiskFindingLink { RiskId = Id, FindingId = findingId, CreatedById = UserId });
         await Db.SaveChangesAsync();

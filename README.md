@@ -189,6 +189,33 @@ Hata bildirimi için GitHub Issues kullanın.
 
 ---
 
+## Güvenlik
+
+> **Sorumluluk Reddi:** Bu yazılım MIT lisansı kapsamında **"olduğu gibi" (as-is)**, açık veya
+> zımni hiçbir garanti verilmeksizin sunulur. Üretim ortamında kullanmadan önce kendi güvenlik
+> değerlendirmenizi yapmanız önerilir.
+
+Üretime almadan önce **mutlaka** yapın:
+
+- [ ] Varsayılan yönetici şifresini (`Admin123!`) ilk girişte değiştirin.
+- [ ] `AppSettings__DemoMode=false` yapın (örnek veri ve demo hesapları yüklenmesin).
+- [ ] `Jwt__Key` için en az 32 karakterlik **rastgele** bir değer atayın; varsayılan/şablon değer bırakmayın.
+- [ ] Güçlü bir `DB_PASSWORD` belirleyin ve veritabanını ağ üzerinden dışarı açmayın.
+- [ ] Uygulamayı HTTPS sonlandıran bir ters proxy (nginx / IIS / ALB) arkasında çalıştırın
+      (cookie'ler üretimde `Secure` olarak işaretlenir).
+- [ ] Yedekleme stratejinizi [Yedekleme Rehberi](docs/BACKUP_RESTORE.md) ile doğrulayın.
+
+Uygulanan güvenlik önlemleri: BCrypt parola hash'leme, rol/izin tabanlı erişim, anonim uç
+noktalarda IP bazlı hız sınırlama, dosya yükleme uzantı/boyut doğrulaması, güvenlik response
+header'ları (CSP, X-Frame-Options vb.), antiforgery + `SameSite` çerez koruması.
+
+### Güvenlik Açığı Bildirimi
+
+Bir güvenlik açığı bulursanız lütfen **herkese açık issue açmayın**. Bildirim süreci için
+[SECURITY.md](SECURITY.md) dosyasına bakın.
+
+---
+
 ## Lisans
 
 [MIT License](LICENSE) — Ticari olmayan ve ticari kullanım serbesttir.

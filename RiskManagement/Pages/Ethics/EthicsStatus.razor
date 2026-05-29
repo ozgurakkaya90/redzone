@@ -1,6 +1,6 @@
-@page "/ethics/status/{Code}"
+@page "/ethics/status/{Token}"
 @layout EmptyLayout
-@inject AppDbContext Db
+@inject EthicsService EthicsSvc
 
 <PageTitle>Bildirim Durumu</PageTitle>
 
@@ -46,20 +46,8 @@
                 </div>
             </div>
 
-            @if (!string.IsNullOrEmpty(_report.AuditNotes) || !string.IsNullOrEmpty(_report.EthicsNotes))
-            {
-                <div class="es-notes-card">
-                    <div class="es-notes-label">İnceleme Notları</div>
-                    @if (!string.IsNullOrEmpty(_report.AuditNotes))
-                    {
-                        <div class="es-note-row"><strong>Denetim:</strong> @_report.AuditNotes</div>
-                    }
-                    @if (!string.IsNullOrEmpty(_report.EthicsNotes))
-                    {
-                        <div class="es-note-row"><strong>Kurul:</strong> @_report.EthicsNotes</div>
-                    }
-                </div>
-            }
+            @* Gizli inceleme notları (Denetim/Kurul) bilinçli olarak gösterilmez —
+               bu sayfa kimlik doğrulamasızdır ve notlar dahili/gizli değerlendirmedir. *@
 
             <div class="alert alert-success" style="margin-bottom:0">
                 <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -77,7 +65,7 @@
 
 
 @code {
-    [Parameter] public string Code { get; set; } = "";
+    [Parameter] public string Token { get; set; } = "";
 
     private EthicsReport? _report;
     private bool _notFound;
@@ -86,7 +74,8 @@
 
     protected override void OnInitialized()
     {
-        _report = Db.EthicsReports.FirstOrDefault(r => r.Code == Code);
+        // Yalnızca gizli token ile sorgulanır — sıralı Code ile enumerasyon engellenir.
+        _report = EthicsSvc.GetByTrackingToken(Token);
         if (_report == null) { _notFound = true; return; }
 
         (_statusLabel, _statusColor, _statusBg) = _report.Status switch

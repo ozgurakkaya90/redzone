@@ -1,7 +1,7 @@
 @page "/admin/permissions"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
 @inject AuthService Auth
-@inject AppDbContext Db
+@inject IDbContextFactory<AppDbContext> DbFactory
 @using Microsoft.EntityFrameworkCore
 @using RiskManagement.Models
 @using RiskManagement.Services
@@ -45,7 +45,7 @@
                     <th style="background:#f8fafc;border-left:1px solid var(--border);
                                 padding:12px 8px;text-align:center;min-width:88px;max-width:100px">
                         <div style="font-size:12px;font-weight:600;color:var(--text);line-height:1.3;margin-bottom:4px">
-                            @Auth.GetRoleLabel(role)
+                            @_roleLabels.GetValueOrDefault(role, role)
                         </div>
                         <div style="display:inline-block;font-size:10px;font-weight:600;
                                     padding:1px 7px;border-radius:10px;
@@ -57,7 +57,7 @@
                 }
                 <th style="background:#f0fdf4;border-left:1px solid #bbf7d0;padding:12px 8px;text-align:center;min-width:88px">
                     <div style="font-size:12px;font-weight:600;color:#15803d;line-height:1.3;margin-bottom:4px">
-                        @Auth.GetRoleLabel("admin")
+                        @_adminLabel
                     </div>
                     <div style="display:inline-block;font-size:10px;font-weight:600;
                                 padding:1px 7px;border-radius:10px;background:#bbf7d0;color:#15803d">
@@ -146,6 +146,9 @@
 @code {
     private string[] _editableRoles = [];
     private Dictionary<string, HashSet<string>> _matrix = [];
+    // Rol etiketleri init aşamasında önceden hesaplanır; render sırasında DB'ye gidilmez.
+    private Dictionary<string, string> _roleLabels = [];
+    private string _adminLabel = "";
     private bool _saved;
     private bool _dirty;
     private string? _hoverRow;
@@ -168,14 +171,21 @@
             .Where(r => r.Name != "admin")
             .Select(r => r.Name)
             .ToArray();
+        // Etiketleri await'ten ÖNCE (senkron) hesapla. Render sırasında Auth.GetRoleLabel
+        // çağrılmaz; böylece LoadFromDbAsync'in await'i sürerken paylaşılan DbContext'e
+        // ikinci bir sorgu açılmaz ("A second operation was started…" hatasının kaynağı).
+        _adminLabel = Auth.GetRoleLabel("admin");
+        _roleLabels = _editableRoles.ToDictionary(r => r, r => Auth.GetRoleLabel(r));
         await LoadFromDbAsync();
     }
 
     private async Task LoadFromDbAsync()
     {
+        // Kısa ömürlü, izole context — circuit-scoped AppDbContext ile paylaşılmaz.
+        await using var db = await DbFactory.CreateDbContextAsync();
         _matrix = [];
         foreach (var role in _editableRoles)
-            _matrix[role] = (await Db.RolePermissions
+            _matrix[role] = (await db.RolePermissions
                 .Where(rp => rp.Role == role)
                 .Select(rp => rp.Permission)
                 .ToListAsync())
@@ -195,14 +205,15 @@
 
     private async Task SaveAsync()
     {
+        await using var db = await DbFactory.CreateDbContextAsync();
         foreach (var role in _editableRoles)
         {
-            Db.RolePermissions.RemoveRange(Db.RolePermissions.Where(rp => rp.Role == role));
+            db.RolePermissions.RemoveRange(db.RolePermissions.Where(rp => rp.Role == role));
             if (_matrix.TryGetValue(role, out var perms))
                 foreach (var perm in perms)
-                    Db.RolePermissions.Add(new RiskManagement.Models.RolePermission { Role = role, Permission = perm });
+                    db.RolePermissions.Add(new RiskManagement.Models.RolePermission { Role = role, Permission = perm });
         }
-        await Db.SaveChangesAsync();
+        await db.SaveChangesAsync();
         foreach (var role in _editableRoles)
             Auth.InvalidateRoleCache(role);
         _saved = true;

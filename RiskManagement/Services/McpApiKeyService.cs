@@ -55,7 +55,7 @@ public class McpApiKeyService(AppDbContext db)
     // Validate: sadece gerekli User kolonlarını seç (Id, FullName, Role)
     public McpApiKey? Validate(string rawKey)
     {
-        if (string.IsNullOrEmpty(rawKey) || !rawKey.StartsWith("rzk_"))
+        if (string.IsNullOrEmpty(rawKey) || !rawKey.StartsWith("rzk_") || rawKey.Length < 8)
             return null;
 
         var prefix = rawKey[..8];

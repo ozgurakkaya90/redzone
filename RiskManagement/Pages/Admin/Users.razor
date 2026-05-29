@@ -45,9 +45,9 @@
                         <td style="font-size:12px">
                             <div style="display:flex;flex-wrap:wrap;gap:4px">
                                 @foreach (var r in u.UserRoles.Select(x => x.RoleName).Distinct())
-                                { <span class="tag" style="font-size:10px">@Auth.GetRoleLabel(r)</span> }
+                                { <span class="tag" style="font-size:10px">@_roleLabels.GetValueOrDefault(r, r)</span> }
                                 @if (!u.UserRoles.Any())
-                                { <span class="tag" style="font-size:10px">@Auth.GetRoleLabel(u.Role)</span> }
+                                { <span class="tag" style="font-size:10px">@_roleLabels.GetValueOrDefault(u.Role, u.Role)</span> }
                             </div>
                         </td>
                         <td style="font-size:12px;line-height:1.7">
@@ -233,6 +233,9 @@
 @code {
     private List<User> _users = [];
     private List<CustomRole> _allRoles = [];
+    // Render sırasında DB'ye gidilmemesi için rol etiketleri yükleme sonrası önceden hesaplanır
+    // (paylaşılan scoped DbContext'te "second operation" eşzamanlılık hatasını önler).
+    private Dictionary<string, string> _roleLabels = [];
     private List<Company> _companies = [];
     private List<Organization> _allOrgs = [];
     private List<Models.Department> _allDepts = [];
@@ -272,6 +275,14 @@
         _companies = await Db.Companies.OrderBy(c => c.Name).ToListAsync();
         _allOrgs   = await Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name).ToListAsync();
         _allDepts  = await Db.Departments.OrderBy(d => d.Name).ToListAsync();
+
+        // Etiketleri await'ler bittikten SONRA (scoped context boştayken) hesapla.
+        _roleLabels = _allRoles.ToDictionary(a => a.Name, a => a.Label);
+        foreach (var name in _users.SelectMany(u => u.UserRoles.Select(x => x.RoleName))
+                                    .Concat(_users.Select(u => u.Role))
+                                    .Distinct())
+            if (!_roleLabels.ContainsKey(name))
+                _roleLabels[name] = Auth.GetRoleLabel(name);
     }
 
 

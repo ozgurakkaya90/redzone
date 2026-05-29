@@ -2,6 +2,9 @@
 @layout EmptyLayout
 @inject EthicsService EthicsSvc
 @inject ConfigService CfgSvc
+@inject AnonymousRateLimiter RateLimiter
+@inject IHttpContextAccessor HttpCtx
+@inject NavigationManager Nav
 @using Microsoft.AspNetCore.Components.Forms
 
 <PageTitle>Etik Bildirim</PageTitle>
@@ -17,9 +20,15 @@
         {
             <div class="alert alert-success">
                 <strong>Bildiriminiz alındı.</strong> Referans kodunuz: <strong>@_code</strong>
-                <p style="margin-top:8px;font-size:13px">Bu kodu saklayınız. Durumu takip etmek için kullanabilirsiniz.</p>
+                <p style="margin-top:8px;font-size:13px">
+                    Durumu takip etmek için aşağıdaki <strong>kişisel takip bağlantınızı</strong> saklayınız.
+                    Bu bağlantı yalnızca size özeldir; kaybederseniz bildiriminize erişilemez.
+                </p>
+                <div style="margin-top:8px;font-size:12px;word-break:break-all;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:8px">
+                    @_statusUrl
+                </div>
             </div>
-            <a href="/ethics/status/@_code" class="btn btn-outline" style="width:100%;text-align:center;margin-top:8px">
+            <a href="/ethics/status/@_token" class="btn btn-outline" style="width:100%;text-align:center;margin-top:8px">
                 Bildirim Durumunu Görüntüle →
             </a>
         }
@@ -53,7 +62,7 @@
     private string _subject = "", _description = "", _category = "";
     private string[] _categories = [];
     private bool _loading, _submitted;
-    private string _error = "", _code = "";
+    private string _error = "", _code = "", _token = "", _statusUrl = "";
 
     protected override void OnInitialized() =>
         _categories = CfgSvc.GetList("ethics_categories");
@@ -62,9 +71,23 @@
     {
         if (string.IsNullOrWhiteSpace(_subject) || string.IsNullOrWhiteSpace(_description))
         { _error = "Konu ve açıklama zorunludur."; return; }
+
+        // Sunucu taraflı uzunluk sınırı — client'taki maxlength bypass edilebilir, depolama suistimalini engeller.
+        // Sınırlar model ile hizalı: Subject MaxLength(200), Description MaxLength(4000).
+        if (_subject.Trim().Length > 200 || _description.Trim().Length > 4000)
+        { _error = "Konu en fazla 200, açıklama en fazla 4000 karakter olabilir."; return; }
+
+        // Anonim/kimlik doğrulamasız form — IP bazlı rate limit (spam/DoS koruması).
+        // ProposeAnonymous ile aynı limiter; ayrı bucket ile bağımsız sayaç.
+        var ip = HttpCtx.HttpContext?.Connection.RemoteIpAddress?.ToString();
+        if (!RateLimiter.IsAllowed(ip, "anon_ethics"))
+        { _error = "Çok fazla bildirim gönderildi. Lütfen daha sonra tekrar deneyin."; return; }
+
         _loading = true;
-        var report = await EthicsSvc.SubmitAsync(_subject, _description, _category, []);
+        var report = await EthicsSvc.SubmitAsync(_subject.Trim(), _description.Trim(), _category, []);
         _code = report.Code;
+        _token = report.TrackingToken ?? "";
+        _statusUrl = Nav.ToAbsoluteUri($"/ethics/status/{_token}").ToString();
         _submitted = true;
         _loading = false;
     }

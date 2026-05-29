@@ -20,6 +20,19 @@ public class EthicsService(AppDbContext db, IWebHostEnvironment env, INotificati
         return $"EB-{year}-{CounterHelper.GetNext(db, $"ethics-{year}"):D3}";
     }
 
+    /// <summary>Durum sorgusu için yüksek-entropili (256-bit) URL-güvenli gizli token üretir.</summary>
+    public static string GenerateTrackingToken()
+    {
+        var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        return Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    }
+
+    /// <summary>Anonim durum sayfası için: yalnızca gizli token ile sorgular (Code ile değil).</summary>
+    public EthicsReport? GetByTrackingToken(string? token) =>
+        string.IsNullOrEmpty(token)
+            ? null
+            : db.EthicsReports.AsNoTracking().FirstOrDefault(r => r.TrackingToken == token);
+
     public IQueryable<EthicsReport> Query() => db.EthicsReports
         .Include(r => r.AuditReviewer)
         .Include(r => r.EthicsReviewer)
@@ -40,6 +53,7 @@ public class EthicsService(AppDbContext db, IWebHostEnvironment env, INotificati
         var report = new EthicsReport
         {
             Code = GenerateCode(),
+            TrackingToken = GenerateTrackingToken(),
             Subject = subject,
             Description = description,
             ReportCategory = string.IsNullOrEmpty(category) ? null : category,

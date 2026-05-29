@@ -196,6 +196,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
 
         // EthicsReport
         mb.Entity<EthicsReport>()
+            .HasIndex(e => e.TrackingToken);
+        mb.Entity<EthicsReport>()
             .HasOne(e => e.AuditReviewer).WithMany().HasForeignKey(e => e.AuditReviewedById)
             .OnDelete(DeleteBehavior.SetNull);
         mb.Entity<EthicsReport>()

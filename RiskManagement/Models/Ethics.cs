@@ -9,6 +9,14 @@ public class EthicsReport
     [MaxLength(20)]
     public string Code { get; set; } = "";
 
+    /// <summary>
+    /// Anonim durum sorgusu için yüksek-entropili gizli takip token'ı.
+    /// Sıralı/tahmin edilebilir <see cref="Code"/> yerine durum URL'sinde kullanılır,
+    /// böylece kod enumerasyonuyla başkalarının ihbarları okunamaz.
+    /// </summary>
+    [MaxLength(64)]
+    public string? TrackingToken { get; set; }
+
     [Required, MaxLength(200)]
     public string Subject { get; set; } = "";
 
