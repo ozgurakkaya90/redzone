@@ -96,18 +96,19 @@
 @code {
     private record RoleStyleDef(string Label, string Color, string Bg);
 
+    // W-9: Key'ler Roles sabitlerindeki gerçek rol isimleriyle eşleştirildi
     private static readonly Dictionary<string, RoleStyleDef> _roleStyles = new()
     {
-        ["herkes"]  = new("Herkes",           "#475569", "#f1f5f9"),
-        ["komite"]  = new("Risk Komitesi",    "#6d28d9", "#f5f3ff"),
-        ["rkmgr"]   = new("Risk Yöneticisi",  "#0891b2", "#ecfeff"),
-        ["sahip"]   = new("Risk Sahibi",      "#0369a1", "#f0f9ff"),
-        ["mudur"]   = new("Denetim Müdürü",   "#0369a1", "#f0f9ff"),
-        ["denetci"] = new("Denetçi",          "#0891b2", "#ecfeff"),
-        ["bulgu"]   = new("Bulgu Sahibi",     "#b45309", "#fffbeb"),
-        ["etik"]    = new("Etik Kurul",       "#059669", "#f0fdf4"),
-        ["yonetim"] = new("Yönetim",          "#dc2626", "#fef2f2"),
-        ["sistem"]  = new("Sistem",           "#64748b", "#f8fafc"),
+        ["herkes"]        = new("Herkes (Anonim / Kayıtlı)", "#475569", "#f1f5f9"),
+        ["committee"]     = new("Risk Komitesi",             "#6d28d9", "#f5f3ff"),
+        ["risk_manager"]  = new("Risk Yöneticisi",           "#0891b2", "#ecfeff"),
+        ["risk_owner"]    = new("Risk Sahibi",               "#0369a1", "#f0f9ff"),
+        ["audit_manager"] = new("Denetim Müdürü",            "#0f766e", "#f0fdfa"),
+        ["auditor"]       = new("Denetçi",                   "#0891b2", "#ecfeff"),
+        ["finding_owner"] = new("Bulgu Sahibi",              "#b45309", "#fffbeb"),
+        ["ethics_board"]  = new("Etik Kurul",                "#059669", "#f0fdf4"),
+        ["admin"]         = new("Yönetim / Admin",           "#dc2626", "#fef2f2"),
+        ["sistem"]        = new("Sistem",                    "#64748b", "#f8fafc"),
     };
 
     private static RoleStyleDef RoleStyle(string? key) =>
@@ -129,99 +130,165 @@
 
     private static readonly Dictionary<string, WfNode[]> _workflows = new()
     {
+        // ── Risk Yönetimi ──────────────────────────────────────────────────────────
         ["risk"] =
         [
             new("start", Label: "Süreç Başlıyor"),
+
             new("step", Role: "herkes", Status: "proposed",
                 Title: "Risk Önerisi",
-                Desc: "Kayıtlı kullanıcı veya anonim form ile risk sisteme girilir."),
-            new("step", Role: "rkmgr", Role2: "sahip", Status: "under_review",
+                Desc: "Giriş yapmadan anonim form veya kayıtlı kullanıcı (risk.write) ile risk sisteme girilir."),
+
+            new("step", Role: "risk_manager", Role2: "risk_owner", Status: "under_review",
                 Title: "Risk Tanımlama & İnceleme",
-                Desc: "Risk Yöneticisi riski inceler; kaynak, tehlike ve etki detaylarını doldurur."),
-            new("step", Role: "rkmgr", Role2: "sahip", Status: "approved",
-                Title: "Fine-Kinney Değerlendirmesi",
-                Desc: "Risk Yöneticisi Olasılık × Maruziyet × Sonuç skorunu hesaplar."),
-            new("step", Role: "rkmgr", Role2: "sahip", Status: "strategy_set",
-                Title: "Strateji & Sorumluluk",
-                Desc: "Risk stratejisi ve sorumlu birim atanır."),
-            new("step", Role: "sahip", Role2: "rkmgr", Status: "controlled",
-                Title: "Kontrolleri Gir",
-                Desc: "Risk sahibi veya Risk Yöneticisi kontrol önlemlerini sisteme kaydeder."),
-            new("step", Role: "rkmgr", Role2: "sahip", Status: "residual_evaluated",
+                Desc: "Risk Yöneticisi riski inceler; kaynak, tehlike ve etki detaylarını doldurur. İlk Fine-Kinney değerlendirmesi bu adımda yapılır."),
+
+            new("decision", Question: "İlk Skor Değerlendirmesi",
+                YesLabel: "Düşük Risk (< 70)", YesNote: "Komite onayı atlanır; sistem otomatik onaylar", YesStatus: "approved",
+                NoLabel:  "Yüksek Risk (≥ 70)", NoNote: "Komite onayına sunulur"),
+
+            new("step", Role: "risk_manager", Role2: "risk_owner", Status: "awaiting_approval",
+                Title: "Komite Onayına Sunuldu",
+                Desc: "Yüksek riskler Risk Yöneticisi / Risk Sahibi tarafından komite onayına sunulur."),
+
+            new("decision", Question: "Komite Ön Değerlendirmesi",
+                YesLabel: "Onaylandı",  YesNote: "Komite riski kabul eder",  YesStatus: "approved",
+                NoLabel:  "Reddedildi", NoNote:  "Gerekçe girilir; istenirse incelemeye geri alınır", NoLoop: true),
+
+            new("step", Role: "risk_manager", Role2: "risk_owner", Status: "approved",
+                Title: "Strateji, Kontrol & Aksiyon",
+                Desc: "Onaylanan risk için strateji belirlenir (strategy_set), kontroller girilir (controlled) ve aksiyon planı oluşturulur. Bu adımlar sıralı ya da doğrudan action_planned olarak tamamlanabilir."),
+
+            new("step", Role: "risk_manager", Role2: "risk_owner", Status: "residual_evaluated",
                 Title: "Kalan Risk Hesabı",
-                Desc: "Fine-Kinney ile kalan risk yeniden hesaplanır."),
-            new("step", Role: "sahip", Status: "action_planned",
-                Title: "Aksiyon Planı",
-                Desc: "Aksiyonlar, sorumlular ve hedef tarihler belirlenir."),
-            new("step", Role: "komite", Status: "risk_accepted",
+                Desc: "Fine-Kinney ile kalan (kalıntı) risk yeniden hesaplanır."),
+
+            new("step", Role: "risk_owner", Status: "action_planned",
+                Title: "Aksiyon Planı Tamamlandı",
+                Desc: "Aksiyonlar, sorumlular ve hedef tarihler belirlenerek aksiyon planı tamamlanır."),
+
+            new("step", Role: "committee", Status: "risk_accepted",
                 Title: "Komite Gözden Geçirme",
-                Desc: "Komite riski gözden geçirir; toplantı kararlarını kaydeder."),
-            new("decision", Question: "Komite Kararı",
-                YesLabel: "Kabul", YesNote: "Kalıntı risk kabul edildi", YesStatus: "risk_accepted",
-                NoLabel: "İzlemeye Devam", NoNote: "Yeni döngü başlar", NoLoop: true),
-            new("end", Label: "Risk Yönetildi"),
+                Desc: "Komite kalıntı riski ve aksiyon planını gözden geçirir; toplantı kararı ve notlar kaydedilir."),
+
+            new("decision", Question: "Komite Nihai Kararı",
+                YesLabel: "Risk Kabul",           YesNote: "Kalıntı risk kabul edildi — süreç tamamlandı", YesStatus: "risk_accepted",
+                NoLabel:  "Yeniden Gözden Geçir", NoNote:  "Aksiyon planı revize edilir; döngü başa döner", NoLoop: true),
+
+            new("end", Label: "Risk Yönetildi (Terminal)"),
         ],
+
+        // ── İç Denetim ────────────────────────────────────────────────────────────
+        // Not: Denetim durumları (planned/in_progress/completed) doğrudan güncellenir;
+        // aşağıdaki akış önerilen süreç sırasını gösterir, sistem tarafından zorunlu tutulmaz.
+        // Zorunlu tutulan tek iş akışı: bulgu kapanış talepleri (closure_requested → closed/open).
         ["audit"] =
         [
             new("start", Label: "Süreç Başlıyor"),
-            new("step", Role: "mudur",
+
+            new("step", Role: "audit_manager", Status: "planned",
                 Title: "Denetim Planı",
                 Desc: "Kapsam, dönem ve hedefler belirlenerek denetim planı oluşturulur."),
-            new("step", Role: "mudur",
-                Title: "Denetçi Atama",
+
+            new("step", Role: "audit_manager", Status: "in_progress",
+                Title: "Denetçi Atama & Başlatma",
                 Desc: "Sorumlu denetçi atanır ve denetim süreci resmen başlatılır."),
-            new("step", Role: "denetci",
-                Title: "Saha Çalışması",
-                Desc: "Kanıt toplama, görüşme ve belge incelemesiyle bulgular tespit edilir."),
-            new("step", Role: "denetci",
-                Title: "Bulgu Kaydı",
-                Desc: "Her bulgu; kategori, önem derecesi ve döneme göre sisteme girilir."),
-            new("step", Role: "bulgu",
-                Title: "Düzeltici Aksiyon",
-                Desc: "Bulgu sahibi düzeltici önlemleri hayata geçirir."),
-            new("step", Role: "bulgu",
-                Title: "Kapanış Talebi",
-                Desc: "Alınan önlemler ve kanıtlarla birlikte kapanış talebi iletilir."),
-            new("decision", Question: "Kapanış Onayı",
-                YesLabel: "Onaylandı",  YesNote: "Bulgu kapatılır",
-                NoLabel:  "Reddedildi", NoNote: "Bulgu sahibine iade; aksiyon revize edilir", NoLoop: true),
-            new("step", Role: "mudur",
-                Title: "Denetim Raporu",
-                Desc: "Tüm bulgular ve kapanış sonuçları derlenerek denetim raporu hazırlanır."),
+
+            new("step", Role: "auditor",
+                Title: "Saha Çalışması & Bulgu Kaydı",
+                Desc: "Kanıt toplama, görüşme ve belge incelemesiyle bulgular tespit edilerek sisteme girilir."),
+
+            new("step", Role: "finding_owner",
+                Title: "Düzeltici Aksiyon & Kapanış Talebi",
+                Desc: "Bulgu sahibi düzeltici önlemleri hayata geçirir; kanıtlarla birlikte kapanış talebi iletilir."),
+
+            new("decision", Question: "Kapanış Onayı (Denetim Müdürü)",
+                YesLabel: "Onaylandı",  YesNote: "Bulgu kapatılır (closed)",
+                NoLabel:  "Reddedildi", NoNote: "Bulgu sahibine iade (open); aksiyon revize edilir", NoLoop: true),
+
+            new("step", Role: "audit_manager", Status: "completed",
+                Title: "Denetim Raporu & Kapanış",
+                Desc: "Tüm bulgular kapanınca denetim tamamlandı olarak işaretlenir; rapor hazırlanır."),
+
             new("end", Label: "Denetim Tamamlandı"),
         ],
+
+        // ── Dış Denetim ───────────────────────────────────────────────────────────
+        // Not: Dış denetim durumu (planned/in_progress/completed/closed) manuel seçilir;
+        // "tüm bulgular kapandı → otomatik kapat" kuralı sistem tarafından uygulanmaz.
+        // Zorunlu tutulan tek iş akışı: bulgu kapanış talepleri (closure_requested → closed/open).
+        ["external"] =
+        [
+            new("start", Label: "Dış Denetim Başlıyor"),
+
+            new("step", Role: "audit_manager", Status: "planned",
+                Title: "Dış Denetim Kaydı",
+                Desc: "BRC, JCI, TSE veya müşteri denetimi sisteme tanımlanır; sorumlu, tarih ve kurum atanır."),
+
+            new("step", Role: "audit_manager", Role2: "auditor", Status: "in_progress",
+                Title: "Denetim Yürütme & Bulgu Girişi",
+                Desc: "Denetleyen kurum incelemesini yapar; her bulgu önem, kategori ve düzeltici aksiyon gereksinimiyle sisteme kaydedilir."),
+
+            new("step", Role: "finding_owner",
+                Title: "Düzeltici Aksiyon & Kapanış Talebi",
+                Desc: "Bulgu sahibi belirlenen sürede önlemleri uygular; kanıtlarla birlikte kapanış talebi iletilir."),
+
+            new("decision", Question: "Kapanış Onayı (Denetim Müdürü)",
+                YesLabel: "Onaylandı",  YesNote: "Bulgu kapatılır (closed)",
+                NoLabel:  "Reddedildi", NoNote: "Bulgu sahibine iade (open); aksiyon revize edilir", NoLoop: true),
+
+            new("step", Role: "audit_manager", Status: "closed",
+                Title: "Dış Denetim Kapatma",
+                Desc: "Tüm bulgular kapandıktan sonra denetim müdürü denetimi manuel olarak kapatır; skor ve notlar kayıt altına alınır."),
+
+            new("end", Label: "Dış Denetim Tamamlandı"),
+        ],
+
+        // ── Etik Süreç ────────────────────────────────────────────────────────────
         ["ethics"] =
         [
             new("start", Label: "Bildirim Alındı"),
+
+            // W-8: Anonim erişim belirtildi
             new("step", Role: "herkes",
                 Title: "Etik Bildirim",
-                Desc: "Anonim form veya yetkili kullanıcı aracılığıyla bildirim girilir."),
+                Desc: "Giriş yapmadan anonim form (/ethics/submit) veya yetkili kullanıcı aracılığıyla bildirim girilir."),
+
             new("step", Role: "sistem",
                 Title: "Gizlilik & Kayıt",
                 Desc: "Bildirim şifreli saklanır; sisteme özgün takip kodu atanır."),
-            new("step", Role: "mudur",
+
+            new("step", Role: "audit_manager",
                 Title: "İlk İnceleme",
                 Desc: "Denetim Müdürü bildirimi gizlilik içinde inceler ve kapsam değerlendirmesi yapar."),
+
             new("decision", Question: "Kapsam Değerlendirmesi",
-                YesLabel: "Etik Kapsam",  YesNote: "Etik Kurula iletilir",
+                YesLabel: "Etik Kapsam", YesNote: "Etik Kurula iletilir",
                 NoLabel:  "Kapsam Dışı", NoNote: "Gerekçesiyle arşivlenir", NoIsEnd: true),
-            new("step", Role: "etik",
+
+            new("step", Role: "ethics_board",
                 Title: "Kurul İncelemesi",
                 Desc: "Etik Kurul bildirimi bağımsız olarak inceler; gerekirse ifade alır."),
+
             new("decision", Question: "Kurul Kararı",
                 YesLabel: "İhlal Tespit", YesNote: "Disiplin sürecine alınır",
                 NoLabel:  "İhlal Yok",   NoNote: "Bildirim kapatılır", NoIsEnd: true),
-            new("step", Role: "yonetim",
+
+            // W-4: "yonetim" → "admin" — sistemde karşılığı olan rol
+            new("step", Role: "admin",
                 Title: "Disiplin / İdari İşlem",
-                Desc: "Yönetim disiplin soruşturması başlatır ve idari yaptırım uygular."),
+                Desc: "Sistem yöneticisi koordinasyonuyla disiplin soruşturması başlatılır ve idari yaptırım uygulanır."),
+
             new("end", Label: "Süreç Tamamlandı"),
         ],
     };
 
+    // W-7: external akışı eklendi
     private static readonly (string Key, string Label)[] _tabs =
     [
-        ("risk",   "Risk Yönetimi"),
-        ("audit",  "İç Denetim"),
-        ("ethics", "Etik Süreç"),
+        ("risk",     "Risk Yönetimi"),
+        ("audit",    "İç Denetim"),
+        ("external", "Dış Denetim"),
+        ("ethics",   "Etik Süreç"),
     ];
 }

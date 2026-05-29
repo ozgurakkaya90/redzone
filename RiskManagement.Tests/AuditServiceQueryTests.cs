@@ -226,7 +226,7 @@ public class FindingQueryTests
         var aud     = AQSeed.AddUser(db, "auditor");
         var finding = AQSeed.AddFinding(db, aud.Id);
 
-        svc.SetActionDecision(finding.Id, "risk_accepted");
+        svc.InternalSetActionDecision(finding.Id, "risk_accepted");
 
         Assert.Equal("risk_accepted", db.AuditFindings.Find(finding.Id)!.ActionDecision);
     }
@@ -237,9 +237,9 @@ public class FindingQueryTests
         var (db, svc) = AQSeed.Build();
         var aud     = AQSeed.AddUser(db, "auditor");
         var finding = AQSeed.AddFinding(db, aud.Id);
-        var action  = svc.AddFindingAction(finding.Id, "Aksiyon", null, null, aud.Id);
+        var action  = svc.InternalAddFindingAction(finding.Id, "Aksiyon", null, null, aud.Id);
 
-        Assert.True(svc.DeleteFindingAction(finding.Id, action.Id));
+        Assert.True(svc.InternalDeleteFindingAction(finding.Id, action.Id));
         Assert.Null(db.AuditFindingActions.Find(action.Id));
     }
 
@@ -250,7 +250,7 @@ public class FindingQueryTests
         var aud     = AQSeed.AddUser(db, "auditor");
         var finding = AQSeed.AddFinding(db, aud.Id);
 
-        Assert.False(svc.DeleteFindingAction(finding.Id, 99999));
+        Assert.False(svc.InternalDeleteFindingAction(finding.Id, 99999));
     }
 }
 
@@ -321,8 +321,8 @@ public class AuditDashboardTests
         var aud     = AQSeed.AddUser(db, "auditor");
         var f1 = AQSeed.AddFinding(db, aud.Id);
         var f2 = AQSeed.AddFinding(db, aud.Id);
-        svc.AddFindingAction(f1.Id, "Aksiyon 1", null, null, aud.Id);
-        svc.AddFindingAction(f2.Id, "Aksiyon 2", null, null, aud.Id);
+        svc.InternalAddFindingAction(f1.Id, "Aksiyon 1", null, null, aud.Id);
+        svc.InternalAddFindingAction(f2.Id, "Aksiyon 2", null, null, aud.Id);
 
         Assert.Equal(2, svc.GetAllFindingActions().Count);
     }

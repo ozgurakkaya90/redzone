@@ -2,10 +2,12 @@
 @attribute [Authorize]
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
+@inject AuthService Auth
 @inject AppDbContext Db
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @using System.Text.Json
 @using System.Text.Json.Serialization
 @using RiskManagement.Models
@@ -19,6 +21,14 @@
 else
 {
     <div style="max-width:860px">
+        <div class="breadcrumb-bar">
+            <a href="/audit/internal" class="breadcrumb-back">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                İç Denetimler
+            </a>
+            <span class="breadcrumb-sep">›</span>
+            <span class="breadcrumb-current">@_audit.Code</span>
+        </div>
         <div class="detail-header-strip">
             <div class="detail-header-top">
                 <div style="flex:1;min-width:0">
@@ -181,7 +191,7 @@ else
                     @if (_audit.Findings.Any())
                     { <span class="badge badge-blue" style="margin-left:8px">@_audit.Findings.Count</span> }
                 </div>
-                @if (HasRole("auditor", "admin"))
+                @if (HasPerm("audit.write"))
                 {
                     <a href="/audit/findings/new" class="btn btn-outline btn-sm">Bulgu Ekle</a>
                 }
@@ -252,13 +262,18 @@ else
     private List<string> _auditTypes = [];
     private List<RiskManagement.Models.Department> _departments = [];
 
-    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private bool HasRole(params string[] roles) => roles.Contains(Role);
-    private bool IsManager => HasRole("audit_manager", "admin");
+    // _user DB'den yüklendikten sonra Role kullanılmalı.
+    // FindFirst() yalnızca ilk claim'i döndürür — çok rollü kullanıcılarda primary role gelebilir.
+    // Güvenli fallback: _user.Role (DB'deki primary alan) veya claims'ten al.
+    private string Role   => _user?.Role ?? HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private User?  _user;
+    private bool   HasPerm(string perm) => _user != null && Auth.HasPermission(_user, perm);
+    private bool   IsManager => HasPerm("audit.close_approve");
 
     protected override void OnInitialized()
     {
+        _user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == UserId);
         Load();
         _auditTypes = [.. CfgSvc.GetList("audit_types")];
         _departments = [.. Db.Departments.OrderBy(d => d.Name)];

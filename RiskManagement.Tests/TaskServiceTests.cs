@@ -1,4 +1,6 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using RiskManagement.Data;
 using RiskManagement.Models;
 using RiskManagement.Services;
@@ -10,9 +12,12 @@ file static class TaskSeed
 {
     public static (AppDbContext db, TaskService svc) Build()
     {
-        var db  = TestDb.Create();
-        var cfg = new ConfigService(db, NullLogger<ConfigService>.Instance);
-        var svc = new TaskService(db, cfg);
+        // Fabrika ile seed context'i aynı in-memory deposunu paylaşır.
+        var factory = TestDb.CreateFactory();
+        var db    = factory.CreateDbContext();
+        var cfg   = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var cache = new MemoryCache(Options.Create(new MemoryCacheOptions { SizeLimit = 100 }));
+        var svc   = new TaskService(factory, cfg, cache);
         return (db, svc);
     }
 

@@ -1,6 +1,7 @@
 @page "/risk/matrix"
 @attribute [Authorize]
 @inject RiskService RiskSvc
+@inject AuthService Auth
 @inject ConfigService CfgSvc
 @inject IRiskCalculator RiskCalc
 @inject IHttpContextAccessor HttpCtx
@@ -352,15 +353,15 @@
     private string _sortCol = "initscore";
     private bool _sortDesc = true;
 
-    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private User? _user;
 
     private static readonly string[] _levels =
         ["Çok Yüksek Risk", "Yüksek Risk", "Önemli Risk", "Orta Risk", "Kabul Edilebilir"];
 
     protected override void OnInitialized()
     {
-        _risks = RiskSvc.GetForUser(UserId, Role)
+        _user  = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
+        _risks = (_user is not null ? RiskSvc.GetForUser(_user) : [])
             .Where(r => r.Status != "proposed" && r.Status != "rejected")
             .ToList();
 

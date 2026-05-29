@@ -1,0 +1,66 @@
+@using RiskManagement.Models
+
+@* Risk tarihçesi accordion kartı — RiskDetail.razor'dan çıkarılan salt-okunur bileşen.
+   State mutation yok: tüm veriler parametre üzerinden gelir. *@
+
+<div class="card card-section" style="padding-bottom:@(Expanded?"18px":"2px")">
+    <div class="card-hdr" @onclick="OnToggle">
+        <div class="card-title">
+            <div>
+                <div class="section-title" style="margin-bottom:1px">@Number. Tarihçe</div>
+                <div style="font-size:11px;color:var(--text-3)">Tüm değişiklikler — gün, saat, işlemi yapan</div>
+            </div>
+        </div>
+        <span class="card-chevron" style="transform:rotate(@(Expanded?"180deg":"0deg"))">▼</span>
+    </div>
+
+    @if (Expanded)
+    {
+        <div style="margin-top:14px">
+            @if (!Logs.Any())
+            {
+                <div class="empty-state"><p>Henüz kayıt yok.</p></div>
+            }
+            else
+            {
+                <div>
+                    @foreach (var log in Logs.OrderByDescending(l => l.Timestamp))
+                    {
+                        <div class="audit-row">
+                            <div>
+                                <div class="audit-row-ts">@log.Timestamp.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
+                                <div class="audit-row-by">@(log.User?.FullName ?? "Sistem")</div>
+                            </div>
+                            <div>
+                                <div class="audit-row-action">@log.Action</div>
+                                @if (!string.IsNullOrEmpty(log.FieldName))
+                                {
+                                    <div class="audit-row-detail">
+                                        @log.FieldName:
+                                        @if (!string.IsNullOrEmpty(log.OldValue) && !string.IsNullOrEmpty(log.NewValue))
+                                        {
+                                            <span style="text-decoration:line-through;color:#dc2626">@log.OldValue</span>
+                                            <span style="margin:0 4px">→</span>
+                                            <span style="color:#16a34a;font-weight:600">@log.NewValue</span>
+                                        }
+                                        else if (!string.IsNullOrEmpty(log.NewValue))
+                                        { <span style="color:#16a34a;font-weight:600">@log.NewValue</span> }
+                                        else if (!string.IsNullOrEmpty(log.OldValue))
+                                        { <span style="text-decoration:line-through;color:#dc2626">@log.OldValue</span> }
+                                    </div>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ICollection<RiskAuditLog> Logs    { get; set; } = [];
+    [Parameter]                 public bool                       Expanded { get; set; }
+    [Parameter]                 public EventCallback              OnToggle { get; set; }
+    [Parameter]                 public int                        Number   { get; set; } = 10;
+}

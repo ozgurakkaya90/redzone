@@ -30,6 +30,21 @@ public class RolePermission
     public string Permission { get; set; } = "";
 }
 
+public class CustomRole
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(100)]
+    public string Name { get; set; } = "";   // slug: "muhasebe_muduru"
+
+    [Required, MaxLength(200)]
+    public string Label { get; set; } = "";  // görünen ad: "Muhasebe Müdürü"
+
+    public bool IsSystem { get; set; }       // true = yerleşik rol, silinemez
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
 public class AppConfig
 {
     public string Key { get; set; } = "";
@@ -72,6 +87,17 @@ public class Department
     public User? Manager { get; set; }
     public int? OrganizationId { get; set; }
     public Organization? Organization { get; set; }
+}
+
+public class ConfigChangeLog
+{
+    public int Id { get; set; }
+    public DateTime ChangedAt { get; set; } = DateTime.UtcNow;
+    public string ChangedBy { get; set; } = "";
+    public string SettingKey { get; set; } = "";
+    public string? OldValue { get; set; }
+    public string? NewValue { get; set; }
+    public string? Description { get; set; }
 }
 
 public class DatabaseConnectionConfig

@@ -32,6 +32,15 @@ public sealed record RiskLevelConfig(
     [property: JsonPropertyName("action")] string  Action);
 
 /// <summary>
+/// AI tamamlama servisi yapılandırması. API anahtarı DB'de saklanır (email ayarlarıyla aynı pattern).
+/// </summary>
+public sealed record AiSettings(
+    [property: JsonPropertyName("provider")]  string Provider = "disabled",   // disabled | anthropic | openai | gemini | ollama
+    [property: JsonPropertyName("api_key")]   string ApiKey   = "",
+    [property: JsonPropertyName("model")]     string Model    = "",
+    [property: JsonPropertyName("base_url")]  string BaseUrl  = "");          // Ollama için gerekli
+
+/// <summary>
 /// Uygulama tema/branding ayarları.
 /// </summary>
 public sealed record SiteThemeConfig(

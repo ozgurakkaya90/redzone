@@ -18,11 +18,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ClosureRequest> ClosureRequests => Set<ClosureRequest>();
     public DbSet<AuditFindingAction> AuditFindingActions => Set<AuditFindingAction>();
     public DbSet<FindingAttachment> FindingAttachments => Set<FindingAttachment>();
+    public DbSet<FindingActivityLog> FindingActivityLogs => Set<FindingActivityLog>();
+    public DbSet<RiskFindingLink> RiskFindingLinks => Set<RiskFindingLink>();
     public DbSet<EthicsReport> EthicsReports => Set<EthicsReport>();
     public DbSet<EthicsAttachment> EthicsAttachments => Set<EthicsAttachment>();
     public DbSet<LdapConfiguration> LdapConfigurations => Set<LdapConfiguration>();
     public DbSet<RolePermission> RolePermissions => Set<RolePermission>();
+    public DbSet<CustomRole> CustomRoles => Set<CustomRole>();
     public DbSet<AppConfig> AppConfigs => Set<AppConfig>();
+    public DbSet<ConfigChangeLog> ConfigChangeLogs => Set<ConfigChangeLog>();
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<Counter> Counters => Set<Counter>();
     public DbSet<DatabaseConnectionConfig> DatabaseConnections => Set<DatabaseConnectionConfig>();
@@ -38,6 +42,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ExternalAudit> ExternalAudits => Set<ExternalAudit>();
     public DbSet<ExternalAuditBody> ExternalAuditBodies => Set<ExternalAuditBody>();
     public DbSet<UserExternalAuditBody> UserExternalAuditBodies => Set<UserExternalAuditBody>();
+    public DbSet<McpApiKey> McpApiKeys => Set<McpApiKey>();
 
     protected override void OnModelCreating(ModelBuilder mb)
     {
@@ -120,8 +125,12 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<InternalAudit>()
             .HasOne(a => a.LeadAuditor).WithMany().HasForeignKey(a => a.LeadAuditorId)
             .OnDelete(DeleteBehavior.Restrict);
-        // DepartmentId ve AuditPlanItemId NotMapped — FK tanımı devre dışı
-        // Migration uygulandıktan sonra NotMapped kaldırılıp bu satırlar aktif edilecek
+        mb.Entity<InternalAudit>()
+            .HasOne(a => a.Department).WithMany().HasForeignKey(a => a.DepartmentId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<InternalAudit>()
+            .HasOne(a => a.AuditPlanItem).WithMany().HasForeignKey(a => a.AuditPlanItemId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // AuditFinding
         mb.Entity<AuditFinding>()
@@ -136,6 +145,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<AuditFinding>()
             .HasOne(f => f.InternalAudit).WithMany(a => a.Findings)
             .HasForeignKey(f => f.InternalAuditId).OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<AuditFinding>()
+            .HasOne(f => f.ExternalAudit).WithMany(e => e.Findings)
+            .HasForeignKey(f => f.ExternalAuditId).OnDelete(DeleteBehavior.SetNull);
 
         // ClosureRequest
         mb.Entity<ClosureRequest>()
@@ -161,6 +173,27 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasOne(a => a.UploadedBy).WithMany().HasForeignKey(a => a.UploadedById)
             .OnDelete(DeleteBehavior.Restrict);
 
+        // RiskFindingLink
+        mb.Entity<RiskFindingLink>()
+            .HasOne(l => l.Risk).WithMany(r => r.FindingLinks).HasForeignKey(l => l.RiskId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<RiskFindingLink>()
+            .HasOne(l => l.Finding).WithMany(f => f.RiskLinks).HasForeignKey(l => l.FindingId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<RiskFindingLink>()
+            .HasOne(l => l.CreatedBy).WithMany().HasForeignKey(l => l.CreatedById)
+            .OnDelete(DeleteBehavior.Restrict);
+        mb.Entity<RiskFindingLink>()
+            .HasIndex(l => new { l.RiskId, l.FindingId }).IsUnique();
+
+        // FindingActivityLog
+        mb.Entity<FindingActivityLog>()
+            .HasOne(l => l.Finding).WithMany(f => f.ActivityLogs).HasForeignKey(l => l.FindingId)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<FindingActivityLog>()
+            .HasOne(l => l.User).WithMany().HasForeignKey(l => l.UserId)
+            .OnDelete(DeleteBehavior.SetNull);
+
         // EthicsReport
         mb.Entity<EthicsReport>()
             .HasOne(e => e.AuditReviewer).WithMany().HasForeignKey(e => e.AuditReviewedById)
@@ -176,6 +209,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // RolePermission — unique constraint
         mb.Entity<RolePermission>()
             .HasIndex(rp => new { rp.Role, rp.Permission }).IsUnique();
+
+        // CustomRole — unique slug
+        mb.Entity<CustomRole>()
+            .HasIndex(cr => cr.Name).IsUnique();
 
         // AppConfig — PK is Key string
         mb.Entity<AppConfig>().HasKey(c => c.Key);
@@ -266,5 +303,31 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .OnDelete(DeleteBehavior.Cascade);
         mb.Entity<UserExternalAuditBody>()
             .HasIndex(u => new { u.UserId, u.AuditingBody }).IsUnique();
+
+        // McpApiKey — tablo raw SQL migration ile oluşturulduğundan EF Core'a AUTO_INCREMENT'ı bildirmek gerekiyor
+        mb.Entity<McpApiKey>()
+            .Property(k => k.Id).ValueGeneratedOnAdd();
+        mb.Entity<McpApiKey>()
+            .HasOne(k => k.CreatedBy).WithMany().HasForeignKey(k => k.CreatedById)
+            .OnDelete(DeleteBehavior.Cascade);
+        mb.Entity<McpApiKey>()
+            .HasOne(k => k.ScopeUser).WithMany().HasForeignKey(k => k.ScopeUserId)
+            .OnDelete(DeleteBehavior.SetNull);
+        mb.Entity<McpApiKey>()
+            .HasIndex(k => k.KeyPrefix);
+
+        // ── Performans indexleri ─────────────────────────────────────────────
+        // NOT: Status/Code sütunları MySQL'de longtext — prefix olmadan indexlenemez.
+        // Bu HasIndex çağrıları snapshot tutarlılığı için bırakılıyor; gerçek index
+        // oluşturma AddPerformanceIndexes migration'ında kasıtlı olarak atlandı.
+        // Kolon tipleri MaxLength ile düzeltildiğinde bu indexler otomatik etkin olacak.
+        mb.Entity<Risk>().HasIndex(r => r.Status);
+        mb.Entity<Risk>().HasIndex(r => r.ProposedAt);
+        mb.Entity<Risk>().HasIndex(r => r.Code);
+        mb.Entity<RiskAuditLog>().HasIndex(l => new { l.RiskId, l.Timestamp });
+        mb.Entity<AuditFinding>().HasIndex(f => f.Status);
+        mb.Entity<AuditFinding>().HasIndex(f => f.Code);
+        mb.Entity<ActionPlan>().HasIndex(a => new { a.DueDate, a.Status });
+        mb.Entity<AuditFindingAction>().HasIndex(a => new { a.DueDate, a.Status });
     }
 }

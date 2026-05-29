@@ -12,8 +12,12 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0
 WORKDIR /app
 COPY --from=build /app/publish .
 
-# Uploads dizini
-RUN mkdir -p /app/uploads/ethics
+# Uploads dizinleri:
+#   /app/uploads          → ethics ve findings ekleri  (Docker volume ile persist)
+#   /app/wwwroot/uploads  → logo ve görsel varlıklar   (ayrı Docker volume ile persist)
+RUN mkdir -p /app/uploads/ethics \
+ && mkdir -p /app/uploads/findings \
+ && mkdir -p /app/wwwroot/uploads
 
 EXPOSE 8080
 ENV ASPNETCORE_URLS=http://+:8080

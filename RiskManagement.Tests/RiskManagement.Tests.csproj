@@ -5,6 +5,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- Testler [Obsolete] işaretli sync wrapper'ları kasıtlı olarak test eder; CS8602 pre-existing. -->
+    <NoWarn>$(NoWarn);CS0618;CS8602</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

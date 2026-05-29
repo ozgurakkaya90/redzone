@@ -1,10 +1,12 @@
 @page "/audit/internal/new"
-@attribute [Authorize(Roles = "auditor,audit_manager,admin")]
+@attribute [Authorize]
 @inject AuditService AuditSvc
+@inject AuthService Auth
 @inject ConfigService CfgSvc
 @inject AppDbContext Db
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
+@inject ToastService ToastSvc
 @using System.Security.Claims
 @using RiskManagement.Models
 @using Microsoft.EntityFrameworkCore
@@ -29,8 +31,12 @@
         @* ── Başlık ── *@
         <div class="form-group">
             <label class="form-label">Denetim Başlığı *</label>
-            <input class="form-control" @bind="_title" maxlength="200"
-                   placeholder="örn. 2026 Yılı Mali İşlemler Denetimi" />
+            <input class="form-control @(_errTitle ? "input-error" : _title.Length > 0 ? "input-ok" : "")"
+                   @bind="_title" @bind:event="oninput"
+                   @onblur="() => _errTitle = string.IsNullOrWhiteSpace(_title)"
+                   maxlength="200" placeholder="örn. 2026 Yılı Mali İşlemler Denetimi" />
+            @if (_errTitle)
+            { <div class="field-error-inline">Başlık zorunludur.</div> }
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -135,6 +141,7 @@
     private List<Organization> _organizations = [];
     private List<Department>   _departments   = [];
     private bool   _loading;
+    private bool   _errTitle;
     private string _error = "";
 
     private int UserId => int.TryParse(
@@ -150,6 +157,12 @@
 
     protected override void OnInitialized()
     {
+        var _currentUser = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
+        if (_currentUser is null || !Auth.HasPermission(_currentUser, "audit.write"))
+        {
+            Nav.NavigateTo("/403", replace: true);
+            return;
+        }
         _auditTypes   = [.. CfgSvc.GetList("audit_types")];
         _companies    = [.. Db.Companies.OrderBy(c => c.Name)];
         _organizations= [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
@@ -186,6 +199,7 @@
             _title, _auditType.NullIfEmpty(), unit,
             _scope.NullIfEmpty(), _period, start, end, UserId,
             departmentId: _departmentId);
+        ToastSvc.Success("İç denetim oluşturuldu.");
         Nav.NavigateTo($"/audit/internal/{audit.Id}");
     }
 }

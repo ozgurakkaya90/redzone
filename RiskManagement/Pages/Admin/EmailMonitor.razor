@@ -1,0 +1,311 @@
+@page "/admin/email-monitor"
+@attribute [Authorize(Roles = "admin")]
+@inject EmailQueue Queue
+@inject ConfigService CfgSvc
+@inject IHttpContextAccessor HttpCtx
+@using RiskManagement.Services
+@using RiskManagement.Services.Email
+@using System.Security.Claims
+
+<PageTitle>E-posta Kuyruğu</PageTitle>
+
+<div class="page-toolbar">
+    <div class="page-toolbar-left">
+        <h1 class="page-toolbar-title">E-posta Kuyruğu</h1>
+        <div class="page-toolbar-sub">SMTP durumu ve son gönderim geçmişi</div>
+    </div>
+    <div class="page-toolbar-right">
+        <button class="btn btn-secondary" @onclick="Refresh">Yenile</button>
+    </div>
+</div>
+
+@* ── SMTP Durum Kartı ──────────────────────────────────────────────── *@
+<div class="card" style="padding:16px;margin-bottom:16px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+        <h3 style="margin:0;font-size:14px">SMTP Yapılandırması</h3>
+        <a href="/admin/config#email" class="btn btn-sm btn-secondary">Ayarları Düzenle</a>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:13px">
+        <div class="cfg-stat">
+            <span style="color:var(--text-3)">Durum</span>
+            @if (_settings.Enabled)
+            { <span class="tag tag-success">Aktif</span> }
+            else
+            { <span class="tag tag-error">Devre Dışı</span> }
+        </div>
+        <div class="cfg-stat">
+            <span style="color:var(--text-3)">Sunucu</span>
+            <code style="font-size:12px">@(_settings.Host.Length > 0 ? _settings.Host : "—") : @_settings.Port</code>
+        </div>
+        <div class="cfg-stat">
+            <span style="color:var(--text-3)">SSL/TLS</span>
+            <span>@(_settings.UseSsl ? "Evet" : "Hayır")</span>
+        </div>
+        <div class="cfg-stat">
+            <span style="color:var(--text-3)">Kullanıcı</span>
+            <span>@(_settings.Username.Length > 0 ? _settings.Username : "—")</span>
+        </div>
+        <div class="cfg-stat">
+            <span style="color:var(--text-3)">Gönderen</span>
+            <span>@(_settings.FromAddress.Length > 0 ? _settings.FromAddress : "—")</span>
+        </div>
+        <div class="cfg-stat">
+            <span style="color:var(--text-3)">Kuyruk</span>
+            <span><strong>@Queue.PendingCount</strong> bekleyen mesaj</span>
+        </div>
+    </div>
+</div>
+
+@* ── Test E-postası ────────────────────────────────────────────────── *@
+<div class="card" style="padding:16px;margin-bottom:16px">
+    <h3 style="margin:0 0 12px;font-size:14px">Test E-postası Gönder</h3>
+
+    @if (!string.IsNullOrEmpty(_testResult))
+    {
+        <div class="alert @(_testSuccess ? "alert-success" : "alert-error")" style="margin-bottom:12px">
+            @_testResult
+        </div>
+    }
+
+    <div style="display:flex;gap:8px;align-items:flex-end">
+        <div class="form-group" style="margin:0;flex:1;max-width:360px">
+            <label style="font-size:12px">Alıcı e-posta adresi</label>
+            <input class="form-control" @bind="_testEmail" placeholder="ornek@sirket.com" />
+        </div>
+        <button class="btn btn-primary" @onclick="SendTest" disabled="@_testSending">
+            @(_testSending ? "Gönderiliyor…" : "Gönder")
+        </button>
+    </div>
+
+    @if (!_settings.Enabled)
+    {
+        <p style="margin:8px 0 0;font-size:12px;color:var(--text-3)">
+            ⚠ E-posta bildirimleri devre dışı — test doğrudan SMTP'ye bağlanır, kuyruğu atlar.
+        </p>
+    }
+
+    @if (!string.IsNullOrEmpty(_testResult) && !_testSuccess)
+    {
+        <div style="margin-top:14px;padding:12px;background:var(--bg-2);border-radius:8px;font-size:12px">
+            <strong style="display:block;margin-bottom:8px">Yaygın SMTP Sorunları ve Çözümleri:</strong>
+            <div style="display:grid;gap:6px">
+                @foreach (var tip in GetSmtpTips())
+                {
+                    <div style="display:flex;gap:8px;align-items:start">
+                        <span style="color:var(--warning);flex-shrink:0">▸</span>
+                        <span style="color:var(--text-2)">@tip</span>
+                    </div>
+                }
+            </div>
+            <details style="margin-top:10px">
+                <summary style="cursor:pointer;color:var(--text-3);font-size:11px">Sağlayıcı başvuru tablosu</summary>
+                <table style="width:100%;margin-top:8px;border-collapse:collapse;font-size:11px">
+                    <thead><tr style="border-bottom:1px solid var(--border)">
+                        <th style="text-align:left;padding:4px 8px">Sağlayıcı</th>
+                        <th style="text-align:left;padding:4px 8px">Sunucu</th>
+                        <th style="text-align:center;padding:4px 8px">Port</th>
+                        <th style="text-align:center;padding:4px 8px">SSL</th>
+                        <th style="text-align:left;padding:4px 8px">Not</th>
+                    </tr></thead>
+                    <tbody>
+                        <tr><td style="padding:4px 8px">Gmail</td><td style="padding:4px 8px"><code>smtp.gmail.com</code></td><td style="text-align:center;padding:4px 8px">587</td><td style="text-align:center;padding:4px 8px">Hayır</td><td style="padding:4px 8px">App Password gerekli</td></tr>
+                        <tr style="background:var(--bg-3)"><td style="padding:4px 8px">Outlook/M365</td><td style="padding:4px 8px"><code>smtp.office365.com</code></td><td style="text-align:center;padding:4px 8px">587</td><td style="text-align:center;padding:4px 8px">Hayır</td><td style="padding:4px 8px">Modern Auth için App Password</td></tr>
+                        <tr><td style="padding:4px 8px">Yahoo</td><td style="padding:4px 8px"><code>smtp.mail.yahoo.com</code></td><td style="text-align:center;padding:4px 8px">587</td><td style="text-align:center;padding:4px 8px">Hayır</td><td style="padding:4px 8px">App Password gerekli</td></tr>
+                        <tr style="background:var(--bg-3)"><td style="padding:4px 8px">AWS SES</td><td style="padding:4px 8px"><code>email-smtp.eu-central-1.amazonaws.com</code></td><td style="text-align:center;padding:4px 8px">587</td><td style="text-align:center;padding:4px 8px">Hayır</td><td style="padding:4px 8px">SMTP kimlik bilgileri SES'ten</td></tr>
+                        <tr><td style="padding:4px 8px">Gmail (SSL)</td><td style="padding:4px 8px"><code>smtp.gmail.com</code></td><td style="text-align:center;padding:4px 8px">465</td><td style="text-align:center;padding:4px 8px">Evet</td><td style="padding:4px 8px">Alternatif</td></tr>
+                    </tbody>
+                </table>
+            </details>
+        </div>
+    }
+</div>
+
+@* ── Gönderim Geçmişi ──────────────────────────────────────────────── *@
+<div class="card" style="padding:0;overflow:auto">
+    <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+        <strong style="font-size:13px">Son Gönderimler</strong>
+        <span style="font-size:12px;color:var(--text-3)">Son @_log.Count kayıt (bellekte, yeniden başlatmada sıfırlanır)</span>
+    </div>
+
+    @if (!_log.Any())
+    {
+        <div style="padding:32px;text-align:center;color:var(--text-3);font-size:13px">
+            Henüz gönderim yok. Test e-postası göndererek başlayabilirsiniz.
+        </div>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th style="width:130px">Zaman</th>
+                    <th style="width:80px">Durum</th>
+                    <th>Alıcı</th>
+                    <th>Konu</th>
+                    <th>Deneme</th>
+                    <th>Hata</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var e in _log)
+                {
+                    <tr>
+                        <td style="font-size:11px;color:var(--text-3);white-space:nowrap">
+                            @e.Timestamp.ToString("dd.MM HH:mm:ss")
+                        </td>
+                        <td>
+                            @switch (e.Status)
+                            {
+                                case EmailLogStatus.Sent:
+                                    <span class="tag tag-success" style="font-size:10px">Gönderildi</span>
+                                    break;
+                                case EmailLogStatus.Failed:
+                                    <span class="tag tag-error" style="font-size:10px">Başarısız</span>
+                                    break;
+                                case EmailLogStatus.Skipped:
+                                    <span class="tag" style="font-size:10px;background:var(--bg-3)">Atlandı</span>
+                                    break;
+                                default:
+                                    <span class="tag" style="font-size:10px">Bekliyor</span>
+                                    break;
+                            }
+                        </td>
+                        <td style="font-size:12px">@e.To</td>
+                        <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+                            @e.Subject
+                        </td>
+                        <td style="font-size:12px;text-align:center">@e.Attempt</td>
+                        <td style="font-size:11px;color:var(--danger);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                            title="@e.Error">
+                            @e.Error
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private EmailSettings _settings = new();
+    private IReadOnlyList<EmailLogEntry> _log = [];
+    private string _testEmail = "";
+    private string? _testResult;
+    private bool _testSuccess;
+    private bool _testSending;
+
+    protected override void OnInitialized()
+    {
+        var ctx = HttpCtx.HttpContext;
+        if (ctx is not null)
+        {
+            var email = ctx.User.FindFirstValue(ClaimTypes.Email)
+                     ?? ctx.User.FindFirstValue("email");
+            if (!string.IsNullOrEmpty(email))
+                _testEmail = email;
+        }
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        _settings = CfgSvc.GetEmailSettings();
+        _log = Queue.GetLog();
+    }
+
+    private async Task SendTest()
+    {
+        if (string.IsNullOrWhiteSpace(_testEmail))
+        {
+            _testResult = "Alıcı e-posta adresi boş olamaz.";
+            _testSuccess = false;
+            return;
+        }
+
+        _testSending = true;
+        _testResult = null;
+        StateHasChanged();
+
+        try
+        {
+            var settings = CfgSvc.GetEmailSettings();
+            // Test için enabled kontrolünü atla — doğrudan gönder
+            var testSettings = new EmailSettings
+            {
+                Enabled     = true,
+                Host        = settings.Host,
+                Port        = settings.Port,
+                UseSsl      = settings.UseSsl,
+                Username    = settings.Username,
+                Password    = settings.Password,
+                FromAddress = settings.FromAddress,
+                FromName    = settings.FromName,
+                BaseUrl     = settings.BaseUrl,
+            };
+
+            var msg = new EmailMessage(
+                _testEmail,
+                _testEmail,
+                "RedZone — SMTP Test E-postası",
+                "<h2>SMTP Bağlantısı Başarılı</h2>" +
+                "<p>Bu mesajı alıyorsanız SMTP yapılandırmanız doğru çalışıyor.</p>" +
+                $"<p style='color:#6b7280;font-size:12px'>Gönderim zamanı: {DateTime.Now:dd.MM.yyyy HH:mm:ss}</p>"
+            );
+
+            await EmailWorker.SendAsync(msg, testSettings);
+
+            _testResult = $"✓ Test e-postası başarıyla gönderildi → {_testEmail}";
+            _testSuccess = true;
+            Queue.Log(new EmailLogEntry(DateTime.Now, _testEmail, msg.Subject, EmailLogStatus.Sent, "Test"));
+        }
+        catch (Exception ex)
+        {
+            _testResult = $"✗ Gönderim başarısız: {ex.Message}";
+            _testSuccess = false;
+            Queue.Log(new EmailLogEntry(DateTime.Now, _testEmail, "SMTP Test", EmailLogStatus.Failed, ex.Message));
+        }
+        finally
+        {
+            _testSending = false;
+            _log = Queue.GetLog();
+        }
+    }
+
+    private IEnumerable<string> GetSmtpTips()
+    {
+        var host = (_settings.Host ?? "").ToLower();
+        var err  = _testResult ?? "";
+
+        if (err.Contains("Authentication Required") || err.Contains("5.7.0") || err.Contains("535"))
+        {
+            if (host.Contains("gmail"))
+            {
+                yield return "Gmail için normal şifre değil App Password (Uygulama Şifresi) kullanılmalı.";
+                yield return "Google Hesabı → Güvenlik → 2 Adımlı Doğrulama → Uygulama Şifreleri → RedZone için 16 haneli şifre oluşturun.";
+                yield return "Port 587 kullanıyorsanız SSL ayarını KAPATIN — 587 STARTTLS kullanır, SSL açıksa çakışır.";
+            }
+            else if (host.Contains("office365") || host.Contains("outlook") || host.Contains("microsoft"))
+            {
+                yield return "Microsoft 365'te MFA etkinse App Password gereklidir.";
+                yield return "Microsoft Hesabı → Güvenlik → Gelişmiş güvenlik → Uygulama şifreleri bölümünden oluşturun.";
+                yield return "Port 587 için SSL ayarını KAPATIN.";
+            }
+            else
+            {
+                yield return "Kullanıcı adı veya şifre hatalı. Bazı sağlayıcılar normal şifre yerine App Password ister.";
+            }
+        }
+        else if (err.Contains("SSL") || err.Contains("TLS") || err.Contains("secure connection"))
+        {
+            yield return $"Port {_settings.Port} için SSL ayarı yanlış: Port 587 → SSL KAPALI (STARTTLS otomatik), Port 465 → SSL AÇIK.";
+        }
+        else if (err.Contains("timed out") || err.Contains("Connection refused") || err.Contains("No connection"))
+        {
+            yield return $"'{_settings.Host}' adresine port {_settings.Port}'den bağlanılamıyor — güvenlik duvarı veya yanlış port.";
+            yield return "EC2 sunucusunda outbound 587/465 portlarının açık olduğunu kontrol edin (AWS Security Group).";
+        }
+
+        if (string.IsNullOrWhiteSpace(_settings.Username) || string.IsNullOrWhiteSpace(_settings.Password))
+            yield return "Kullanıcı adı veya şifre boş — Sistem Yapılandırması → E-posta bölümünden doldurun.";
+    }
+}

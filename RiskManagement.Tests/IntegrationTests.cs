@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using RiskManagement.Data;
 using RiskManagement.Models;
@@ -118,7 +119,8 @@ public class EndToEndWorkflowTests
     {
         using var db  = IntDb.Create();
         var cfg  = new ConfigService(db, NullLogger<ConfigService>.Instance);
-        var svc  = new RiskService(db, new RiskCalculator(cfg));
+        var auth = new AuthService(db, new MemoryCache(new MemoryCacheOptions()));
+        var svc  = new RiskService(db, new RiskCalculator(cfg), auth);
 
         // Organizasyon (strategy_set için gerekli)
         var org = new Organization { Name = "Test Org" }; db.Organizations.Add(org); db.SaveChanges();
@@ -188,15 +190,15 @@ public class EndToEndWorkflowTests
         Assert.Equal("open", finding.Status);
 
         // Aksiyon planla
-        svc.AddFindingAction(finding.Id, "Parola politikası hazırla", "BT", null, auditor.Id);
+        svc.InternalAddFindingAction(finding.Id, "Parola politikası hazırla", "BT", null, auditor.Id);
         Assert.Equal("action_planned", db.AuditFindings.Find(finding.Id)!.ActionDecision);
 
         // Kapanış başvurusu
-        var req = svc.SubmitClosureRequest(finding.Id, "Politika yayınlandı", null, auditor.Id);
+        var req = svc.InternalSubmitClosureRequest(finding.Id, "Politika yayınlandı", null, auditor.Id);
         Assert.Equal("closure_requested", db.AuditFindings.Find(finding.Id)!.Status);
 
         // Müdür onaylar
-        svc.ReviewClosureRequest(finding.Id, req.Id, "approved", "Politika dokümanı incelendi", mgr.Id);
+        svc.InternalReviewClosureRequest(finding.Id, req.Id, "approved", "Politika dokümanı incelendi", mgr.Id);
         var closed = db.AuditFindings.Find(finding.Id)!;
         Assert.Equal("closed", closed.Status);
         Assert.NotNull(closed.ClosedAt);

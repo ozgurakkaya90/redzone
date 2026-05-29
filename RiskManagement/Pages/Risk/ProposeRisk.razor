@@ -4,7 +4,11 @@
 @inject ConfigService CfgSvc
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
+@inject AppDbContext Db
+@inject ToastService ToastSvc
 @using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
 
 <PageTitle>Risk Öner</PageTitle>
 
@@ -14,6 +18,7 @@
         <div class="alert alert-info" style="margin-bottom:16px">
             Önerdiğiniz risk, Risk Komitesi tarafından incelenecek ve Fine-Kinney
             metodolojisiyle değerlendirilerek envantere alınacaktır.
+            <div style="font-size:11px;margin-top:6px;color:#1e40af">Zorunlu alan: yalnızca başlık. Açıklama isteğe bağlıdır.</div>
         </div>
 
         <div class="form-group">
@@ -31,6 +36,17 @@
                       placeholder="Olası nedenleri, etkilerini ve ilgili süreçleri belirtin."></textarea>
         </div>
 
+        <div class="form-group">
+            <label class="form-label">Departman</label>
+            <select class="form-control" @bind="_fDepartmentId">
+                <option value="">— Seçiniz —</option>
+                @foreach (var d in _departments)
+                {
+                    <option value="@d.Id">@d.Name</option>
+                }
+            </select>
+        </div>
+
         <div style="display:flex;gap:10px;margin-top:8px">
             <button class="btn btn-primary" @onclick="Submit" disabled="@_loading">
                 @(_loading ? "Kaydediliyor…" : "Gönder")
@@ -43,16 +59,41 @@
 @code {
     private string _title = "", _description = "";
     private bool _loading, _errTitle;
+    private int? _fDepartmentId;
+    private List<Department> _departments = [];
 
-    private void Submit()
+    private int UserId => int.TryParse(
+        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+
+    protected override void OnInitialized()
+    {
+        _departments = [.. Db.Departments.OrderBy(d => d.Name)];
+
+        // Varsayılan departman: oturum açan kullanıcının departmanı
+        if (_fDepartmentId == null && UserId > 0)
+        {
+            var userDept = Db.Users
+                .Where(u => u.Id == UserId)
+                .Select(u => u.DepartmentId)
+                .FirstOrDefault();
+            if (userDept.HasValue) _fDepartmentId = userDept.Value;
+        }
+    }
+
+    private async Task Submit()
     {
         _errTitle = string.IsNullOrWhiteSpace(_title);
         if (_errTitle) return;
 
         _loading = true;
-        var userId = int.TryParse(
-            HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : (int?)null;
-        var risk = RiskSvc.Create(_title.Trim(), _description.Trim(), null, null, null, userId, null);
+        var userId = UserId > 0 ? (int?)UserId : null;
+        var risk = await RiskSvc.CreateAsync(_title.Trim(), _description.Trim(), null, null, null, userId, null);
+
+        // Departman seçildiyse metadata güncelle
+        if (_fDepartmentId.HasValue)
+            await RiskSvc.UpdateMetadataAsync(risk.Id, null, _fDepartmentId, null, userId);
+
+        ToastSvc.Success("Risk önerisi başarıyla gönderildi. İnceleme ekibi bilgilendirildi.");
         Nav.NavigateTo($"/risk/{risk.Id}");
     }
 }

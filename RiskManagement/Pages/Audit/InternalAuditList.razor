@@ -2,8 +2,10 @@
 @attribute [Authorize]
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
+@inject AuthService Auth
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @using RiskManagement.Models
 
 <PageTitle>İç Denetimler</PageTitle>
@@ -17,7 +19,7 @@
             { <span> (toplam @_all.Count)</span> }
         </div>
     </div>
-    @if (HasRole("auditor","audit_manager","admin"))
+    @if (HasPerm("audit.write"))
     {
         <div style="display:flex;gap:8px">
             <a href="/audit/plan"     class="btn btn-outline btn-sm"> Denetim Planı</a>
@@ -183,16 +185,16 @@
 
     private string _search = "", _filterType = "", _filterStatus = "", _filterYear = "";
 
-    private string Role    => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int    UserId  => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private bool   HasRole(params string[] roles) => roles.Contains(Role);
+    private User?  _user;
+    private bool   HasPerm(string perm) => _user != null && Auth.HasPermission(_user, perm);
     private bool   HasFilter => !string.IsNullOrEmpty(_search) || !string.IsNullOrEmpty(_filterType)
                              || !string.IsNullOrEmpty(_filterStatus) || !string.IsNullOrEmpty(_filterYear);
 
     protected override void OnInitialized()
     {
+        _user       = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
         _auditTypes = [.. CfgSvc.GetList("audit_types")];
-        _all        = AuditSvc.GetAuditsForUser(UserId, Role);
+        _all        = _user is not null ? AuditSvc.GetAuditsForUser(_user) : [];
         _years      = [.. _all.Select(a => a.Period).Where(p => int.TryParse(p, out _))
                                .Select(int.Parse).Distinct().OrderDescending()];
         _filtered   = _all;

@@ -20,7 +20,40 @@ wwwroot/uploads/
 RiskManagement/uploads/
 RiskManagement/wwwroot/uploads/
 
+# Publish output
+publish/
+**/publish/
+out/
+**/out/
+
+# Temporary / editor
+*.tmp
+*.bak
+*.swp
+*~
+.cache/
+
+# Claude Code session data
+.claude/
+**/.claude/
+
+# npm / tooling caches (if any frontend tooling added later)
+node_modules/
+.npm/
+
+# Docker volumes baked into checkout by mistake
+docker-compose.override.yml
+
 # Secrets
 *.pem
 *.key
 *.p12
+*.pfx
+.env
+.env.*
+!.env.example
+
+# Yapılandırma dosyaları — gerçek değerleri içerebilir, repo'ya girmemeli.
+# Kurulum için appsettings.example.json ve appsettings.Intranet.example.json dosyalarını kullanın.
+RiskManagement/appsettings.json
+RiskManagement/appsettings.Intranet.json

@@ -14,6 +14,14 @@
 @using Microsoft.AspNetCore.Components.Forms
 @inject ExternalAuditService ExtSvc
 @inject ILogger<SystemConfig> Logger
+@inject IHttpContextAccessor HttpCtx
+@inject IJSRuntime JS
+@inject RecentLogBuffer LogBuf
+@inject McpApiKeyService McpKeySvc
+@inject AiRiskDraftService AiDraftSvc
+@using RiskManagement.Services.Ai
+@inject EmailQueue EmailQueueSvc
+@using System.Security.Claims
 
 <PageTitle>Sistem Yapılandırması</PageTitle>
 
@@ -28,63 +36,159 @@
         <h1 class="page-toolbar-title">Sistem Yapılandırması</h1>
         <div class="page-toolbar-sub">Kurumsal hiyerarşi, modül ayarları ve e-posta bildirimleri</div>
     </div>
+    <div class="page-toolbar-right">
+        <div class="cfg-mode-toggle">
+            <button class="@(!_advancedMode ? "active" : "")" @onclick='() => SetMode(false)'>Basit</button>
+            <button class="@(_advancedMode ? "active" : "")" @onclick='() => SetMode(true)'>Gelişmiş</button>
+        </div>
+    </div>
 </div>
 
 <div class="cfg-layout">
 
     @* ── Sol Navigasyon ─────────────────────────────────────────────────── *@
+    @{
+        var _navSearchResults = GetSearchResults().ToList();
+        bool _navSearchActive = !string.IsNullOrEmpty(_searchQuery);
+        var _recentLogs = LogBuf.GetAll();
+    }
     <nav class="cfg-nav">
-        <div class="cfg-nav-group">Görünüm</div>
-        <button class="cfg-nav-item @(_tab=="theme" ? "active" : "")" @onclick='()=>_tab="theme"'>
-            Görsel Ayarlar
-        </button>
 
-        <div class="cfg-nav-group">Kurumsal Yapı</div>
-        <button class="cfg-nav-item @(_tab=="companies" ? "active" : "")" @onclick='()=>_tab="companies"'>
-            Şirketler
-            <span class="cfg-badge">@(_companies.Count + _organizations.Count)</span>
-        </button>
-        <button class="cfg-nav-item @(_tab=="departments" ? "active" : "")" @onclick='()=>_tab="departments"'>
-            Departmanlar
-            <span class="cfg-badge">@_departments.Count</span>
-        </button>
+        @* Arama kutusu *@
+        <div class="cfg-search-wrap">
+            <input class="form-control cfg-search-input" @bind="_searchQuery" @bind:event="oninput"
+                   placeholder="Ayar ara… (ör: smtp, logo, ldap)" />
+            @if (_navSearchActive)
+            {
+                <button class="cfg-search-clear" @onclick='() => _searchQuery = ""'>✕</button>
+            }
+        </div>
 
-        <div class="cfg-nav-group">Modüller</div>
-        <button class="cfg-nav-item @(_tab=="risk" ? "active" : "")" @onclick='()=>_tab="risk"'>
-            Risk Modülü
-        </button>
-        <button class="cfg-nav-item @(_tab=="controls" ? "active" : "")" @onclick='()=>_tab="controls"'>
-            Kontroller
-        </button>
-        <button class="cfg-nav-item @(_tab=="audit" ? "active" : "")" @onclick='()=>_tab="audit"'>
-            Denetim
-        </button>
-        <button class="cfg-nav-item @(_tab=="ethics" ? "active" : "")" @onclick='()=>_tab="ethics"'>
-            Etik
-        </button>
+        @if (_navSearchActive)
+        {
+            @if (!_navSearchResults.Any())
+            {
+                <div class="cfg-nav-empty">Sonuç bulunamadı</div>
+            }
+            else
+            {
+                <div class="cfg-nav-group">Arama Sonuçları</div>
+                @foreach (var (tab, label) in _navSearchResults)
+                {
+                    <button class="cfg-nav-item @(_tab == tab ? "active" : "")"
+                            @onclick="@(() => GoToTab(tab))">
+                        @label
+                    </button>
+                }
+            }
+        }
+        else
+        {
+            @* Normal navigasyon *@
+            <div class="cfg-nav-group">Genel</div>
+            <button class="cfg-nav-item @(_tab=="theme" ? "active" : "")" @onclick='()=>_tab="theme"'>
+                Görsel Ayarlar
+            </button>
+            <button class="cfg-nav-item @(_tab=="modules" ? "active" : "")" @onclick='()=>_tab="modules"'>
+                Modüller
+            </button>
+            @if (_advancedMode)
+            {
+                <button class="cfg-nav-item @(_tab=="security" ? "active" : "")" @onclick='()=>_tab="security"'>
+                    Güvenlik
+                    <span class="cfg-badge cfg-badge-adv">Gelişmiş</span>
+                </button>
+                <button class="cfg-nav-item @(_tab=="defaults" ? "active" : "")" @onclick='()=>_tab="defaults"'>
+                    Varsayılan Değerler
+                    <span class="cfg-badge cfg-badge-adv">Gelişmiş</span>
+                </button>
+            }
 
-        <div class="cfg-nav-group">Entegrasyon</div>
-        <button class="cfg-nav-item @(_tab=="email" ? "active" : "")" @onclick='()=>_tab="email"'>
-            E-posta
-            @if (_emailSettings.Enabled)
-            { <span class="cfg-badge" style="background:#dcfce7;color:#166534">Etkin</span> }
-        </button>
-        <button class="cfg-nav-item @(_tab=="ldap" ? "active" : "")" @onclick='()=>_tab="ldap"'>
-            Active Directory
-            @if (_ldapEnabled)
-            { <span class="cfg-badge" style="background:#dcfce7;color:#166534">Etkin</span> }
-        </button>
-        <button class="cfg-nav-item @(_tab=="database" ? "active" : "")" @onclick='()=>_tab="database"'>
-            Veritabanı
-        </button>
+            <div class="cfg-nav-group">Kurumsal Yapı</div>
+            <button class="cfg-nav-item @(_tab=="companies" ? "active" : "")" @onclick='()=>_tab="companies"'>
+                Şirketler
+                <span class="cfg-badge">@(_companies.Count + _organizations.Count)</span>
+            </button>
+            <button class="cfg-nav-item @(_tab=="departments" ? "active" : "")" @onclick='()=>_tab="departments"'>
+                Departmanlar
+                <span class="cfg-badge">@_departments.Count</span>
+            </button>
+            <div class="cfg-nav-group">Modül Ayarları</div>
+            <button class="cfg-nav-item @(_tab=="risk" ? "active" : "")" @onclick='()=>_tab="risk"'>
+                Risk Modülü
+            </button>
+            <button class="cfg-nav-item @(_tab=="controls" ? "active" : "")" @onclick='()=>_tab="controls"'>
+                Kontroller
+            </button>
+            <button class="cfg-nav-item @(_tab=="audit" ? "active" : "")" @onclick='()=>_tab="audit"'>
+                Denetim
+            </button>
+            <button class="cfg-nav-item @(_tab=="ethics" ? "active" : "")" @onclick='()=>_tab="ethics"'>
+                Etik
+            </button>
+            @if (_advancedMode)
+            {
+                <button class="cfg-nav-item @(_tab=="external" ? "active" : "")" @onclick='()=>_tab="external"'>
+                    Dış Denetim Kurumları
+                    <span class="cfg-badge cfg-badge-adv">Gelişmiş</span>
+                </button>
+            }
 
-        <div class="cfg-nav-group">Sistem</div>
-        <button class="cfg-nav-item @(_tab=="external" ? "active" : "")" @onclick='()=>_tab="external"'>
-            Dış Denetim Ayarları
-        </button>
-        <button class="cfg-nav-item @(_tab=="modules" ? "active" : "")" @onclick='()=>_tab="modules"'>
-            Modüller
-        </button>
+            <div class="cfg-nav-group">Entegrasyon</div>
+            <button class="cfg-nav-item @(_tab=="email" ? "active" : "")" @onclick='()=>_tab="email"'>
+                E-posta SMTP
+                @if (_emailSettings.Enabled)
+                { <span class="cfg-badge" style="background:#dcfce7;color:#166534">Etkin</span> }
+            </button>
+            <button class="cfg-nav-item @(_tab=="email_monitor" ? "active" : "")" @onclick='()=>{ _tab="email_monitor"; RefreshEmailMonitor(); }'>
+                E-posta Kuyruğu
+            </button>
+            <button class="cfg-nav-item @(_tab=="ai" ? "active" : "")" @onclick='()=>{ _tab="ai"; LoadAiSettings(); }'>
+                Yapay Zeka
+                @if (_aiSettings.Provider != "disabled")
+                { <span class="cfg-badge" style="background:#dcfce7;color:#166534">Etkin</span> }
+            </button>
+            <button class="cfg-nav-item @(_tab=="mcp" ? "active" : "")" @onclick='()=>_tab="mcp"'>
+                MCP / AI Bağlantı
+            </button>
+            @if (_advancedMode)
+            {
+                <button class="cfg-nav-item @(_tab=="email_templates" ? "active" : "")" @onclick='()=>_tab="email_templates"'>
+                    E-posta Şablonları
+                    <span class="cfg-badge cfg-badge-adv">Gelişmiş</span>
+                </button>
+                <button class="cfg-nav-item @(_tab=="ldap" ? "active" : "")" @onclick='()=>_tab="ldap"'>
+                    Active Directory
+                    @if (_ldapEnabled)
+                    { <span class="cfg-badge" style="background:#dcfce7;color:#166534">Etkin</span> }
+                </button>
+            }
+
+            <div class="cfg-nav-group">Araçlar</div>
+            <button class="cfg-nav-item @(_tab=="health" ? "active" : "")" @onclick="ActivateHealth">
+                Sistem Sağlığı
+                @if (_healthBadge == "ok")
+                { <span class="cfg-badge" style="background:#dcfce7;color:#166534">✓</span> }
+                else if (_healthBadge == "warn")
+                { <span class="cfg-badge" style="background:#fef3c7;color:#92400e">!</span> }
+            </button>
+            <button class="cfg-nav-item @(_tab=="checklist" ? "active" : "")" @onclick='()=>_tab="checklist"'>
+                Kurulum Kontrolü
+            </button>
+            <button class="cfg-nav-item @(_tab=="history" ? "active" : "")" @onclick="ActivateHistory">
+                Ayar Geçmişi
+            </button>
+            <button class="cfg-nav-item @(_tab=="import" ? "active" : "")" @onclick='()=>_tab="import"'>
+                Ayar İçe Aktar
+            </button>
+            @if (_advancedMode)
+            {
+                <button class="cfg-nav-item @(_tab=="database" ? "active" : "")" @onclick='()=>_tab="database"'>
+                    Veritabanı
+                    <span class="cfg-badge cfg-badge-adv">Gelişmiş</span>
+                </button>
+            }
+        }
     </nav>
 
     @* ── İçerik Alanı ───────────────────────────────────────────────────── *@
@@ -143,12 +247,12 @@
                 <div class="cfg-card-icon" style="background:#fef3c7"></div>
                 <div>
                     <div class="cfg-card-title">Logo</div>
-                    <div class="cfg-card-desc">Sidebar'da uygulama adının solunda görünür — PNG, JPG, SVG, maks. 2 MB</div>
+                    <div class="cfg-card-desc">Sidebar'da uygulama adının solunda görünür — PNG veya JPG, maks. 2 MB</div>
                 </div>
             </div>
             <div style="display:flex;gap:20px;align-items:flex-start;flex-wrap:wrap">
                 <div style="flex:1;min-width:200px">
-                    <InputFile OnChange="HandleLogoUpload" accept=".png,.jpg,.jpeg,.svg"
+                    <InputFile OnChange="HandleLogoUpload" accept=".png,.jpg,.jpeg"
                                style="display:block;margin-bottom:8px" />
                     @if (!string.IsNullOrEmpty(_logoError))
                     { <div style="font-size:12px;color:#dc2626;margin-top:4px">@_logoError</div> }
@@ -298,6 +402,62 @@
                 <button class="btn btn-primary" @onclick="SaveTheme">Kaydet</button>
                 @if (!string.IsNullOrEmpty(_themeSaveMsg))
                 { <span class="save-msg">@_themeSaveMsg</span> }
+            </div>
+        </div>
+
+        @* ── Menü Grup Başlıkları ── *@
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#f0fdf4"></div>
+                <div>
+                    <div class="cfg-card-title">Menü Grup Başlıkları</div>
+                    <div class="cfg-card-desc">Sidebar'daki bölüm başlıklarının (Risk Yönetimi, İç Denetim…) rengi ve punto boyutu</div>
+                </div>
+            </div>
+
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+                <div>
+                    <label class="form-label">Başlık Rengi</label>
+                    <div style="display:flex;gap:8px;align-items:center;margin-top:4px">
+                        <input type="color" @bind="_navSectionColor" class="color-swatch" />
+                        <input class="form-control" @bind="_navSectionColor" style="font-family:monospace" />
+                    </div>
+                    <div class="field-info">Bölüm başlıklarının metin rengi</div>
+                </div>
+                <div>
+                    <label class="form-label">Punto Boyutu — @_navSectionFontSize px</label>
+                    <div style="margin-top:8px;padding:0 4px">
+                        <input type="range" min="8" max="14" step="1"
+                               @bind="_navSectionFontSize" @bind:event="oninput"
+                               style="width:100%;accent-color:#0369a1" />
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text-3);margin-top:2px">
+                        <span>8px</span><span>14px</span>
+                    </div>
+                </div>
+            </div>
+
+            @* Önizleme *@
+            <div style="padding:14px 16px;background:@_sidebarColor;border-radius:10px;display:flex;flex-direction:column;gap:4px">
+                <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:rgba(255,255,255,.4);letter-spacing:.05em;margin-bottom:6px">Önizleme</div>
+                @foreach (var secLabel in new[]{"Risk Yönetimi","İç Denetim","Dış Denetim"})
+                {
+                    <div style="font-size:@(_navSectionFontSize)px;font-weight:600;text-transform:uppercase;
+                                letter-spacing:1px;color:@_navSectionColor;padding:8px 8px 2px">
+                        @secLabel
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:6px;
+                                font-size:@(_sidebarFontSize)px;font-family:@_sidebarFont,Inter,system-ui,sans-serif;
+                                color:@_sidebarTextColor">
+                        — Örnek Menü Öğesi
+                    </div>
+                }
+            </div>
+
+            <div class="save-row">
+                <button class="btn btn-primary" @onclick="SaveNavSection">Kaydet</button>
+                @if (!string.IsNullOrEmpty(_navSectionSaveMsg))
+                { <span class="save-msg">@_navSectionSaveMsg</span> }
             </div>
         </div>
     }
@@ -534,6 +694,69 @@
 
         <div class="cfg-card">
             <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#fee2e2"></div>
+                <div>
+                    <div class="cfg-card-title">Gecikme ve Yaklaşma Eşikleri</div>
+                    <div class="cfg-card-desc">Aksiyon ve bulgu listelerinde kullanılan gün eşikleri — tüm modüllere uygulanır</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:480px">
+                <div class="form-group">
+                    <label class="form-label">"Bu Hafta" penceresi (gün)</label>
+                    <input type="number" class="form-control" @bind="_weekDays" min="1" max="30" />
+                    <div class="field-info">Hızlı filtre: "Bu Hafta" kaç gün kapsar?</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Yaklaşan uyarı eşiği (gün)</label>
+                    <input type="number" class="form-control" @bind="_warnDays" min="1" max="60" />
+                    <div class="field-info">Vadesi bu kadar gün kalan işler sarı uyarı alır</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kritik gecikme eşiği (gün)</label>
+                    <input type="number" class="form-control" @bind="_critDays" min="1" max="365" />
+                    <div class="field-info">Bu kadar gün geciken işler KRİTİK olarak işaretlenir</div>
+                </div>
+            </div>
+            <div class="save-row">
+                <button class="btn btn-primary btn-sm" @onclick="SaveOverdueThresholds">Kaydet</button>
+            </div>
+        </div>
+
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#fdf4ff"></div>
+                <div>
+                    <div class="cfg-card-title">Aksiyon Zorunluluk Ayarları</div>
+                    <div class="cfg-card-desc">İşaretlenen alanlar aksiyon formunda boş bırakılamaz</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">
+                @foreach (var (key, label, hint) in _actionRequireDefs)
+                {
+                    var k = key;
+                    var isOn = _actionRequireToggles.GetValueOrDefault(k, false);
+                    <label style="display:flex;align-items:flex-start;gap:10px;padding:12px 14px;
+                                  border:1.5px solid @(isOn?"#d8b4fe":"var(--border)");border-radius:10px;
+                                  cursor:pointer;background:@(isOn?"#fdf4ff":"var(--surface)");transition:all .15s">
+                        <input type="checkbox" style="margin-top:2px;width:16px;height:16px;flex-shrink:0;accent-color:#7c3aed"
+                               checked="@isOn"
+                               @onchange="e => _actionRequireToggles[k] = (bool)(e.Value ?? false)" />
+                        <div>
+                            <div style="font-size:13px;font-weight:600;color:var(--text-1)">@label</div>
+                            <div style="font-size:11px;color:var(--text-3);margin-top:2px">@hint</div>
+                        </div>
+                    </label>
+                }
+            </div>
+            <div class="save-row">
+                <button class="btn btn-primary btn-sm" @onclick="SaveActionRequire">Kaydet</button>
+                @if (!string.IsNullOrEmpty(_actionRequireSaveMsg))
+                { <span class="save-msg">@_actionRequireSaveMsg</span> }
+            </div>
+        </div>
+
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
                 <div class="cfg-card-icon" style="background:#f0fdf4"></div>
                 <div>
                     <div class="cfg-card-title">Risk Detayı — Alan Görünürlüğü</div>
@@ -599,6 +822,108 @@
         <ListEditor Title="Etik Bildirim Kategorileri" Items="_ethicsCategories" OnSave="SaveEthicsCategories" />
     }
 
+    @* ════ E-POSTA ŞABLONLARI ════════════════════════════════════════════ *@
+    @if (_tab == "email_templates")
+    {
+        <div class="cfg-section-hdr">
+            <h2>E-posta Şablonları</h2>
+            <p>Sistem tarafından gönderilen otomatik bildirimlerin konu ve içerik şablonlarını özelleştirin.
+               Değişkenleri <code>{değişkenAdı}</code> formatında kullanabilirsiniz.
+               Boş bırakırsanız sistem varsayılan şablonu kullanır.</p>
+        </div>
+
+        @foreach (var (groupName, groupKeys) in new (string, string[])[]
+        {
+            ("Risk Yönetimi", new[]{ "risk_proposed","status_changed","owner_assigned","action_due" }),
+            ("Denetim",       new[]{ "finding_assigned","closure_requested","closure_decided","finding_due" }),
+            ("Etik",          new[]{ "ethics_submitted","ethics_reviewed" }),
+            ("Sistem",        new[]{ "test" }),
+        })
+        {
+            var groupDefs = EmailDefs.Where(d => groupKeys.Contains(d.Key)).ToList();
+            if (!groupDefs.Any()) continue;
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+                        color:var(--text-3);margin:20px 0 10px;padding-bottom:6px;
+                        border-bottom:1px solid var(--border)">@groupName</div>
+            @foreach (var def in groupDefs)
+            {
+            var key = def.Key;
+            if (!_emailTplSubjects.ContainsKey(key)) _emailTplSubjects[key] = "";
+            if (!_emailTplBodies.ContainsKey(key))   _emailTplBodies[key]   = "";
+            var isCustomized = !string.IsNullOrWhiteSpace(_emailTplSubjects[key]) ||
+                               !string.IsNullOrWhiteSpace(_emailTplBodies[key]);
+
+            <div class="cfg-card">
+                <div class="cfg-card-hdr">
+                    <div class="cfg-card-icon" style="background:#eff6ff">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                            <polyline points="22,6 12,13 2,6"/>
+                        </svg>
+                    </div>
+                    <div style="flex:1">
+                        <div class="cfg-card-title">@def.Title
+                            @if (isCustomized)
+                            { <span style="font-size:10px;font-weight:600;background:#dbeafe;color:#1d4ed8;padding:2px 6px;border-radius:4px;margin-left:6px">Özelleştirildi</span> }
+                        </div>
+                        <div class="cfg-card-desc">@def.Description</div>
+                        <div style="margin-top:2px;font-size:11px;color:var(--text-3)">
+                            <b>Alıcı:</b> @def.Recipients
+                        </div>
+                    </div>
+                </div>
+
+                @* Konu *@
+                <div class="form-group">
+                    <label class="form-label">Konu Satırı</label>
+                    <input class="form-control" style="font-family:monospace;font-size:12px"
+                           placeholder="@def.DefaultSubject"
+                           @bind="_emailTplSubjects[key]" />
+                    <div class="field-info">Boş bırakırsanız varsayılan: <code>@def.DefaultSubject</code></div>
+                </div>
+
+                @* Gövde *@
+                <div class="form-group">
+                    <label class="form-label">İçerik (HTML)</label>
+                    <textarea class="form-control" rows="6"
+                              style="font-family:monospace;font-size:11px;resize:vertical"
+                              placeholder="@def.DefaultBody"
+                              @bind="_emailTplBodies[key]"></textarea>
+                    <div class="field-info">
+                        Kullanılabilir değişkenler:
+                        @foreach (var v in def.Variables)
+                        { <code style="margin-left:4px">{@v}</code> }
+                    </div>
+                </div>
+
+                @* Önizleme *@
+                @if (_previewKey == key)
+                {
+                    <div style="margin-bottom:12px">
+                        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:var(--text-3);margin-bottom:6px">Şablon Önizlemesi</div>
+                        <div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;max-height:400px;overflow-y:auto">
+                            <iframe srcdoc="@_previewHtml" style="width:100%;height:380px;border:none;"></iframe>
+                        </div>
+                    </div>
+                }
+
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <button class="btn btn-primary btn-sm" @onclick="() => SaveEmailTemplate(key)">Kaydet</button>
+                    <button class="btn btn-outline btn-sm" @onclick="() => PreviewTemplate(def)">
+                        @(_previewKey == key ? "Önizlemeyi Kapat" : "Önizle")
+                    </button>
+                    @if (isCustomized)
+                    {
+                        <button class="btn btn-ghost-danger btn-sm" @onclick="() => ResetEmailTemplate(key)">Varsayılanı Geri Yükle</button>
+                    }
+                    @if (!string.IsNullOrEmpty(_emailTplSaveMsgs.GetValueOrDefault(key, "")))
+                    { <span class="save-msg">@_emailTplSaveMsgs[key]</span> }
+                </div>
+            </div>
+            } @* end foreach def *@
+        } @* end foreach group *@
+    }
+
     @* ════ E-POSTA ═══════════════════════════════════════════════════════ *@
     @if (_tab == "email")
     {
@@ -607,6 +932,32 @@
         <div class="cfg-section-hdr">
             <h2>E-posta Bildirimleri</h2>
             <p>Değişiklikler anında etki eder — sunucuyu yeniden başlatmaya gerek yok.</p>
+        </div>
+
+        @* Hızlı Sağlayıcı Seçimi *@
+        <div class="cfg-card" style="margin-bottom:16px">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#eff6ff"></div>
+                <div>
+                    <div class="cfg-card-title">Hızlı Kurulum</div>
+                    <div class="cfg-card-desc">Sağlayıcınızı seçin — bağlantı ayarları otomatik dolar</div>
+                </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+                <button class="btn btn-outline btn-sm" @onclick='()=>ApplySmtpPreset("gmail")'>
+                    Gmail
+                </button>
+                <button class="btn btn-outline btn-sm" @onclick='()=>ApplySmtpPreset("outlook")'>
+                    Outlook / Microsoft 365
+                </button>
+                <button class="btn btn-outline btn-sm" @onclick='()=>ApplySmtpPreset("yandex")'>
+                    Yandex
+                </button>
+                <button class="btn btn-outline btn-sm" @onclick='()=>ApplySmtpPreset("custom")'>
+                    Özel Sunucu
+                </button>
+            </div>
+            <div style="font-size:11px;color:var(--text-3)">Seçimden sonra sadece kullanıcı adı ve şifrenizi girin.</div>
         </div>
 
         @* Etkin / Devre dışı durumu *@
@@ -734,6 +1085,56 @@
             </div>
             @if (!string.IsNullOrEmpty(_testResult))
             { <div class="alert @testAlertClass" style="margin-top:12px">@_testResult</div> }
+        </div>
+
+        @* Bildirim Olayları *@
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#fef3c7"></div>
+                <div>
+                    <div class="cfg-card-title">Bildirim Olayları</div>
+                    <div class="cfg-card-desc">Hangi olaylar e-posta göndersin? E-posta SMTP etkin olmasa bile ayarlar korunur.</div>
+                </div>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0;margin-bottom:16px">
+                @foreach (var (grpLabel, grpKeys) in new (string, string[])[]
+                {
+                    ("Risk Yönetimi", new[]{ "risk_proposed","status_changed","owner_assigned","action_due" }),
+                    ("Denetim",       new[]{ "finding_assigned","closure_requested","closure_decided","finding_due" }),
+                    ("Etik",          new[]{ "ethics_submitted","ethics_reviewed" }),
+                })
+                {
+                    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+                                color:var(--text-3);padding:12px 0 6px;border-bottom:1px solid var(--border);
+                                margin-bottom:8px">@grpLabel</div>
+                    @foreach (var (key, label, desc) in _emailEvents.Where(e => grpKeys.Contains(e.Key)))
+                    {
+                    var k = key;
+                    var on = _emailEventToggles.GetValueOrDefault(k, true);
+                    <label style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;margin-bottom:8px;
+                                  border:1.5px solid @(on?"#fde68a":"var(--border)");border-radius:10px;
+                                  cursor:pointer;background:@(on?"#fffbeb":"var(--surface)");transition:all .15s">
+                        <input type="checkbox" style="margin-top:2px;width:16px;height:16px;flex-shrink:0;accent-color:#d97706"
+                               checked="@on"
+                               @onchange="e => _emailEventToggles[k] = (bool)(e.Value ?? true)" />
+                        <div>
+                            <div style="font-size:13px;font-weight:600;color:var(--text-1)">@label</div>
+                            <div style="font-size:11px;color:var(--text-3);margin-top:2px">@desc</div>
+                        </div>
+                    </label>
+                    } @* end foreach event *@
+                } @* end foreach group *@
+            </div>
+            <div class="form-group" style="max-width:180px;margin-bottom:16px">
+                <label class="form-label">Hatırlatma — kaç gün önce?</label>
+                <input type="number" class="form-control" @bind="_actionDueRemindDays" min="1" max="30" />
+                <div class="field-info">Risk aksiyonları ve denetim bulguları için geçerlidir</div>
+            </div>
+            <div class="save-row">
+                <button class="btn btn-primary btn-sm" @onclick="SaveEmailEvents">Kaydet</button>
+                @if (!string.IsNullOrEmpty(_emailEventsSaveMsg))
+                { <span class="save-msg">@_emailEventsSaveMsg</span> }
+            </div>
         </div>
     }
 
@@ -1096,7 +1497,7 @@
                 </div>
             }
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button class="btn btn-primary btn-sm" @onclick="MigrRun" disabled="@_migrRunning">
+                <button class="btn btn-primary btn-sm" @onclick="MigrRunWithConfirm" disabled="@(_migrRunning || _migrPending.Count == 0)">
                     @(_migrRunning ? "Çalışıyor…" : "Migration Çalıştır")
                 </button>
                 <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#fca5a5" @onclick="MigrRestartApp" disabled="@_migrRestarting">
@@ -1110,11 +1511,1602 @@
         </div>
     }
 
+    @* ════ VARSAYILAN DEĞERLER ══════════════════════════════════════════ *@
+    @if (_tab == "defaults")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Varsayılan Değerler</h2>
+            <p>Formlar açılırken bu değerler otomatik dolar; kullanıcı isterse değiştirebilir.</p>
+        </div>
+
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#f0fdf4"></div>
+                <div><div class="cfg-card-title">Aksiyon Varsayılanları</div></div>
+            </div>
+            <div class="form-group" style="max-width:200px;margin-bottom:16px">
+                <label class="form-label">Varsayılan vade (gün)</label>
+                <input type="number" class="form-control" @bind="_defaultActionDueDays" min="1" max="365" />
+                <div class="field-info">Yeni aksiyon formu açıldığında hedef tarih bu kadar gün sonraya ayarlanır</div>
+            </div>
+            <div class="save-row">
+                <button class="btn btn-primary btn-sm" @onclick="SaveDefaults">Kaydet</button>
+                @if (!string.IsNullOrEmpty(_defaultsSaveMsg))
+                { <span class="save-msg">@_defaultsSaveMsg</span> }
+            </div>
+        </div>
+    }
+
+    @* ════ GÜVENLİK ════════════════════════════════════════════════════ *@
+    @if (_tab == "security")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Güvenlik Ayarları</h2>
+            <p>Şifre kuralları ve oturum süresi. Oturum zaman aşımı değişikliği bir sonraki giriş işleminde etki eder.</p>
+        </div>
+
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#fef2f2"></div>
+                <div><div class="cfg-card-title">Şifre Kuralları</div></div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:480px;margin-bottom:16px">
+                <div class="form-group">
+                    <label class="form-label">Minimum şifre uzunluğu</label>
+                    <input type="number" class="form-control" @bind="_secPasswordMinLen" min="4" max="64" />
+                    <div class="field-info">Yeni şifreler en az bu kadar karakter içermeli</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Şifre sıfırlama süresi (dk)</label>
+                    <input type="number" class="form-control" @bind="_secResetTokenMin" min="5" max="1440" />
+                    <div class="field-info">Şifre sıfırlama bağlantısı bu süre sonra geçersiz olur</div>
+                </div>
+            </div>
+            <label style="display:flex;align-items:center;gap:10px;margin-bottom:16px;cursor:pointer">
+                <input type="checkbox" @bind="_secPasswordComplexity" style="width:16px;height:16px;accent-color:#dc2626" />
+                <div>
+                    <div style="font-size:13px;font-weight:600">Şifre karmaşıklığı zorunlu</div>
+                    <div style="font-size:11px;color:var(--text-3)">Şifrelerde en az bir büyük harf ve bir rakam bulunmalı</div>
+                </div>
+            </label>
+            <div class="save-row">
+                <button class="btn btn-primary btn-sm" @onclick="SaveSecuritySettings">Kaydet</button>
+                @if (!string.IsNullOrEmpty(_secSaveMsg))
+                { <span class="save-msg">@_secSaveMsg</span> }
+            </div>
+        </div>
+
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#eff6ff"></div>
+                <div>
+                    <div class="cfg-card-title">Giriş & Oturum Güvenliği</div>
+                    <div class="cfg-card-desc">Değişiklik bir sonraki girişte geçerli olur</div>
+                </div>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;max-width:620px;margin-bottom:16px">
+                <div class="form-group">
+                    <label class="form-label">Oturum zaman aşımı (saat)</label>
+                    <input type="number" class="form-control" @bind="_secSessionHours" min="1" max="720" />
+                    <div class="field-info">Aktif oturum bu süre sonunda sonlanır</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Maks. hatalı giriş</label>
+                    <input type="number" class="form-control" @bind="_secMaxFailedLogins" min="0" max="100" />
+                    <div class="field-info">0 = sınırsız. Eşik aşılınca hesap kilitlenir.</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kilit süresi (dakika)</label>
+                    <input type="number" class="form-control" @bind="_secLockoutMinutes" min="1" max="1440" />
+                    <div class="field-info">Hesap bu süre sonunda otomatik açılır.</div>
+                </div>
+            </div>
+            <div class="save-row">
+                <button class="btn btn-primary btn-sm" @onclick="SaveSecuritySettings">Kaydet</button>
+            </div>
+        </div>
+    }
+
+    @* ════ SİSTEM SAĞLIĞI ═══════════════════════════════════════════════ *@
+    @if (_tab == "health")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Sistem Sağlığı</h2>
+            <p>Uygulama bileşenlerini, bağlantıları ve ortam bilgisini tek ekranda görüntüleyin.</p>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+            <div style="display:flex;gap:8px">
+                <button class="btn btn-outline btn-sm" @onclick="DownloadConfigExport" title="Hassas değerler hariç tüm ayarları JSON olarak indirir">
+                    ↓ Ayar Yedeği
+                </button>
+                <button class="btn btn-outline btn-sm" @onclick="DownloadSupportPackage" title="Sorun giderme için sistem özetini indirir">
+                    ↓ Destek Paketi
+                </button>
+            </div>
+            <button class="btn btn-primary btn-sm" @onclick="RunAllHealthChecks" disabled="@_healthRunning">
+                @(_healthRunning ? "Test ediliyor…" : "Tümünü Test Et")
+            </button>
+        </div>
+
+        @* ─ Satır 1: DB + Migration ─ *@
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+
+            @* Veritabanı *@
+            <div class="cfg-card" style="margin:0">
+                <div class="cfg-card-hdr" style="margin-bottom:8px">
+                    <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:@(_appDbTestResult==null?"#d1d5db":_appDbTestOk?"#22c55e":"#ef4444")"></div>
+                    <div>
+                        <div class="cfg-card-title">Veritabanı</div>
+                        <div class="cfg-card-desc">@_appDbInfo.Host / @_appDbInfo.DatabaseName</div>
+                    </div>
+                    <button class="btn btn-outline btn-sm" style="margin-left:auto;padding:2px 10px;font-size:11px"
+                            @onclick="TestAppDb" disabled="@_testingAppDb">
+                        @(_testingAppDb ? "…" : "Test Et")
+                    </button>
+                </div>
+                @if (_appDbTestResult != null)
+                {
+                    <div style="font-size:12px;padding:6px 10px;border-radius:6px;
+                                background:@(_appDbTestOk?"#f0fdf4":"#fef2f2");color:@(_appDbTestOk?"#166534":"#991b1b")">
+                        @_appDbTestResult
+                    </div>
+                    @if (!_appDbTestOk)
+                    {
+                        <div class="health-action">
+                            <span class="health-action-icon">💡</span>
+                            <span>Connection string'i <code>appsettings.json</code> veya ortam değişkenlerinde kontrol edin (DefaultConnection).</span>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div style="font-size:12px;color:var(--text-3)">Test henüz çalıştırılmadı</div>
+                }
+            </div>
+
+            @* Migration *@
+            <div class="cfg-card" style="margin:0">
+                <div class="cfg-card-hdr" style="margin-bottom:8px">
+                    <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
+                                background:@(_migrLoadError!=null?"#ef4444":_migrPending.Count>0?"#f59e0b":"#22c55e")"></div>
+                    <div>
+                        <div class="cfg-card-title">Veritabanı Migration</div>
+                        <div class="cfg-card-desc">@_migrApplied.Count uygulanan · @_migrPending.Count bekleyen</div>
+                    </div>
+                    <button class="btn btn-outline btn-sm" style="margin-left:auto;padding:2px 10px;font-size:11px"
+                            @onclick="MigrRefresh" disabled="@_migrRunning">
+                        @(_migrRunning ? "…" : "Yenile")
+                    </button>
+                </div>
+                @if (_migrLoadError != null)
+                {
+                    <div style="font-size:12px;padding:6px 10px;border-radius:6px;background:#fef2f2;color:#991b1b">@_migrLoadError</div>
+                    <div class="health-action"><span class="health-action-icon">💡</span><span>Veritabanı bağlantısını kontrol edin. Bağlantı başarılıysa migration bilgisi görünür.</span></div>
+                }
+                else if (_migrPending.Count > 0)
+                {
+                    <div style="font-size:12px;padding:6px 10px;border-radius:6px;background:#fef3c7;color:#92400e">
+                        @_migrPending.Count bekleyen migration var
+                    </div>
+                    <div class="health-action">
+                        <span class="health-action-icon">⚡</span>
+                        <span>Bekleyen güncellemeler var. <button class="btn-link-inline" @onclick='()=>_tab="database"'>Veritabanı sekmesindeki</button> "Migration Çalıştır" butonuna tıklayın.</span>
+                    </div>
+                }
+                else if (_migrApplied.Count > 0)
+                {
+                    <div style="font-size:12px;padding:6px 10px;border-radius:6px;background:#f0fdf4;color:#166534">
+                        Tüm migration'lar uygulanmış
+                    </div>
+                }
+                else
+                {
+                    <div style="font-size:12px;color:var(--text-3)">Yüklemek için "Yenile" butonuna tıklayın</div>
+                }
+            </div>
+        </div>
+
+        @* ─ Satır 2: SMTP + Dosya Sistemi ─ *@
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+
+            @* SMTP *@
+            <div class="cfg-card" style="margin:0">
+                <div class="cfg-card-hdr" style="margin-bottom:8px">
+                    <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
+                                background:@(_smtpCheckMsg==null?"#d1d5db":_smtpCheckOk?"#22c55e":"#ef4444")"></div>
+                    <div>
+                        <div class="cfg-card-title">E-posta (SMTP)</div>
+                        <div class="cfg-card-desc">
+                            @if (_emailSettings.Enabled)
+                            { <span>@_emailSettings.Host:@_emailSettings.Port</span> }
+                            else
+                            { <span style="color:#ef4444">Devre dışı</span> }
+                        </div>
+                    </div>
+                    <button class="btn btn-outline btn-sm" style="margin-left:auto;padding:2px 10px;font-size:11px"
+                            @onclick="CheckSmtp" disabled="@_smtpChecking">
+                        @(_smtpChecking ? "…" : "Test Et")
+                    </button>
+                </div>
+                @if (_smtpCheckMsg != null)
+                {
+                    <div style="font-size:12px;padding:6px 10px;border-radius:6px;
+                                background:@(_smtpCheckOk?"#f0fdf4":"#fef2f2");color:@(_smtpCheckOk?"#166534":"#991b1b")">
+                        @_smtpCheckMsg
+                    </div>
+                    @if (!_smtpCheckOk)
+                    {
+                        <div class="health-action">
+                            <span class="health-action-icon">💡</span>
+                            <span>
+                                @if (!_emailSettings.Enabled)
+                                { <span><button class="btn-link-inline" @onclick='()=>_tab="email"'>E-posta SMTP sekmesinden</button> SMTP'yi etkinleştirin.</span> }
+                                else
+                                { <span>Host, port ve kimlik bilgilerini <button class="btn-link-inline" @onclick='()=>_tab="email"'>E-posta SMTP sekmesinden</button> kontrol edin.</span> }
+                            </span>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div style="font-size:12px;color:var(--text-3)">Test henüz çalıştırılmadı</div>
+                }
+            </div>
+
+            @* Dosya Sistemi *@
+            <div class="cfg-card" style="margin:0">
+                <div class="cfg-card-hdr" style="margin-bottom:8px">
+                    <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
+                                background:@(_uploadsDirChecked?(_uploadsDirOk?"#22c55e":"#ef4444"):"#d1d5db")"></div>
+                    <div>
+                        <div class="cfg-card-title">Dosya Yükleme Klasörü</div>
+                        <div class="cfg-card-desc">wwwroot/uploads</div>
+                    </div>
+                    <button class="btn btn-outline btn-sm" style="margin-left:auto;padding:2px 10px;font-size:11px"
+                            @onclick="CheckUploadsDir">
+                        Test Et
+                    </button>
+                </div>
+                @if (_uploadsDirChecked)
+                {
+                    <div style="font-size:12px;padding:6px 10px;border-radius:6px;
+                                background:@(_uploadsDirOk?"#f0fdf4":"#fef2f2");color:@(_uploadsDirOk?"#166534":"#991b1b")">
+                        @if (_uploadsDirOk)
+                        { <span>Yazılabilir · @_uploadsDirSizeStr</span> }
+                        else
+                        { <span>Klasör bulunamadı veya yazılamıyor</span> }
+                    </div>
+                    @if (!_uploadsDirOk)
+                    {
+                        <div class="health-action">
+                            <span class="health-action-icon">💡</span>
+                            <span>Sunucuda <code>wwwroot/uploads</code> klasörünü oluşturun ve uygulama kullanıcısına yazma izni verin: <code>chmod 755 wwwroot/uploads</code></span>
+                        </div>
+                    }
+                }
+                else
+                {
+                    <div style="font-size:12px;color:var(--text-3)">Test henüz çalıştırılmadı</div>
+                }
+            </div>
+        </div>
+
+        @* ─ Satır 3: Ortam Bilgisi + Aktif Modüller ─ *@
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+
+            @* Ortam *@
+            <div class="cfg-card" style="margin:0">
+                <div class="cfg-card-hdr" style="margin-bottom:12px">
+                    <div class="cfg-card-icon" style="background:#eff6ff"></div>
+                    <div><div class="cfg-card-title">Uygulama & Ortam</div></div>
+                </div>
+                <table style="width:100%;font-size:12px;border-collapse:collapse">
+                    @{
+                        var asm = System.Reflection.Assembly.GetExecutingAssembly();
+                        var ver = asm.GetName().Version;
+                        var verStr = ver != null ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : "—";
+                        var rt  = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+                        var os  = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+                    }
+                    <tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 0;color:var(--text-3)">Versiyon</td><td style="padding:5px 0;font-weight:600;text-align:right">@verStr</td></tr>
+                    <tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 0;color:var(--text-3)">Ortam</td><td style="padding:5px 0;text-align:right">@Env.EnvironmentName</td></tr>
+                    <tr style="border-bottom:1px solid var(--border)"><td style="padding:5px 0;color:var(--text-3)">.NET Runtime</td><td style="padding:5px 0;text-align:right;font-size:11px">@rt</td></tr>
+                    <tr><td style="padding:5px 0;color:var(--text-3)">İşletim Sistemi</td><td style="padding:5px 0;text-align:right;font-size:11px;word-break:break-all">@os</td></tr>
+                </table>
+            </div>
+
+            @* Aktif Modüller *@
+            <div class="cfg-card" style="margin:0">
+                <div class="cfg-card-hdr" style="margin-bottom:12px">
+                    <div class="cfg-card-icon" style="background:#f0fdf4"></div>
+                    <div><div class="cfg-card-title">Aktif Modüller</div></div>
+                </div>
+                @{
+                    var moduleList = new[] {
+                        ("Risk Yönetimi",    CfgSvc.IsModuleActive("risk")),
+                        ("İç Denetim",       CfgSvc.IsModuleActive("audit")),
+                        ("Dış Denetim",      CfgSvc.IsModuleActive("external")),
+                        ("Etik Bildirimi",   CfgSvc.IsModuleActive("ethics")),
+                    };
+                }
+                <div style="display:flex;flex-direction:column;gap:8px">
+                    @foreach (var (name, active) in moduleList)
+                    {
+                        <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px">
+                            <span>@name</span>
+                            <span style="font-size:11px;padding:2px 10px;border-radius:20px;font-weight:600;
+                                         background:@(active?"#dcfce7":"#f1f5f9");color:@(active?"#166534":"#6b7280")">
+                                @(active ? "Etkin" : "Kapalı")
+                            </span>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @* ─ Son Uyarılar / Hatalar ─ *@
+        <div class="cfg-card">
+            <div class="cfg-card-hdr" style="margin-bottom:12px">
+                <div class="cfg-card-icon" style="background:#fef2f2"></div>
+                <div>
+                    <div class="cfg-card-title">Son Uyarılar & Hatalar</div>
+                    <div class="cfg-card-desc">Son @RecentLogBuffer.Capacity uygulama uyarısı/hatası — uygulama yeniden başlatılınca sıfırlanır</div>
+                </div>
+            </div>
+            @if (!_recentLogs.Any())
+            {
+                <div style="font-size:12px;color:var(--text-3);padding:8px 0">Kayıt yok — iyi bir işaret!</div>
+            }
+            else
+            {
+                <div style="max-height:320px;overflow-y:auto">
+                    <table style="width:100%;border-collapse:collapse;font-size:11px">
+                        <thead style="position:sticky;top:0;background:var(--surface)">
+                            <tr style="border-bottom:1px solid var(--border)">
+                                <th style="padding:4px 8px;text-align:left;color:var(--text-3)">Saat</th>
+                                <th style="padding:4px 8px;text-align:left;color:var(--text-3)">Seviye</th>
+                                <th style="padding:4px 8px;text-align:left;color:var(--text-3)">Kategori</th>
+                                <th style="padding:4px 8px;text-align:left;color:var(--text-3)">Mesaj</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in _recentLogs)
+                            {
+                                var levelColor = entry.Level switch
+                                {
+                                    Microsoft.Extensions.Logging.LogLevel.Error or
+                                    Microsoft.Extensions.Logging.LogLevel.Critical => "#991b1b",
+                                    _ => "#92400e"
+                                };
+                                var levelLabel = entry.Level switch
+                                {
+                                    Microsoft.Extensions.Logging.LogLevel.Warning  => "WARN",
+                                    Microsoft.Extensions.Logging.LogLevel.Error    => "ERR",
+                                    Microsoft.Extensions.Logging.LogLevel.Critical => "CRIT",
+                                    _ => entry.Level.ToString()[..4].ToUpper()
+                                };
+                                <tr style="border-bottom:1px solid var(--gray-50)">
+                                    <td style="padding:4px 8px;white-space:nowrap;color:var(--text-3)">
+                                        @entry.Timestamp.ToLocalTime().ToString("HH:mm:ss")
+                                    </td>
+                                    <td style="padding:4px 8px">
+                                        <span style="color:@levelColor;font-weight:700;font-size:10px">@levelLabel</span>
+                                    </td>
+                                    <td style="padding:4px 8px;color:var(--text-3);white-space:nowrap">@entry.Category</td>
+                                    <td style="padding:4px 8px;color:var(--text-1)">
+                                        @entry.Message
+                                        @if (entry.Exception != null)
+                                        {
+                                            <div style="font-size:10px;color:#dc2626;margin-top:2px">@entry.Exception</div>
+                                        }
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    }
+
+    @* ════ AYar GEÇMİŞİ ════════════════════════════════════════════════ *@
+    @if (_tab == "history")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Ayar Değişiklik Geçmişi</h2>
+            <p>Son 50 kritik ayar değişikliğini görüntüleyin. Hassas değerler maskelenir.</p>
+        </div>
+
+        <div class="cfg-card">
+            @if (_changeLog.Count == 0)
+            {
+                <div style="padding:32px;text-align:center;color:var(--text-3);font-size:13px">
+                    Henüz kayıt yok. Ayar değişiklikleriniz burada görünecek.
+                </div>
+            }
+            else
+            {
+                <table style="width:100%;border-collapse:collapse;font-size:12px">
+                    <thead>
+                        <tr style="border-bottom:2px solid var(--border)">
+                            <th style="padding:8px;text-align:left;color:var(--text-3);font-weight:600">Tarih</th>
+                            <th style="padding:8px;text-align:left;color:var(--text-3);font-weight:600">Kullanıcı</th>
+                            <th style="padding:8px;text-align:left;color:var(--text-3);font-weight:600">Ayar / İşlem</th>
+                            <th style="padding:8px;text-align:left;color:var(--text-3);font-weight:600">Açıklama</th>
+                            <th style="padding:8px;text-align:left;color:var(--text-3);font-weight:600">Eski Değer</th>
+                            <th style="padding:8px;text-align:left;color:var(--text-3);font-weight:600">Yeni Değer</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var log in _changeLog)
+                        {
+                            <tr style="border-bottom:1px solid var(--border)">
+                                <td style="padding:7px 8px;color:var(--text-3);white-space:nowrap">
+                                    @log.ChangedAt.ToLocalTime().ToString("dd.MM.yy HH:mm")
+                                </td>
+                                <td style="padding:7px 8px;font-weight:500">@log.ChangedBy</td>
+                                <td style="padding:7px 8px;font-family:monospace;font-size:11px">@log.SettingKey</td>
+                                <td style="padding:7px 8px;color:var(--text-2)">@log.Description</td>
+                                <td style="padding:7px 8px;font-family:monospace;font-size:11px;color:#9f1239;max-width:180px;overflow:hidden;text-overflow:ellipsis">
+                                    @(log.OldValue?.Length > 60 ? log.OldValue[..60] + "…" : log.OldValue)
+                                </td>
+                                <td style="padding:7px 8px;font-family:monospace;font-size:11px;color:#166534;max-width:180px;overflow:hidden;text-overflow:ellipsis">
+                                    @(log.NewValue?.Length > 60 ? log.NewValue[..60] + "…" : log.NewValue)
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+
+    @* ════ KURULUM KONTROL LİSTESİ ══════════════════════════════════════ *@
+    @if (_tab == "checklist")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Kurulum Kontrol Listesi</h2>
+            <p>Uygulamanın tam çalışır durumda olması için gereken temel adımları kontrol edin.</p>
+        </div>
+
+        <div class="cfg-card">
+            @{
+                var checks = new (bool Done, string Label, string Tab, string Hint)[]
+                {
+                    (!string.IsNullOrEmpty(_appName) && _appName != "RED",
+                        "Uygulama adı özelleştirildi",
+                        "theme",
+                        "Kurumunuza ait bir uygulama adı girin."),
+                    (!string.IsNullOrEmpty(_logoPath),
+                        "Logo yüklendi",
+                        "theme",
+                        "PNG, JPG veya SVG formatında kurumsal logonuzu yükleyin."),
+                    (_companies.Count > 0,
+                        "En az bir şirket eklendi",
+                        "companies",
+                        "Şirket/organizasyon hiyerarşisini oluşturun."),
+                    (_departments.Count > 0,
+                        "En az bir departman tanımlandı",
+                        "departments",
+                        "Kullanıcıların atanacağı departmanları tanımlayın."),
+                    (_emailSettings.Enabled,
+                        "E-posta (SMTP) etkinleştirildi",
+                        "email",
+                        "Bildirim e-postalarının gönderilebilmesi için SMTP ayarlayın."),
+                    (_smtpCheckOk,
+                        "SMTP bağlantısı test edildi ve başarılı",
+                        "health",
+                        "Sistem Sağlığı ekranından SMTP testini çalıştırın."),
+                    (CfgSvc.GetList("risk_categories").Length > 0,
+                        "Risk kategorileri kontrol edildi",
+                        "risk",
+                        "Risk kategorilerini kurumunuza göre düzenleyin."),
+                    (CfgSvc.GetList("audit_types").Length > 0,
+                        "Denetim türleri kontrol edildi",
+                        "audit",
+                        "Denetim türlerini kurumunuza göre düzenleyin."),
+                    (_appDbTestOk,
+                        "Veritabanı bağlantısı doğrulandı",
+                        "health",
+                        "Sistem Sağlığı ekranından veritabanı testini çalıştırın."),
+                    (_migrPending.Count == 0 && _migrApplied.Count > 0,
+                        "Bekleyen migration yok",
+                        "health",
+                        "Tüm veritabanı güncellemeleri uygulanmış olmalıdır."),
+                };
+                var doneCount = checks.Count(c => c.Done);
+            }
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:20px;padding:14px 16px;background:var(--gray-50);border-radius:10px;border:1px solid var(--border)">
+                <div style="font-size:28px;font-weight:800;color:@(doneCount == checks.Length ? "#16a34a" : "#0369a1")">@doneCount/@checks.Length</div>
+                <div>
+                    <div style="font-size:13px;font-weight:600">Kurulum tamamlanma durumu</div>
+                    <div style="font-size:11px;color:var(--text-3)">
+                        @if (doneCount == checks.Length) { <span>Tüm adımlar tamamlandı — sistem üretime hazır.</span> }
+                        else { <span>@(checks.Length - doneCount) adım kaldı.</span> }
+                    </div>
+                </div>
+                <div style="flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+                    <div style="height:100%;width:@(doneCount * 100 / checks.Length)%;background:@(doneCount == checks.Length ? "#16a34a" : "#0369a1");border-radius:4px;transition:width .3s"></div>
+                </div>
+            </div>
+
+            <div style="display:flex;flex-direction:column;gap:8px">
+                @foreach (var (done, label, tab, hint) in checks)
+                {
+                    <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:8px;
+                                background:@(done?"#f0fdf4":"#fafafa");border:1px solid @(done?"#bbf7d0":"var(--border)")">
+                        <div style="width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
+                                    background:@(done?"#dcfce7":"#e5e7eb");color:@(done?"#16a34a":"#9ca3af");font-size:13px;font-weight:700;margin-top:1px">
+                            @(done ? "✓" : "·")
+                        </div>
+                        <div style="flex:1;min-width:0">
+                            <div style="font-size:13px;font-weight:@(done?"500":"600");color:@(done?"#166534":"var(--text-1)")">@label</div>
+                            @if (!done)
+                            { <div style="font-size:11px;color:var(--text-3);margin-top:2px">@hint</div> }
+                        </div>
+                        @if (!done)
+                        {
+                            <button class="btn btn-outline btn-sm" style="flex-shrink:0;font-size:11px;padding:3px 10px"
+                                    @onclick="() => _tab = tab">
+                                Git →
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
+    @* ════ CONFIG IMPORT ════════════════════════════════════════════════ *@
+    @if (_tab == "import")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Ayar İçe Aktarma</h2>
+            <p>Daha önce dışa aktarılan bir ayar yedeğini içe aktarın. Hassas değerler (SMTP şifresi, LDAP bağlantı şifresi vb.) içe aktarılmaz.</p>
+        </div>
+
+        @if (_importError != null)
+        {
+            <div class="alert alert-error" style="margin-bottom:16px">@_importError</div>
+        }
+        @if (_importSuccess != null)
+        {
+            <div class="alert alert-success" style="margin-bottom:16px">@_importSuccess</div>
+        }
+
+        @if (_importPreview == null)
+        {
+            <div class="cfg-card">
+                <div class="cfg-card-hdr">
+                    <div class="cfg-card-icon" style="background:#eff6ff"></div>
+                    <div>
+                        <div class="cfg-card-title">JSON Dosyası Seçin</div>
+                        <div class="cfg-card-desc">Admin → Sistem Sağlığı → "↓ Ayar Yedeği" ile oluşturulan dosyayı yükleyin.</div>
+                    </div>
+                </div>
+                <div class="field-info" style="margin-bottom:12px">
+                    <strong>İçe aktarılmayan alanlar:</strong> SMTP şifresi, LDAP bind şifresi, bağlantı dizesi şifresi, token/secret değerleri.
+                </div>
+                <InputFile OnChange="HandleImportFile" accept=".json" />
+            </div>
+        }
+        else
+        {
+            <div class="cfg-card">
+                <div class="cfg-card-hdr" style="margin-bottom:12px">
+                    <div class="cfg-card-icon" style="background:#fef3c7"></div>
+                    <div>
+                        <div class="cfg-card-title">Önizleme — Değişecek Ayarlar</div>
+                        <div class="cfg-card-desc">Aşağıdaki @_importPreview.Count ayar güncellenecek. Kontrol edin, sonra onaylayın.</div>
+                    </div>
+                </div>
+
+                <table style="width:100%;border-collapse:collapse;font-size:12px;margin-bottom:16px">
+                    <thead>
+                        <tr style="border-bottom:2px solid var(--border)">
+                            <th style="padding:7px 8px;text-align:left;color:var(--text-3);font-weight:600">Ayar Anahtarı</th>
+                            <th style="padding:7px 8px;text-align:left;color:var(--text-3);font-weight:600">Mevcut Değer</th>
+                            <th style="padding:7px 8px;text-align:left;color:var(--text-3);font-weight:600">Yeni Değer</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in _importPreview)
+                        {
+                            <tr style="border-bottom:1px solid var(--border)">
+                                <td style="padding:7px 8px;font-family:monospace;font-size:11px;color:var(--text-2)">@item.Key</td>
+                                <td style="padding:7px 8px;color:#9f1239;font-size:11px;max-width:220px;word-break:break-all">@item.Current</td>
+                                <td style="padding:7px 8px;color:#166534;font-size:11px;max-width:220px;word-break:break-all">@item.New</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+
+                <div style="display:flex;gap:10px;align-items:center">
+                    <button class="btn btn-primary btn-sm" @onclick="ApplyImport">
+                        Uygula (@_importPreview.Count ayar)
+                    </button>
+                    <button class="btn btn-outline btn-sm" @onclick="CancelImport">İptal</button>
+                </div>
+            </div>
+        }
+    }
+
+    @* ════ MCP / AI BAĞLANTI ════════════════════════════════════════════ *@
+    @if (_tab == "mcp")
+    {
+        <div class="cfg-section-hdr">
+            <h2>MCP / AI Bağlantı</h2>
+            <p>Yapay zeka araçlarını (Claude, Cursor vb.) sisteme bağlamak için API anahtarı yönetimi</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_mcpError))
+        {
+            <div class="alert alert-error" style="margin-bottom:12px">@_mcpError</div>
+        }
+
+        @if (_mcpNewKey is not null)
+        {
+            <div class="alert alert-success" style="margin-bottom:16px">
+                <strong>Anahtar oluşturuldu.</strong> Bu değeri şimdi kopyalayın — bir daha gösterilmeyecek:
+                <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+                    <code style="background:#f0fdf4;border:1px solid #bbf7d0;padding:8px 12px;border-radius:6px;font-size:13px;flex:1;word-break:break-all">@_mcpNewKey</code>
+                </div>
+                <div style="margin-top:10px;font-size:12px;color:var(--text-3)">
+                    <strong>Claude Desktop için config örneği:</strong>
+                    <pre style="margin-top:6px;background:#1e293b;color:#e2e8f0;padding:10px;border-radius:6px;font-size:11px;overflow-x:auto">@GetMcpClaudeConfig()</pre>
+                </div>
+                <button class="btn btn-sm" style="margin-top:8px" @onclick="() => _mcpNewKey = null">Kapat</button>
+            </div>
+        }
+
+        @if (_mcpShowCreate)
+        {
+            <div class="cfg-card" style="margin-bottom:16px">
+                <div class="cfg-card-hdr">
+                    <div class="cfg-card-icon" style="background:#f0f9ff"></div>
+                    <div><div class="cfg-card-title">Yeni API Anahtarı</div></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Anahtar Adı *</label>
+                    <input class="form-control" @bind="_mcpCreateName" placeholder="örn: Claude Desktop, Cursor, VS Code" />
+                    <div class="field-info">Bu anahtarı hangi araç için oluşturduğunuzu belirtin</div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Kapsam (isteğe bağlı)</label>
+                    <select class="form-control" @bind="_mcpCreateScopeUserId">
+                        <option value="">— Tam erişim (admin davranışı) —</option>
+                        @foreach (var u in _mcpUserChoices)
+                        { <option value="@u.Id">@u.FullName (@u.Role)</option> }
+                    </select>
+                    <div class="field-info">Bir kullanıcı seçilirse bu anahtar yalnızca o kullanıcının görebildiği verilere erişebilir.</div>
+                </div>
+                <div style="display:flex;gap:8px;margin-top:12px">
+                    <button class="btn btn-primary" @onclick="McpCreateKey">Oluştur</button>
+                    <button class="btn btn-outline" @onclick="() => { _mcpShowCreate = false; _mcpCreateName = string.Empty; _mcpCreateScopeUserId = string.Empty; }">İptal</button>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div style="margin-bottom:16px">
+                <button class="btn btn-primary" @onclick="() => _mcpShowCreate = true">+ Yeni Anahtar</button>
+            </div>
+        }
+
+        <div class="cfg-card" style="padding:0;overflow:auto;margin-bottom:16px">
+            @if (!_mcpKeys.Any())
+            {
+                <div style="padding:32px;text-align:center;color:var(--text-3)">
+                    Henüz API anahtarı oluşturulmamış.<br />
+                    <small>Yapay zeka araçlarınızı bağlamak için yukarıdan yeni anahtar oluşturun.</small>
+                </div>
+            }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Ad</th>
+                            <th>Anahtar Öneki</th>
+                            <th>Kapsam</th>
+                            <th>Oluşturan</th>
+                            <th>Oluşturulma</th>
+                            <th>Son Kullanım</th>
+                            <th>Durum</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var k in _mcpKeys)
+                        {
+                            <tr>
+                                <td style="font-weight:600">@k.Name</td>
+                                <td><code style="font-size:12px">@k.KeyPrefix…</code></td>
+                                <td style="font-size:12px">
+                                    @if (k.ScopeUserName is not null)
+                                    {
+                                        <span class="tag" style="font-size:10px">@k.ScopeUserName</span>
+                                        <div style="font-size:10px;color:var(--text-3)">@k.ScopeUserRole</div>
+                                    }
+                                    else
+                                    { <span style="color:var(--text-3);font-size:11px">Tam erişim</span> }
+                                </td>
+                                <td style="font-size:12px">@k.CreatedByName</td>
+                                <td style="font-size:12px">@k.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                                <td style="font-size:12px">
+                                    @(k.LastUsedAt.HasValue ? k.LastUsedAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "—")
+                                </td>
+                                <td>
+                                    @if (k.IsActive)
+                                    { <span class="tag tag-success">Aktif</span> }
+                                    else
+                                    { <span class="tag tag-error">İptal Edildi</span> }
+                                </td>
+                                <td>
+                                    @if (k.IsActive)
+                                    { <button class="btn btn-sm btn-danger" @onclick="() => McpRevoke(k.Id)">İptal Et</button> }
+                                    else
+                                    { <button class="btn btn-sm" @onclick="() => McpDelete(k.Id)">Sil</button> }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#f0f9ff"></div>
+                <div><div class="cfg-card-title">MCP Endpoint Bilgisi</div></div>
+            </div>
+            <p style="font-size:13px;color:var(--text-2);margin:0 0 8px">MCP sunucusuna bağlanmak için aşağıdaki URL'yi kullanın:</p>
+            <code style="background:var(--bg-2);padding:8px 12px;border-radius:6px;font-size:12px;display:block">@(_mcpBaseUrl)/mcp</code>
+            <p style="font-size:12px;color:var(--text-3);margin:8px 0 0">
+                Bağlantı için <code>X-Api-Key</code> header'ı veya <code>Authorization: Bearer &lt;key&gt;</code> kullanın.
+            </p>
+        </div>
+    }
+
+    @* ════ E-POSTA KUYRUĞU ══════════════════════════════════════════════ *@
+    @if (_tab == "email_monitor")
+    {
+        <div class="cfg-section-hdr">
+            <h2>E-posta Kuyruğu</h2>
+            <p>SMTP durumu ve son gönderim geçmişi. <button class="btn btn-outline btn-sm" style="margin-left:8px" @onclick="RefreshEmailMonitor">Yenile</button></p>
+        </div>
+
+        <div class="cfg-card" style="margin-bottom:16px">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#f0f9ff"></div>
+                <div><div class="cfg-card-title">SMTP Yapılandırması</div></div>
+                <button class="btn btn-outline btn-sm" style="margin-left:auto" @onclick='()=>_tab="email"'>Ayarları Düzenle</button>
+            </div>
+            <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:13px">
+                <div class="cfg-stat">
+                    <span style="color:var(--text-3)">Durum</span>
+                    @if (_emailSettings.Enabled)
+                    { <span class="tag tag-success">Aktif</span> }
+                    else
+                    { <span class="tag tag-error">Devre Dışı</span> }
+                </div>
+                <div class="cfg-stat">
+                    <span style="color:var(--text-3)">Sunucu</span>
+                    <code style="font-size:12px">@(_emailSettings.Host.Length > 0 ? _emailSettings.Host : "—"):@_emailSettings.Port</code>
+                </div>
+                <div class="cfg-stat">
+                    <span style="color:var(--text-3)">SSL/TLS</span>
+                    <span>@(_emailSettings.UseSsl ? "Evet" : "Hayır")</span>
+                </div>
+                <div class="cfg-stat">
+                    <span style="color:var(--text-3)">Gönderen</span>
+                    <span>@(_emailSettings.FromAddress.Length > 0 ? _emailSettings.FromAddress : "—")</span>
+                </div>
+                <div class="cfg-stat">
+                    <span style="color:var(--text-3)">Kuyruk</span>
+                    <span><strong>@EmailQueueSvc.PendingCount</strong> bekleyen mesaj</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="cfg-card" style="padding:0;overflow:auto">
+            <div style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center">
+                <strong style="font-size:13px">Son Gönderimler</strong>
+                <span style="font-size:12px;color:var(--text-3)">Son @_emailLog.Count kayıt (bellekte, yeniden başlatmada sıfırlanır)</span>
+            </div>
+            @if (!_emailLog.Any())
+            {
+                <div style="padding:32px;text-align:center;color:var(--text-3);font-size:13px">
+                    Henüz gönderim yok.
+                </div>
+            }
+            else
+            {
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th style="width:130px">Zaman</th>
+                            <th style="width:80px">Durum</th>
+                            <th>Alıcı</th>
+                            <th>Konu</th>
+                            <th>Deneme</th>
+                            <th>Hata</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var e in _emailLog)
+                        {
+                            <tr>
+                                <td style="font-size:11px;color:var(--text-3);white-space:nowrap">@e.Timestamp.ToString("dd.MM HH:mm:ss")</td>
+                                <td>
+                                    @switch (e.Status)
+                                    {
+                                        case EmailLogStatus.Sent:
+                                            <span class="tag tag-success" style="font-size:10px">Gönderildi</span>
+                                            break;
+                                        case EmailLogStatus.Failed:
+                                            <span class="tag tag-error" style="font-size:10px">Başarısız</span>
+                                            break;
+                                        case EmailLogStatus.Skipped:
+                                            <span class="tag" style="font-size:10px;background:var(--bg-3)">Atlandı</span>
+                                            break;
+                                        default:
+                                            <span class="tag" style="font-size:10px">Bekliyor</span>
+                                            break;
+                                    }
+                                </td>
+                                <td style="font-size:12px">@e.To</td>
+                                <td style="font-size:12px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">@e.Subject</td>
+                                <td style="font-size:12px;text-align:center">@e.Attempt</td>
+                                <td style="font-size:11px;color:var(--danger);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="@e.Error">@e.Error</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    }
+
+    @* ── Yapay Zeka ─────────────────────────────────────────────────────────── *@
+    @if (_tab == "ai")
+    {
+        <div class="cfg-section-hdr">
+            <h2>Yapay Zeka Ayarları</h2>
+            <p>Risk Kütüphanesi'nde AI destekli risk taslağı oluşturma için API bağlantısını yapılandırın.
+               Her şirket kendi API hesabını kullanır.</p>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_aiSaveMsg))
+        {
+            <div class="alert @(_aiSaveError ? "alert-error" : "alert-success")" style="margin-bottom:16px">@_aiSaveMsg</div>
+        }
+
+        <div class="cfg-card">
+            <div class="cfg-card-hdr">
+                <div class="cfg-card-icon" style="background:#f0f4ff">🤖</div>
+                <div><div class="cfg-card-title">AI Sağlayıcı</div></div>
+            </div>
+
+            @* ── Protokol seçimi ── *@
+            <div class="cfg-row">
+                <label class="cfg-label">Protokol</label>
+                <select class="form-control" style="max-width:320px" @bind="_aiProvider" @bind:after="OnProviderChanged">
+                    <option value="disabled">Devre Dışı</option>
+                    <option value="anthropic">Anthropic (Claude API)</option>
+                    <option value="openai_compatible">OpenAI Uyumlu — tüm diğer sağlayıcılar</option>
+                </select>
+                <span class="cfg-hint">OpenAI Uyumlu: OpenAI, Gemini, DeepSeek, Grok, Groq, Ollama, OpenRouter ve daha fazlası</span>
+            </div>
+
+            @if (_aiProvider == "anthropic")
+            {
+                <div class="cfg-row">
+                    <label class="cfg-label">API Anahtarı</label>
+                    <input class="form-control" style="max-width:420px" type="password"
+                           placeholder="sk-ant-api03-..."
+                           @bind="_aiApiKey" autocomplete="off" />
+                    <span class="cfg-hint"><a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a> → API Keys</span>
+                </div>
+                <div class="cfg-row">
+                    <label class="cfg-label">Model</label>
+                    <input class="form-control" style="max-width:280px"
+                           placeholder="claude-haiku-4-5-20251001"
+                           @bind="_aiModel" />
+                    <span class="cfg-hint">Boş bırakırsanız <code>claude-haiku-4-5-20251001</code> kullanılır</span>
+                </div>
+            }
+
+            @if (_aiProvider == "openai_compatible")
+            {
+                <div class="cfg-row">
+                    <label class="cfg-label">API URL</label>
+                    <input class="form-control" style="max-width:440px"
+                           placeholder="https://api.openai.com/v1"
+                           @bind="_aiBaseUrl" />
+                    <span class="cfg-hint">Sağlayıcının /v1 endpoint'i. Aşağıdaki tablodan kopyalayabilirsiniz.</span>
+                </div>
+                <div class="cfg-row">
+                    <label class="cfg-label">Model</label>
+                    <input class="form-control" style="max-width:280px"
+                           placeholder="gpt-4o-mini"
+                           @bind="_aiModel" />
+                </div>
+                <div class="cfg-row">
+                    <label class="cfg-label">API Anahtarı</label>
+                    <input class="form-control" style="max-width:420px" type="password"
+                           placeholder="sk-..."
+                           @bind="_aiApiKey" autocomplete="off" />
+                    <span class="cfg-hint">Yerel modeller (Ollama vb.) için boş bırakılabilir</span>
+                </div>
+
+                @* ── Örnek sağlayıcı tablosu ── *@
+                <div style="margin:12px 0 0 0">
+                    <button class="btn btn-outline btn-sm" @onclick='() => _showProviderTable = !_showProviderTable'>
+                        @(_showProviderTable ? "▲ Gizle" : "▼ Örnek Sağlayıcılar")
+                    </button>
+                </div>
+                @if (_showProviderTable)
+                {
+                    <div style="margin-top:12px;overflow-x:auto">
+                        <table style="width:100%;font-size:12px;border-collapse:collapse">
+                            <thead>
+                                <tr style="background:var(--bg-2);text-align:left">
+                                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">Sağlayıcı</th>
+                                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">API URL</th>
+                                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">Örnek Model</th>
+                                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)">API Anahtarı</th>
+                                    <th style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var p in _knownProviders)
+                                {
+                                    <tr style="border-bottom:1px solid var(--border)">
+                                        <td style="padding:7px 10px;font-weight:600">@p.Name</td>
+                                        <td style="padding:7px 10px;font-family:monospace;font-size:11px;color:var(--text-2)">@p.BaseUrl</td>
+                                        <td style="padding:7px 10px;font-family:monospace;font-size:11px">@p.Model</td>
+                                        <td style="padding:7px 10px;color:var(--text-3)">@p.KeyHint</td>
+                                        <td style="padding:7px 10px">
+                                            <button class="btn btn-outline btn-sm"
+                                                    @onclick="() => FillProvider(p)">Doldur</button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+
+            @if (_aiProvider != "disabled")
+            {
+                <div class="cfg-row" style="margin-top:8px">
+                    <button class="btn btn-outline btn-sm" @onclick="TestAiConnection" disabled="@_aiTesting">
+                        @(_aiTesting ? "Test ediliyor…" : "Bağlantıyı Test Et")
+                    </button>
+                    @if (!string.IsNullOrEmpty(_aiTestResult))
+                    {
+                        <span style="font-size:13px;margin-left:12px;color:@(_aiTestOk?"#16a34a":"#dc2626")">
+                            @_aiTestResult
+                        </span>
+                    }
+                </div>
+            }
+
+            <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+                <button class="btn btn-primary" @onclick="SaveAiSettings" disabled="@_aiSaving">
+                    @(_aiSaving ? "Kaydediliyor…" : "Kaydet")
+                </button>
+                @if (!string.IsNullOrEmpty(_aiSaveMsg))
+                {
+                    <span style="font-size:13px;margin-left:12px;color:@(_aiSaveError?"#dc2626":"#16a34a")">@_aiSaveMsg</span>
+                }
+            </div>
+        </div>
+    }
+
     </div>@* / içerik *@
 </div>@* / layout *@
 
+@* ── Onay Modalı ────────────────────────────────────────────────────────────── *@
+<ConfirmModal Visible="_confirmVisible"
+              Title="@_confirmTitle"
+              Message="@_confirmMsg"
+              ConfirmLabel="@_confirmLabel"
+              Danger="@_confirmDanger"
+              OnConfirm="ConfirmAction"
+              OnCancel="CancelConfirm" />
+
 @code {
     private string _tab = "theme";
+
+    // ── Yapay Zeka Ayarları ───────────────────────────────────────────────
+    private AiSettings _aiSettings = new();
+    private string _aiProvider = "disabled";
+    private string _aiApiKey   = "";
+    private string _aiModel    = "";
+    private string _aiBaseUrl  = "";
+    private bool   _aiSaving, _aiTesting;
+    private bool   _aiSaveError, _aiTestOk;
+    private string _aiSaveMsg    = "";
+    private string _aiTestResult = "";
+
+    // Örnek sağlayıcı tablosu için veri
+    private record ProviderPreset(string Name, string BaseUrl, string Model, string KeyHint, string KeyUrl);
+    private bool _showProviderTable;
+    private readonly ProviderPreset[] _knownProviders =
+    [
+        new("OpenAI",      "https://api.openai.com/v1",                               "gpt-4o-mini",          "platform.openai.com",   "https://platform.openai.com/api-keys"),
+        new("DeepSeek",    "https://api.deepseek.com/v1",                             "deepseek-chat",         "platform.deepseek.com", "https://platform.deepseek.com"),
+        new("Google Gemini","https://generativelanguage.googleapis.com/v1beta/openai","gemini-2.0-flash",      "aistudio.google.com",   "https://aistudio.google.com"),
+        new("xAI Grok",    "https://api.x.ai/v1",                                    "grok-3-mini",           "console.x.ai",          "https://console.x.ai"),
+        new("Groq",        "https://api.groq.com/openai/v1",                          "llama-3.3-70b-versatile","console.groq.com",     "https://console.groq.com"),
+        new("OpenRouter",  "https://openrouter.ai/api/v1",                            "openai/gpt-4o-mini",    "openrouter.ai",         "https://openrouter.ai/keys"),
+        new("Mistral",     "https://api.mistral.ai/v1",                               "mistral-small-latest",  "console.mistral.ai",    "https://console.mistral.ai"),
+        new("Together AI", "https://api.together.xyz/v1",                             "meta-llama/Llama-3-8b-chat-hf","together.ai",   "https://api.together.ai"),
+        new("Ollama (Yerel)","http://localhost:11434/v1",                             "llama3.2",              "— (gerekmez)",          "https://ollama.com"),
+    ];
+
+    private void FillProvider(ProviderPreset p)
+    {
+        _aiBaseUrl = p.BaseUrl;
+        _aiModel   = p.Model;
+        _aiApiKey  = "";          // kullanıcı kendi anahtarını girer
+        _showProviderTable = false;
+    }
+
+    private void LoadAiSettings()
+    {
+        _aiSettings  = CfgSvc.GetAiSettings();
+        _aiProvider  = _aiSettings.Provider;
+        _aiApiKey    = _aiSettings.ApiKey;
+        _aiModel     = _aiSettings.Model;
+        _aiBaseUrl   = _aiSettings.BaseUrl;
+        _aiSaveMsg   = "";
+        _aiTestResult = "";
+    }
+
+    private void OnProviderChanged()
+    {
+        _aiModel    = "";
+        _aiBaseUrl  = "";
+        _aiTestResult = "";
+    }
+
+    private void SaveAiSettings()
+    {
+        _aiSaving  = true;
+        _aiSaveMsg = "";
+        try
+        {
+            var settings = new AiSettings(_aiProvider, _aiApiKey.Trim(), _aiModel.Trim(), _aiBaseUrl.Trim());
+            CfgSvc.SetAiSettings(settings);
+            _aiSettings = settings;
+            _aiSaveMsg  = "Ayarlar kaydedildi.";
+            _aiSaveError = false;
+        }
+        catch (Exception ex)
+        {
+            _aiSaveMsg   = $"Kayıt hatası: {ex.Message}";
+            _aiSaveError = true;
+        }
+        finally { _aiSaving = false; }
+    }
+
+    private async Task TestAiConnection()
+    {
+        _aiTesting    = true;
+        _aiTestResult = "";
+        try
+        {
+            // Geçici ayarlarla test — kaydedilmeden önce de çalışsın
+            var testResult = await AiDraftSvc.TestConnectionAsync(
+                _aiProvider, _aiApiKey.Trim(), _aiModel.Trim(), _aiBaseUrl.Trim());
+            _aiTestOk     = true;
+            _aiTestResult = $"✓ Bağlantı başarılı — {testResult}";
+        }
+        catch (Exception ex)
+        {
+            _aiTestOk     = false;
+            _aiTestResult = $"✗ {ex.Message}";
+        }
+        finally { _aiTesting = false; }
+    }
+
+    // ── MCP API Anahtarları ────────────────────────────────────────────────
+    private List<McpApiKeyListItem> _mcpKeys = [];
+    private List<UserChoice> _mcpUserChoices = [];
+    private bool _mcpShowCreate;
+    private string _mcpCreateName = "";
+    private string _mcpCreateScopeUserId = "";
+    private string? _mcpNewKey;
+    private string? _mcpError;
+    private string _mcpBaseUrl = "";
+    private int _mcpCurrentUserId;
+
+    private void McpLoadKeys()
+    {
+        try { _mcpKeys = McpKeySvc.GetAll(); }
+        catch (Exception ex) { _mcpError = $"API anahtarları yüklenemedi: {ex.Message}"; }
+        try { _mcpUserChoices = McpKeySvc.GetUserChoices(); }
+        catch (Exception ex) { _mcpError = (_mcpError is null ? "" : _mcpError + " | ") + $"Kullanıcılar yüklenemedi: {ex.Message}"; }
+    }
+
+    private void McpCreateKey()
+    {
+        if (string.IsNullOrWhiteSpace(_mcpCreateName))
+        { _mcpError = "Anahtar adı zorunludur."; return; }
+        if (_mcpCurrentUserId == 0)
+        { _mcpError = "Oturum bilgisi alınamadı. Sayfayı yenileyip tekrar deneyin."; return; }
+        try
+        {
+            int? scopeUserId = int.TryParse(_mcpCreateScopeUserId, out var sid) ? sid : null;
+            var (_, plain) = McpKeySvc.Create(_mcpCreateName.Trim(), _mcpCurrentUserId, scopeUserId);
+            _mcpNewKey = plain;
+            _mcpShowCreate = false;
+            _mcpCreateName = "";
+            _mcpCreateScopeUserId = "";
+            _mcpError = null;
+            _mcpKeys = McpKeySvc.GetAll();
+        }
+        catch (Exception ex)
+        {
+            var inner = ex.InnerException?.InnerException?.Message ?? ex.InnerException?.Message ?? ex.Message;
+            _mcpError = $"Anahtar oluşturulamadı: {inner}";
+        }
+    }
+
+    private void McpRevoke(int id) { McpKeySvc.Revoke(id); _mcpKeys = McpKeySvc.GetAll(); }
+    private void McpDelete(int id) { McpKeySvc.Delete(id); _mcpKeys = McpKeySvc.GetAll(); }
+
+    private string GetMcpClaudeConfig()
+    {
+        var key = _mcpNewKey ?? "<API_KEY>";
+        return "{\n" +
+               "  \"mcpServers\": {\n" +
+               "    \"redzone\": {\n" +
+               "      \"type\": \"http\",\n" +
+               "      \"url\": \"" + _mcpBaseUrl + "/mcp\",\n" +
+               "      \"headers\": {\n" +
+               "        \"X-Api-Key\": \"" + key + "\"\n" +
+               "      }\n" +
+               "    }\n" +
+               "  }\n" +
+               "}";
+    }
+
+    // ── E-posta Kuyruğu Monitor ────────────────────────────────────────────
+    private IReadOnlyList<EmailLogEntry> _emailLog = [];
+
+    private void RefreshEmailMonitor()
+    {
+        _emailLog = EmailQueueSvc.GetLog();
+        _emailSettings = CfgSvc.GetEmailSettings();
+    }
+
+    // ── Arama ──────────────────────────────────────────────────────────────
+    private string _searchQuery = "";
+
+    private static readonly (string Tab, string Label, string[] Keywords)[] _searchIndex = [
+        ("theme",           "Görsel Ayarlar",       ["logo","renk","tema","font","yazı","sidebar","uygulama adı","görsel","kimlik","branding","menü","renk paleti","yazı tipi"]),
+        ("companies",       "Şirketler & Org.",     ["şirket","organizasyon","holding","tüzel","genel müdürlük"]),
+        ("departments",     "Departmanlar",         ["departman","birim","yönetici"]),
+        ("risk",            "Risk Modülü",          ["risk","kategori","strateji","fine kinney","fk","puan","skor","alan","kaynak","olasılık","maruz kalma","sonuç","risk alanı"]),
+        ("controls",        "Kontroller",           ["kontrol","önleyici","tespit","düzeltici","frekans","etkinlik"]),
+        ("audit",           "Denetim",              ["denetim","audit","ağırlık","tür","kategori","ciddiyet","bulgu"]),
+        ("ethics",          "Etik",                 ["etik","ihbar","bildiri"]),
+        ("email",           "E-posta SMTP",         ["smtp","e-posta","eposta","mail","host","port","şifre","gmail","outlook","exchange","bildirim"]),
+        ("email_templates", "E-posta Şablonları",   ["şablon","template","bildirim","e-posta şablon","konu","içerik"]),
+        ("ldap",            "Active Directory",     ["ldap","active directory","ad","kullanıcı dizini","bind","search","tls","ssl","kerberos"]),
+        ("database",        "Veritabanı",           ["veritabanı","database","bağlantı","connection","mysql","migration"]),
+        ("health",          "Sistem Sağlığı",       ["sağlık","health","test","bağlantı","smtp test","upload","destek","export","yedek"]),
+        ("external",        "Dış Denetim Kurumları", ["dış denetim","external","kurum","gözetim","bağımsız"]),
+        ("mcp",             "MCP / AI Bağlantı",    ["mcp","api","anahtar","claude","cursor","yapay zeka","ai","token","bağlantı"]),
+        ("email_monitor",   "E-posta Kuyruğu",      ["kuyruk","monitor","gönderim","geçmiş","smtp durum","log","e-posta kuyruğu"]),
+        ("defaults",        "Varsayılan Değerler",  ["varsayılan","default","gün","süre","gecikme","aksiyon","vade","sayfa"]),
+        ("security",        "Güvenlik",             ["güvenlik","şifre","parola","oturum","session","timeout","karmaşıklık","giriş","login","başarısız"]),
+        ("modules",         "Modüller",             ["modül","aç","kapat","etkinleştir","devre dışı","özellik"]),
+        ("history",         "Ayar Geçmişi",         ["geçmiş","log","değişiklik","tarih","kim değiştirdi"]),
+        ("checklist",       "Kurulum Kontrolü",     ["kurulum","kontrol listesi","wizard","başlangıç","ilk kurulum","setup"]),
+        ("import",          "Ayar İçe Aktar",       ["içe aktar","import","yedek yükle","restore","geri yükle","json"]),
+    ];
+
+    private void GoToTab(string tab)
+    {
+        _tab = tab;
+        _searchQuery = string.Empty;
+    }
+
+    private IEnumerable<(string Tab, string Label)> GetSearchResults()
+    {
+        if (string.IsNullOrWhiteSpace(_searchQuery)) return [];
+        var q = _searchQuery.ToLowerInvariant().Trim();
+        return _searchIndex
+            .Where(x => x.Label.ToLowerInvariant().Contains(q)
+                     || x.Keywords.Any(k => k.Contains(q) || q.Contains(k)))
+            .Select(x => (x.Tab, x.Label));
+    }
+
+    // ── Basit / Gelişmiş mod ───────────────────────────────────────────────
+    private bool _advancedMode;
+
+    private void SetMode(bool advanced)
+    {
+        _advancedMode = advanced;
+        CfgSvc.Set("admin_cfg_advanced_mode", advanced);
+        // Basit moddayken gelişmiş sekmesi açıksa temel sekmeye dön
+        if (!advanced && _advancedModeOnlyTabs.Contains(_tab))
+            _tab = "theme";
+    }
+
+    private static readonly HashSet<string> _advancedModeOnlyTabs = new([
+        "email_templates","ldap","database","external","defaults","security"
+    ]);
+
+    // ── Onay Modalı ────────────────────────────────────────────────────────
+    private bool  _confirmVisible;
+    private string _confirmTitle   = "";
+    private string _confirmMsg     = "";
+    private string _confirmLabel   = "Devam Et";
+    private bool   _confirmDanger  = true;
+    private Func<Task>? _confirmAction;
+
+    private void ShowConfirm(string title, string msg, Func<Task> action,
+                              string label = "Devam Et", bool danger = true)
+    {
+        _confirmTitle  = title;
+        _confirmMsg    = msg;
+        _confirmAction = action;
+        _confirmLabel  = label;
+        _confirmDanger = danger;
+        _confirmVisible = true;
+    }
+
+    private async Task ConfirmAction()
+    {
+        _confirmVisible = false;
+        if (_confirmAction != null)
+            await _confirmAction();
+    }
+
+    private void CancelConfirm() => _confirmVisible = false;
+
+    // ── Ayar değişiklik geçmişi ────────────────────────────────────────────
+    private List<ConfigChangeLog> _changeLog = [];
+
+    private string CurrentUser =>
+        HttpCtx.HttpContext?.User.FindFirst("full_name")?.Value
+        ?? HttpCtx.HttpContext?.User.Identity?.Name
+        ?? "admin";
+
+    private void LogChange(string key, string? oldVal, string? newVal, string description)
+    {
+        var masked_old = MaskSensitive(key, oldVal);
+        var masked_new = MaskSensitive(key, newVal);
+        Db.ConfigChangeLogs.Add(new ConfigChangeLog
+        {
+            ChangedAt   = DateTime.UtcNow,
+            ChangedBy   = CurrentUser,
+            SettingKey  = key,
+            OldValue    = masked_old,
+            NewValue    = masked_new,
+            Description = description,
+        });
+        Db.SaveChanges();
+    }
+
+    private static string? MaskSensitive(string key, string? value)
+    {
+        if (value is null) return null;
+        var k = key.ToLowerInvariant();
+        if (k.Contains("password") || k.Contains("secret") || k.Contains("token")
+            || k.Contains("bind_pass") || k.Contains("smtp_pass"))
+            return "••••••";
+        // Mask JSON password fields
+        return System.Text.RegularExpressions.Regex.Replace(
+            value,
+            @"""(password|bind_password|smtp_password|secret|token)""\s*:\s*""[^""]+""",
+            m => m.Value[..m.Value.IndexOf('"', m.Value.IndexOf(':'))] + "\": \"••••••\"",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    }
+
+    private void ActivateHistory()
+    {
+        _tab = "history";
+        _changeLog = [.. Db.ConfigChangeLogs.OrderByDescending(l => l.ChangedAt).Take(50)];
+    }
+
+    // ── Export ────────────────────────────────────────────────────────────
+    private async Task DownloadConfigExport()
+    {
+        var all = CfgSvc.GetAll();
+        var sensitiveKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            { "email_settings", "smtp_password", "bind_password" };
+
+        var export = new Dictionary<string, object?>();
+        foreach (var (k, v) in all)
+        {
+            if (sensitiveKeys.Any(s => k.Contains(s, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            // Email settings: include but mask password
+            if (k == "email_settings" && v is System.Text.Json.JsonElement je)
+            { export[k] = "[MASKELENDI]"; continue; }
+            export[k] = v;
+        }
+
+        var json = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            exported_at = DateTime.UtcNow,
+            version     = System.Reflection.Assembly.GetExecutingAssembly().GetName().Version?.ToString(),
+            settings    = export,
+        }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower });
+
+        LogChange("config_export", null, null, "Ayar yedeği (export) indirildi");
+        await DownloadText($"config-export-{DateTime.Now:yyyyMMdd-HHmm}.json", json);
+    }
+
+    private async Task DownloadSupportPackage()
+    {
+        var asm = System.Reflection.Assembly.GetExecutingAssembly();
+        var ver = asm.GetName().Version?.ToString() ?? "?";
+        var rt  = System.Runtime.InteropServices.RuntimeInformation.FrameworkDescription;
+        var os  = System.Runtime.InteropServices.RuntimeInformation.OSDescription;
+
+        var pkg = new
+        {
+            generated_at    = DateTime.UtcNow,
+            app_version     = ver,
+            dotnet_runtime  = rt,
+            os_description  = os,
+            environment     = Env.EnvironmentName,
+            active_modules  = new
+            {
+                risk     = CfgSvc.IsModuleActive("risk"),
+                audit    = CfgSvc.IsModuleActive("audit"),
+                external = CfgSvc.IsModuleActive("external"),
+                ethics   = CfgSvc.IsModuleActive("ethics"),
+            },
+            ldap_enabled  = _ldapEnabled,
+            smtp_enabled  = _emailSettings.Enabled,
+            smtp_host     = _emailSettings.Enabled ? _emailSettings.Host : null,
+            smtp_port     = _emailSettings.Enabled ? _emailSettings.Port : 0,
+            migration_applied = _migrApplied.Count,
+            migration_pending = _migrPending.Count,
+            migration_pending_list = _migrPending,
+            db_test_ok    = _appDbTestResult != null ? _appDbTestOk : (bool?)null,
+            db_test_msg   = _appDbTestResult,
+            smtp_test_ok  = _smtpCheckMsg != null ? _smtpCheckOk : (bool?)null,
+            smtp_test_msg = _smtpCheckMsg,
+            uploads_ok    = _uploadsDirChecked ? _uploadsDirOk : (bool?)null,
+            uploads_size  = _uploadsDirSizeStr,
+            recent_changes = _changeLog.Take(10).Select(l => new
+            {
+                at  = l.ChangedAt,
+                by  = l.ChangedBy,
+                key = l.SettingKey,
+                desc = l.Description,
+            }),
+        };
+
+        var json = System.Text.Json.JsonSerializer.Serialize(pkg,
+            new System.Text.Json.JsonSerializerOptions { WriteIndented = true, PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.SnakeCaseLower });
+
+        LogChange("support_package", null, null, "Destek paketi indirildi");
+        await DownloadText($"support-package-{DateTime.Now:yyyyMMdd-HHmm}.json", json);
+    }
+
+    private async Task DownloadText(string fileName, string content)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(content);
+        var b64   = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFileFromBase64", fileName, b64, "application/json");
+    }
+
+    // ── Config Import ─────────────────────────────────────────────────────────
+    private record ImportDiff(string Key, string? Current, string? New);
+
+    private static readonly HashSet<string> _importBlockedKeys = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "email_settings",      // SMTP şifresi içerir
+        "ldap_bind_password",  // LDAP şifresi
+        "admin_cfg_advanced_mode", // kişisel tercih
+    };
+
+    // Hassas JSON alan adları (içe aktarma sırasında bu key içeren değerler atlanır)
+    private static readonly string[] _importSensitivePatterns =
+        ["password", "secret", "token", "key", "credential"];
+
+    private List<ImportDiff>? _importPreview;
+    private string? _importError;
+    private string? _importSuccess;
+
+    private async Task HandleImportFile(InputFileChangeEventArgs e)
+    {
+        _importError   = null;
+        _importSuccess = null;
+        _importPreview = null;
+
+        var file = e.File;
+        if (file.Size > 500_000) { _importError = "Dosya çok büyük (maks. 500 KB)."; return; }
+        if (!file.Name.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        { _importError = "Sadece .json dosyası yükleyebilirsiniz."; return; }
+
+        try
+        {
+            using var stream = file.OpenReadStream(500_000);
+            using var reader = new System.IO.StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+
+            var doc = System.Text.Json.JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("settings", out var settingsEl))
+            { _importError = "Geçerli bir ayar yedeği dosyası değil (\"settings\" alanı bulunamadı)."; return; }
+
+            var diffs = new List<ImportDiff>();
+            var current = CfgSvc.GetAll();
+
+            foreach (var prop in settingsEl.EnumerateObject())
+            {
+                var key = prop.Name;
+                var rawVal = prop.Value.ToString();
+
+                if (_importBlockedKeys.Contains(key)) continue;
+
+                // Hassas değer pattern kontrolü
+                if (_importSensitivePatterns.Any(p => key.Contains(p, StringComparison.OrdinalIgnoreCase)))
+                    continue;
+
+                // İçerik hassas alan içeriyor mu?
+                if (_importSensitivePatterns.Any(p => rawVal.Contains(p, StringComparison.OrdinalIgnoreCase)
+                    && rawVal.Contains("••")))
+                    continue;
+
+                var currentStr = current.TryGetValue(key, out var cur)
+                    ? (cur?.ToString()?.Length > 80 ? cur.ToString()![..80] + "…" : cur?.ToString())
+                    : "(yok)";
+                var newStr = rawVal.Length > 80 ? rawVal[..80] + "…" : rawVal;
+
+                if (currentStr != newStr)
+                    diffs.Add(new ImportDiff(key, currentStr, newStr));
+            }
+
+            if (!diffs.Any())
+            { _importError = "Mevcut ayarlardan farklı hiçbir değer bulunamadı."; return; }
+
+            _importPreview = diffs;
+        }
+        catch (System.Text.Json.JsonException)
+        { _importError = "Geçersiz JSON formatı. Dosyayı kontrol edin."; }
+        catch (Exception ex)
+        { _importError = $"Dosya okunamadı: {ex.Message}"; }
+    }
+
+    private void ApplyImport()
+    {
+        if (_importPreview == null) return;
+        ShowConfirm(
+            "Ayarları İçe Aktar",
+            $"{_importPreview.Count} ayar güncellenecek. Bu işlem geri alınamaz (yedek almak için önce \"↓ Ayar Yedeği\" indirin).",
+            () =>
+            {
+                var applied = 0;
+                foreach (var diff in _importPreview)
+                {
+                    try
+                    {
+                        // JSON değeri olarak sakla
+                        var val = System.Text.Json.JsonDocument.Parse(diff.New ?? "null").RootElement;
+                        CfgSvc.Set(diff.Key, val);
+                        applied++;
+                    }
+                    catch { /* geçersiz değer atla */ }
+                }
+                LogChange("config_import", null, $"{applied} ayar içe aktarıldı", $"Config import tamamlandı ({applied}/{_importPreview.Count} ayar)");
+                _importPreview = null;
+                _importSuccess = $"{applied} ayar başarıyla içe aktarıldı.";
+                return Task.CompletedTask;
+            },
+            "İçe Aktar",
+            danger: false);
+    }
+
+    private void CancelImport()
+    {
+        _importPreview = null;
+        _importError   = null;
+    }
+
+    // ── E-posta şablon yönetimi ──────────────────────────────────────────────
+    private record EmailTplDef(
+        string Key, string Title, string Description, string Recipients,
+        string DefaultSubject, string DefaultBody, string[] Variables);
+
+    private static readonly EmailTplDef[] EmailDefs =
+    [
+        new("risk_proposed",
+            "Yeni Risk Önerisi",
+            "Sisteme yeni bir risk önerisi eklendiğinde gönderilir.",
+            "Risk yöneticileri, Yöneticiler, Risk Komitesi",
+            EmailTemplates.DefaultSubject_RiskProposed,
+            EmailTemplates.DefaultTpl_RiskProposed,
+            new[]{ "riskCode", "riskTitle", "proposerName", "baseUrl" }),
+        new("status_changed",
+            "Risk Durumu Değişikliği",
+            "Bir riskin durumu güncellendiğinde risk sahibine gönderilir.",
+            "Risk Sahibi",
+            EmailTemplates.DefaultSubject_StatusChanged,
+            EmailTemplates.DefaultTpl_StatusChanged,
+            new[]{ "riskCode", "riskTitle", "oldStatus", "newStatus", "baseUrl" }),
+        new("owner_assigned",
+            "Risk Sahipliği Atama",
+            "Bir kullanıcı risk sahibi olarak atandığında gönderilir.",
+            "Yeni Risk Sahibi",
+            EmailTemplates.DefaultSubject_OwnerAssigned,
+            EmailTemplates.DefaultTpl_OwnerAssigned,
+            new[]{ "riskCode", "riskTitle", "baseUrl" }),
+        new("action_due",
+            "Aksiyon Vadesi Yaklaşıyor",
+            "Bir aksiyon planının bitiş tarihi yaklaştığında sorumluya gönderilir.",
+            "Aksiyon Sorumlusu",
+            EmailTemplates.DefaultSubject_ActionDueSoon,
+            EmailTemplates.DefaultTpl_ActionDueSoon,
+            new[]{ "riskCode", "description", "dueDate", "daysLeft", "baseUrl" }),
+        new("finding_assigned",
+            "Denetim Bulgusuna Atandı",
+            "Bir kullanıcı denetim bulgusu sahibi olarak atandığında gönderilir.",
+            "Bulgu Sahibi",
+            EmailTemplates.DefaultSubject_FindingAssigned,
+            EmailTemplates.DefaultTpl_FindingAssigned,
+            new[]{ "findingCode", "findingTitle", "baseUrl" }),
+        new("closure_requested",
+            "Kapatma Başvurusu",
+            "Bulgu sahibi kapatma başvurusu yaptığında denetçiye gönderilir.",
+            "Denetçi",
+            EmailTemplates.DefaultSubject_ClosureRequested,
+            EmailTemplates.DefaultTpl_ClosureRequested,
+            new[]{ "findingCode", "findingTitle", "baseUrl" }),
+        new("closure_decided",
+            "Kapatma Kararı",
+            "Kapatma başvurusu onaylandığında veya reddedildiğinde bulgu sahibine gönderilir.",
+            "Bulgu Sahibi",
+            EmailTemplates.DefaultSubject_ClosureDecided,
+            EmailTemplates.DefaultTpl_ClosureDecided,
+            new[]{ "findingCode", "findingTitle", "decisionLabel", "decisionColor", "baseUrl" }),
+        new("finding_due",
+            "Denetim Bulgusu Vadesi Yaklaşıyor",
+            "Kapatılmamış bir bulgunun vadesi yaklaştığında bulgu sahibine gönderilir.",
+            "Bulgu Sahibi",
+            EmailTemplates.DefaultSubject_FindingDueSoon,
+            EmailTemplates.DefaultTpl_FindingDueSoon,
+            new[]{ "findingCode", "findingTitle", "dueDate", "daysLeft", "baseUrl" }),
+        new("ethics_submitted",
+            "Yeni Etik Bildirim",
+            "Sisteme yeni bir etik bildirim geldiğinde etik kurul ve denetim yöneticilerine gönderilir.",
+            "Etik Kurul Üyeleri, Denetim Yöneticileri",
+            EmailTemplates.DefaultSubject_EthicsSubmitted,
+            EmailTemplates.DefaultTpl_EthicsSubmitted,
+            new[]{ "ethicsCode", "subject", "baseUrl" }),
+        new("ethics_reviewed",
+            "Etik Bildirim İncelendi",
+            "Denetim incelemesi tamamlandığında etik kurula; kurul incelemesi tamamlandığında denetim yöneticilerine gönderilir.",
+            "Etik Kurul / Denetim Yöneticileri",
+            EmailTemplates.DefaultSubject_EthicsReviewed,
+            EmailTemplates.DefaultTpl_EthicsReviewed,
+            new[]{ "ethicsCode", "subject", "stage", "baseUrl" }),
+        new("test",
+            "Test E-postası",
+            "Admin panelinden manuel olarak tetiklenen test bildirimi.",
+            "Yönetici (manuel tetiklenir)",
+            EmailTemplates.DefaultSubject_Test,
+            EmailTemplates.DefaultTpl_Test,
+            new[]{ "dateTime" }),
+    ];
+
+    private Dictionary<string, string> _emailTplSubjects = [];
+    private Dictionary<string, string> _emailTplBodies   = [];
+    private Dictionary<string, string> _emailTplSaveMsgs = [];
+    private string _previewKey  = "";
+    private string _previewHtml = "";
     private string _success = "";
 
     // Dış Denetim Ayarları sekmesi
@@ -1164,8 +3156,11 @@
     private string _sidebarColor     = "#0f1f33";
     private string _sidebarTextColor = "#94A3B8";
     private int    _sidebarFontSize  = 13;
-    private string _sidebarFont      = "Inter";
-    private string _themeSaveMsg     = "";
+    private string _sidebarFont        = "Inter";
+    private string _navSectionColor    = "#64748B";
+    private int    _navSectionFontSize = 10;
+    private string _navSectionSaveMsg  = "";
+    private string _themeSaveMsg       = "";
 
     private static readonly (string Name, string Label)[] _fontOptions =
     [
@@ -1192,6 +3187,59 @@
         ("relevant_legislation", "İlgili Mevzuat / Doküman",  "Yasal düzenlemeler ve iç dokümanlar"),
     ];
     private int _reviewThresholdDays = 90;
+    private int _weekDays = 7, _warnDays = 7, _critDays = 30;
+
+    // Varsayılan Değerler
+    private int    _defaultActionDueDays = 30;
+    private string _defaultsSaveMsg      = "";
+
+    // Güvenlik Ayarları
+    private int    _secPasswordMinLen    = 6;
+    private bool   _secPasswordComplexity;
+    private int    _secSessionHours      = 8;
+    private int    _secResetTokenMin     = 30;
+    private int    _secMaxFailedLogins   = 0;
+    private int    _secLockoutMinutes    = 15;
+    private string _secSaveMsg           = "";
+
+    // Aksiyon Zorunluluk Ayarları
+    private static readonly (string Key, string Label, string Hint)[] _actionRequireDefs =
+    [
+        ("due_date",     "Hedef Tarih",    "Aksiyon eklenirken hedef tarih boş bırakılamaz"),
+        ("responsible",  "Sorumlu",        "Sorumlu departman seçilmeden aksiyon kaydedilemez"),
+        ("closure_note", "Kapanış Notu",   "Tamamlanan aksiyonlarda kapanış notu zorunlu"),
+        ("delay_reason", "Gecikme Nedeni", "Vadesi geçmiş aksiyonlarda gecikme nedeni zorunlu"),
+    ];
+    private Dictionary<string, bool> _actionRequireToggles = [];
+    private string _actionRequireSaveMsg = "";
+
+    // E-posta Olay Ayarları
+    private static readonly (string Key, string Label, string Desc)[] _emailEvents =
+    [
+        ("risk_proposed",    "Yeni Risk Önerisi",              "Risk sisteme eklendiğinde risk yöneticilerine ve komiteye bildirim gider"),
+        ("status_changed",   "Risk Durum Değişikliği",         "Risk durumu değiştiğinde risk sahibine bildirim gider"),
+        ("owner_assigned",   "Risk Sahibi Atandı",             "Bir kullanıcı risk sahibi olarak atandığında ilgili kişiye bildirim gider"),
+        ("action_due",       "Risk Aksiyon Vadesi",            "Her gece vadesi yaklaşan risk aksiyonları için sorumluya hatırlatma gönderilir"),
+        ("finding_assigned", "Denetim Bulgusuna Atandı",       "Bulgu sahibi olarak atanan kullanıcıya bildirim gider"),
+        ("closure_requested","Kapatma Başvurusu",              "Bulgu sahibi kapatma başvurusu yaptığında denetçiye bildirim gider"),
+        ("closure_decided",  "Kapatma Kararı",                 "Denetçi başvuruyu onayladığında veya reddettiğinde bulgu sahibine bildirim gider"),
+        ("finding_due",      "Denetim Bulgusu Vadesi",         "Her gece vadesi yaklaşan bulgular için bulgu sahibine hatırlatma gönderilir"),
+        ("ethics_submitted", "Yeni Etik Bildirim",             "Etik bildirim geldiğinde etik kurul üyelerine ve denetim yöneticilerine bildirim gider"),
+        ("ethics_reviewed",  "Etik Bildirim İncelendi",        "Denetim veya kurul incelemesi tamamlandığında ilgili taraflara bildirim gider"),
+    ];
+    private Dictionary<string, bool> _emailEventToggles = [];
+    private int    _actionDueRemindDays = 3;
+    private string _emailEventsSaveMsg  = "";
+
+    // Sistem Sağlığı
+    private string  _healthBadge       = "";      // "", "ok", "warn"
+    private bool    _healthRunning;
+    private bool    _smtpChecking;
+    private bool    _smtpCheckOk;
+    private string? _smtpCheckMsg;
+    private bool    _uploadsDirChecked;
+    private bool    _uploadsDirOk;
+    private string  _uploadsDirSizeStr = "";
     private List<string> _controlTypes = [], _controlEffectiveness = [], _controlFrequencies = [];
     private List<string> _auditTypes = [], _auditCategories = [], _auditSeverities = [], _ethicsCategories = [];
 
@@ -1236,14 +3284,25 @@
 
     protected override void OnInitialized()
     {
+        _advancedMode   = CfgSvc.Get<bool>("admin_cfg_advanced_mode");
         _emailSettings  = CfgSvc.GetEmailSettings();
         _appName        = CfgSvc.Get<string>("app_name")      is { Length: > 0 } n  ? n  : "RED";
         _appTagline     = CfgSvc.Get<string>("app_tagline")   is { Length: > 0 } tl ? tl : "Risk · Etik · Denetim";
-        _sidebarColor     = CfgSvc.Get<string>("sidebar_color")      is { Length: > 0 } sc ? sc : "#0f1f33";
-        _sidebarTextColor = CfgSvc.Get<string>("sidebar_text_color") is { Length: > 0 } tc ? tc : "#94A3B8";
-        _sidebarFontSize  = int.TryParse(CfgSvc.Get<string>("sidebar_font_size"), out var fs) ? fs : 13;
-        _sidebarFont      = CfgSvc.Get<string>("sidebar_font")       is { Length: > 0 } sf ? sf : "Inter";
-        _logoPath         = CfgSvc.Get<string>("logo_path")          ?? "";
+        _sidebarColor       = CfgSvc.Get<string>("sidebar_color")          is { Length: > 0 } sc ? sc : "#0f1f33";
+        _sidebarTextColor   = CfgSvc.Get<string>("sidebar_text_color")   is { Length: > 0 } tc ? tc : "#94A3B8";
+        _sidebarFontSize    = int.TryParse(CfgSvc.Get<string>("sidebar_font_size"),     out var fs) ? fs : 13;
+        _sidebarFont        = CfgSvc.Get<string>("sidebar_font")         is { Length: > 0 } sf ? sf : "Inter";
+        _navSectionColor    = CfgSvc.Get<string>("nav_section_color")    is { Length: > 0 } nc ? nc : "#64748B";
+        _navSectionFontSize = int.TryParse(CfgSvc.Get<string>("nav_section_font_size"), out var nf) ? nf : 10;
+        _logoPath           = CfgSvc.Get<string>("logo_path")            ?? "";
+
+        // E-posta şablonları
+        foreach (var k in new[]{ "risk_proposed","status_changed","owner_assigned","action_due","test" })
+        {
+            _emailTplSubjects[k] = CfgSvc.Get<string>($"email_tpl_{k}_subject") ?? "";
+            _emailTplBodies[k]   = CfgSvc.Get<string>($"email_tpl_{k}_body")    ?? "";
+        }
+
         _riskActive     = CfgSvc.IsModuleActive("risk");
         _auditActive    = CfgSvc.IsModuleActive("audit");
         _externalActive = CfgSvc.IsModuleActive("external");
@@ -1271,9 +3330,35 @@
         _ethicsCategories     = [.. CfgSvc.GetList("ethics_categories")];
         _riskDetailFields     = CfgSvc.GetRiskDetailFields();
         _reviewThresholdDays  = CfgSvc.Get<int>("review_threshold_days") is var t && t > 0 ? t : 90;
+        _weekDays             = CfgSvc.GetWeekDays();
+        _warnDays             = CfgSvc.GetWarnDays();
+        _critDays             = CfgSvc.GetCritDays();
+        _defaultActionDueDays  = CfgSvc.GetDefaultActionDueDays();
+        _secMaxFailedLogins    = CfgSvc.GetMaxFailedLogins();
+        _secLockoutMinutes     = CfgSvc.GetLockoutMinutes();
+        _secPasswordMinLen     = CfgSvc.GetPasswordMinLength();
+        _secPasswordComplexity = CfgSvc.GetPasswordComplexity();
+        _secSessionHours       = CfgSvc.GetSessionTimeoutHours();
+        _secResetTokenMin      = CfgSvc.GetResetTokenMinutes();
+        _actionDueRemindDays   = CfgSvc.GetActionDueRemindDays();
+        _emailEventToggles     = _emailEvents.ToDictionary(e => e.Key, e => CfgSvc.IsEmailEventEnabled(e.Key));
+        _actionRequireToggles  = _actionRequireDefs.ToDictionary(d => d.Key, d => CfgSvc.IsActionFieldRequired(d.Key));
         ExtReloadBodies();
         _extUsers = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
         MigrRefresh();
+
+        // MCP
+        var ctx = HttpCtx.HttpContext;
+        if (ctx is not null)
+        {
+            var idStr = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            int.TryParse(idStr, out _mcpCurrentUserId);
+            _mcpBaseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+        }
+        McpLoadKeys();
+
+        // E-posta Kuyruğu
+        _emailLog = EmailQueueSvc.GetLog();
     }
 
     // ── E-posta ──────────────────────────────────────────────────────────────
@@ -1299,9 +3384,40 @@
         }
     }
 
+    private void ApplySmtpPreset(string provider)
+    {
+        switch (provider)
+        {
+            case "gmail":
+                _emailSettings.Host   = "smtp.gmail.com";
+                _emailSettings.Port   = 587;
+                _emailSettings.UseSsl = true;
+                break;
+            case "outlook":
+                _emailSettings.Host   = "smtp.office365.com";
+                _emailSettings.Port   = 587;
+                _emailSettings.UseSsl = true;
+                break;
+            case "yandex":
+                _emailSettings.Host   = "smtp.yandex.com";
+                _emailSettings.Port   = 587;
+                _emailSettings.UseSsl = true;
+                break;
+            case "custom":
+                _emailSettings.Host   = "";
+                _emailSettings.Port   = 587;
+                _emailSettings.UseSsl = false;
+                break;
+        }
+    }
+
     private void SaveEmailSettings()
     {
         CfgSvc.SetEmailSettings(_emailSettings);
+        LogChange("email_settings",
+            "[eski]",
+            $"host={_emailSettings.Host};port={_emailSettings.Port};ssl={_emailSettings.UseSsl};enabled={_emailSettings.Enabled};from={_emailSettings.FromAddress}",
+            "SMTP ayarları güncellendi");
         _emailSaveMsg = "Kaydedildi";
         _ = Task.Delay(3000).ContinueWith(_ => { _emailSaveMsg = ""; InvokeAsync(StateHasChanged); });
     }
@@ -1339,11 +3455,139 @@
         _success = $"Periyodik inceleme eşiği {_reviewThresholdDays} gün olarak kaydedildi.";
     }
 
+    private void SaveOverdueThresholds()
+    {
+        if (_weekDays < 1) _weekDays = 1;
+        if (_warnDays < 1) _warnDays = 1;
+        if (_critDays < 1) _critDays = 1;
+        CfgSvc.Set("week_days",         _weekDays);
+        CfgSvc.Set("overdue_warn_days", _warnDays);
+        CfgSvc.Set("overdue_crit_days", _critDays);
+        _success = "Gecikme eşikleri kaydedildi.";
+    }
+
+    // ── Varsayılan Değerler ───────────────────────────────────────────────────
+    private void SaveDefaults()
+    {
+        if (_defaultActionDueDays < 1) _defaultActionDueDays = 1;
+        CfgSvc.Set("default_action_due_days", _defaultActionDueDays);
+        _defaultsSaveMsg = "Kaydedildi.";
+    }
+
+    // ── Güvenlik Ayarları ─────────────────────────────────────────────────────
+    private void SaveSecuritySettings()
+    {
+        if (_secPasswordMinLen  < 4)  _secPasswordMinLen  = 4;
+        if (_secSessionHours    < 1)  _secSessionHours    = 1;
+        if (_secResetTokenMin   < 5)  _secResetTokenMin   = 5;
+        if (_secMaxFailedLogins < 0)  _secMaxFailedLogins = 0;
+        if (_secLockoutMinutes  < 1)  _secLockoutMinutes  = 1;
+        CfgSvc.Set("security_password_min_length",   _secPasswordMinLen);
+        CfgSvc.Set("security_password_complexity",   _secPasswordComplexity);
+        CfgSvc.Set("security_session_timeout_hours", _secSessionHours);
+        CfgSvc.Set("security_reset_token_minutes",   _secResetTokenMin);
+        CfgSvc.Set("security_max_failed_logins",     _secMaxFailedLogins);
+        CfgSvc.Set("security_lockout_minutes",       _secLockoutMinutes);
+        LogChange("security_settings", "[eski]",
+            $"min_len={_secPasswordMinLen};complexity={_secPasswordComplexity};session={_secSessionHours}h;reset={_secResetTokenMin}m;max_fails={_secMaxFailedLogins};lockout={_secLockoutMinutes}m",
+            "Güvenlik ayarları güncellendi");
+        _secSaveMsg = "Kaydedildi.";
+    }
+
+    // ── Aksiyon Zorunluluk Ayarları ───────────────────────────────────────────
+    private void SaveActionRequire()
+    {
+        foreach (var (key, _, _) in _actionRequireDefs)
+            CfgSvc.Set($"action_require_{key}", _actionRequireToggles.GetValueOrDefault(key, false));
+        var summary = string.Join(";", _actionRequireDefs.Select(d => $"{d.Key}={_actionRequireToggles.GetValueOrDefault(d.Key, false)}"));
+        LogChange("action_require_settings", null, summary, "Aksiyon zorunluluk ayarları güncellendi");
+        _actionRequireSaveMsg = "Kaydedildi.";
+    }
+
+    // ── E-posta Olay Ayarları ─────────────────────────────────────────────────
+    private void SaveEmailEvents()
+    {
+        foreach (var (key, _, _) in _emailEvents)
+            CfgSvc.Set($"email_event_{key}", _emailEventToggles.GetValueOrDefault(key, true));
+        if (_actionDueRemindDays < 1) _actionDueRemindDays = 1;
+        CfgSvc.Set("action_due_remind_days", _actionDueRemindDays);
+        _emailEventsSaveMsg = "Kaydedildi.";
+    }
+
+    // ── Sistem Sağlığı ────────────────────────────────────────────────────────
+    private async Task ActivateHealth()
+    {
+        _tab = "health";
+        if (_migrApplied.Count == 0 && _migrPending.Count == 0 && _migrLoadError == null)
+            MigrRefresh();
+        await Task.CompletedTask;
+    }
+
+    private async Task RunAllHealthChecks()
+    {
+        _healthRunning = true;
+        StateHasChanged();
+        await TestAppDb();
+        MigrRefresh();
+        await CheckSmtp();
+        CheckUploadsDir();
+        _healthBadge = (!_appDbTestOk || _migrPending.Count > 0 || !_smtpCheckOk || !_uploadsDirOk) ? "warn" : "ok";
+        _healthRunning = false;
+    }
+
+    private async Task CheckSmtp()
+    {
+        _smtpChecking = true; _smtpCheckMsg = null;
+        StateHasChanged();
+        var s = CfgSvc.GetEmailSettings();
+        if (!s.Enabled) { _smtpCheckOk = false; _smtpCheckMsg = "E-posta gönderimi devre dışı (Ayarlar → E-posta SMTP)"; _smtpChecking = false; return; }
+        try
+        {
+            using var client = new System.Net.Mail.SmtpClient(s.Host, s.Port);
+            client.EnableSsl    = s.UseSsl;
+            client.Timeout      = 5000;
+            if (!string.IsNullOrEmpty(s.Username))
+                client.Credentials = new System.Net.NetworkCredential(s.Username, s.Password);
+            await Task.Run(() => client.Send(new System.Net.Mail.MailMessage("noreply@test.local", "noreply@test.local", "ping", "ping")));
+            _smtpCheckOk  = true;
+            _smtpCheckMsg = $"Bağlantı başarılı — {s.Host}:{s.Port}";
+        }
+        catch (Exception ex)
+        {
+            _smtpCheckOk  = false;
+            _smtpCheckMsg = ex.Message.Length > 120 ? ex.Message[..120] + "…" : ex.Message;
+        }
+        finally { _smtpChecking = false; }
+    }
+
+    private void CheckUploadsDir()
+    {
+        var path = Path.Combine(Env.WebRootPath, "uploads");
+        _uploadsDirChecked = true;
+        try
+        {
+            if (!Directory.Exists(path))
+            {
+                Directory.CreateDirectory(path);
+            }
+            var testFile = Path.Combine(path, ".write_test");
+            System.IO.File.WriteAllText(testFile, "ok");
+            System.IO.File.Delete(testFile);
+            var bytes = Directory.GetFiles(path, "*", SearchOption.AllDirectories).Sum(f => new FileInfo(f).Length);
+            _uploadsDirSizeStr = bytes < 1024 * 1024 ? $"{bytes / 1024.0:F1} KB" : $"{bytes / 1024.0 / 1024.0:F1} MB";
+            _uploadsDirOk = true;
+        }
+        catch { _uploadsDirOk = false; _uploadsDirSizeStr = ""; }
+    }
+
     private void ToggleRiskField(string key, bool val) => _riskDetailFields[key] = val;
 
     private void SaveRiskDetailFields()
     {
         CfgSvc.Set("risk_detail_fields", _riskDetailFields);
+        var visible = string.Join(",", _riskDetailFields.Where(kv => kv.Value).Select(kv => kv.Key));
+        var hidden  = string.Join(",", _riskDetailFields.Where(kv => !kv.Value).Select(kv => kv.Key));
+        LogChange("risk_detail_fields", null, $"görünür={visible};gizli={hidden}", "Risk alan görünürlükleri güncellendi");
         _success = "Alan görünürlükleri kaydedildi.";
     }
 
@@ -1356,6 +3600,71 @@
         CfgSvc.Set("sidebar_font",       _sidebarFont);
         _themeSaveMsg = "Kaydedildi";
         _ = Task.Delay(3000).ContinueWith(_ => { _themeSaveMsg = ""; InvokeAsync(StateHasChanged); });
+    }
+
+    private void SaveNavSection()
+    {
+        CfgSvc.Set("nav_section_color",     _navSectionColor);
+        CfgSvc.Set("nav_section_font_size", _navSectionFontSize.ToString());
+        _navSectionSaveMsg = "Kaydedildi";
+        _ = Task.Delay(3000).ContinueWith(_ => { _navSectionSaveMsg = ""; InvokeAsync(StateHasChanged); });
+    }
+
+    // ── E-posta şablon yönetimi ──────────────────────────────────────────────
+    private void SaveEmailTemplate(string key)
+    {
+        CfgSvc.Set($"email_tpl_{key}_subject", _emailTplSubjects.GetValueOrDefault(key, ""));
+        CfgSvc.Set($"email_tpl_{key}_body",    _emailTplBodies.GetValueOrDefault(key, ""));
+        LogChange($"email_tpl_{key}", "[eski şablon]", "[özel şablon]", $"E-posta şablonu '{key}' güncellendi");
+        _emailTplSaveMsgs[key] = "Kaydedildi";
+        _ = Task.Delay(3000).ContinueWith(_ => { _emailTplSaveMsgs[key] = ""; InvokeAsync(StateHasChanged); });
+    }
+
+    private void ResetEmailTemplate(string key)
+    {
+        ShowConfirm(
+            "Şablonu Varsayılana Döndür",
+            $"'{key}' şablonu varsayılan içeriğe döndürülecek. Özel düzenlemeleriniz kaybolacak.",
+            () =>
+            {
+                _emailTplSubjects[key] = "";
+                _emailTplBodies[key]   = "";
+                CfgSvc.Set($"email_tpl_{key}_subject", "");
+                CfgSvc.Set($"email_tpl_{key}_body",    "");
+                _previewKey  = "";
+                _previewHtml = "";
+                _emailTplSaveMsgs[key] = "Varsayılana döndürüldü";
+                LogChange($"email_tpl_{key}", "[özel şablon]", "[varsayılan]", $"E-posta şablonu '{key}' varsayılana döndürüldü");
+                _ = Task.Delay(3000).ContinueWith(_ => { _emailTplSaveMsgs[key] = ""; InvokeAsync(StateHasChanged); });
+                return Task.CompletedTask;
+            },
+            "Döndür");
+    }
+
+    private void PreviewTemplate(EmailTplDef def)
+    {
+        if (_previewKey == def.Key) { _previewKey = ""; _previewHtml = ""; return; }
+
+        var subject = _emailTplSubjects.GetValueOrDefault(def.Key, "");
+        var body    = _emailTplBodies.GetValueOrDefault(def.Key, "");
+        var baseUrl = _emailSettings.BaseUrl ?? "https://example.com";
+
+        (_, _previewHtml) = def.Key switch
+        {
+            "risk_proposed"  => EmailTemplates.RiskProposed("RISK-001", "Örnek Risk Başlığı", "Ahmet Yılmaz", baseUrl,
+                                    subject.NullIfEmpty(), body.NullIfEmpty()),
+            "status_changed" => EmailTemplates.StatusChanged("RISK-001", "Örnek Risk Başlığı",
+                                    "Öneri", "İncelemede", baseUrl,
+                                    subject.NullIfEmpty(), body.NullIfEmpty()),
+            "owner_assigned" => EmailTemplates.OwnerAssigned("RISK-001", "Örnek Risk Başlığı", baseUrl,
+                                    subject.NullIfEmpty(), body.NullIfEmpty()),
+            "action_due"     => EmailTemplates.ActionDueSoon("RISK-001", "Örnek Aksiyon Açıklaması",
+                                    DateTime.Today.AddDays(5).ToString("dd.MM.yyyy"), 5, baseUrl,
+                                    subject.NullIfEmpty(), body.NullIfEmpty()),
+            _                => EmailTemplates.Test(baseUrl,
+                                    subject.NullIfEmpty(), body.NullIfEmpty()),
+        };
+        _previewKey = def.Key;
     }
 
     // ── Şirket / Org / Dept ──────────────────────────────────────────────────
@@ -1380,8 +3689,8 @@
         var file = e.File;
         if (file.Size > 2_000_000) { _logoError = "Maksimum dosya boyutu 2 MB."; return; }
         var ext = Path.GetExtension(file.Name).ToLowerInvariant();
-        if (ext is not ".png" and not ".jpg" and not ".jpeg" and not ".svg")
-        { _logoError = "Sadece PNG, JPG veya SVG yükleyebilirsiniz."; return; }
+        if (ext is not ".png" and not ".jpg" and not ".jpeg")
+        { _logoError = "Sadece PNG veya JPG yükleyebilirsiniz. SVG güvenlik nedeniyle desteklenmez."; return; }
 
         var dir = Path.Combine(Env.WebRootPath, "uploads");
         Directory.CreateDirectory(dir);
@@ -1396,29 +3705,86 @@
 
     private void RemoveLogo()
     {
-        _logoPath = "";
-        CfgSvc.Set("logo_path", "");
+        ShowConfirm("Logoyu Kaldır", "Mevcut logo silinecek. Yeniden yükleyebilirsiniz.", () =>
+        {
+            LogChange("logo_path", _logoPath, "", "Logo kaldırıldı");
+            _logoPath = "";
+            CfgSvc.Set("logo_path", "");
+            return Task.CompletedTask;
+        }, "Kaldır");
     }
 
     // ── Modüller ─────────────────────────────────────────────────────────────
-    private void ToggleRisk()     { _riskActive     = !_riskActive;     SaveModule("module_risk",     _riskActive,     "Risk Yönetimi"); }
-    private void ToggleAudit()    { _auditActive    = !_auditActive;    SaveModule("module_audit",    _auditActive,    "İç Denetim"); }
-    private void ToggleExternal() { _externalActive = !_externalActive; SaveModule("module_external", _externalActive, "Dış Denetim"); }
-    private void ToggleEthics()   { _ethicsActive   = !_ethicsActive;   SaveModule("module_ethics",   _ethicsActive,   "Etik Yönetimi"); }
+    private void ToggleRisk()
+    {
+        if (_riskActive)
+            ShowConfirm("Risk Modülünü Kapat", "Risk Yönetimi modülü kapatılırsa kullanıcılar risk listelerine ve formlarına erişemez. Mevcut veriler korunur.",
+                () => { ApplyModuleToggle("module_risk", ref _riskActive, "Risk Yönetimi"); return Task.CompletedTask; }, "Kapat");
+        else
+            ApplyModuleToggle("module_risk", ref _riskActive, "Risk Yönetimi");
+    }
+
+    private void ToggleAudit()
+    {
+        if (_auditActive)
+            ShowConfirm("İç Denetim Modülünü Kapat", "İç Denetim modülü kapatılırsa denetim planları ve bulgular gizlenir. Veriler silinmez.",
+                () => { ApplyModuleToggle("module_audit", ref _auditActive, "İç Denetim"); return Task.CompletedTask; }, "Kapat");
+        else
+            ApplyModuleToggle("module_audit", ref _auditActive, "İç Denetim");
+    }
+
+    private void ToggleExternal()
+    {
+        if (_externalActive)
+            ShowConfirm("Dış Denetim Modülünü Kapat", "Dış Denetim modülü kapatılırsa dış kurum kayıtları gizlenir. Veriler silinmez.",
+                () => { ApplyModuleToggle("module_external", ref _externalActive, "Dış Denetim"); return Task.CompletedTask; }, "Kapat");
+        else
+            ApplyModuleToggle("module_external", ref _externalActive, "Dış Denetim");
+    }
+
+    private void ToggleEthics()
+    {
+        if (_ethicsActive)
+            ShowConfirm("Etik Modülünü Kapat", "Etik Yönetimi modülü kapatılırsa ihbar bildirimleri gizlenir. Veriler silinmez.",
+                () => { ApplyModuleToggle("module_ethics", ref _ethicsActive, "Etik Yönetimi"); return Task.CompletedTask; }, "Kapat");
+        else
+            ApplyModuleToggle("module_ethics", ref _ethicsActive, "Etik Yönetimi");
+    }
+
+    private void ApplyModuleToggle(string key, ref bool field, string label)
+    {
+        var oldVal = field.ToString().ToLower();
+        field = !field;
+        var newVal = field.ToString().ToLower();
+        SaveModule(key, field, label);
+        LogChange(key, oldVal, newVal, $"{label} modülü {(field ? "etkinleştirildi" : "kapatıldı")}");
+    }
 
     private void ToggleLdapModule()
     {
-        _ldapEnabled = !_ldapEnabled;
-        try
-        {
-            var cfg = Db.LdapConfigurations.FirstOrDefault();
-            if (cfg == null) { cfg = new LdapConfiguration { Enabled = _ldapEnabled }; Db.LdapConfigurations.Add(cfg); }
-            else cfg.Enabled = _ldapEnabled;
-            Db.SaveChanges();
-            _moduleMsg = $"Active Directory girişi {(_ldapEnabled ? "etkinleştirildi" : "kapatıldı")}.";
-            _moduleIsError = false;
-        }
-        catch { _moduleMsg = "Kayıt sırasında hata oluştu."; _moduleIsError = true; _ldapEnabled = !_ldapEnabled; }
+        var next = !_ldapEnabled;
+        ShowConfirm(
+            next ? "Active Directory Girişini Etkinleştir" : "Active Directory Girişini Devre Dışı Bırak",
+            next ? "LDAP etkinleştirilirse kullanıcılar Active Directory kimlik bilgileriyle giriş yapabilir. LDAP ayarlarını önce kaydettiğinizden emin olun."
+                 : "LDAP devre dışı bırakılırsa kullanıcılar yalnızca yerel şifresiyle giriş yapar.",
+            () =>
+            {
+                var old = _ldapEnabled.ToString().ToLower();
+                _ldapEnabled = next;
+                try
+                {
+                    var cfg = Db.LdapConfigurations.FirstOrDefault();
+                    if (cfg == null) { cfg = new LdapConfiguration { Enabled = _ldapEnabled }; Db.LdapConfigurations.Add(cfg); }
+                    else cfg.Enabled = _ldapEnabled;
+                    Db.SaveChanges();
+                    _moduleMsg = $"Active Directory girişi {(_ldapEnabled ? "etkinleştirildi" : "kapatıldı")}.";
+                    _moduleIsError = false;
+                    LogChange("ldap_enabled", old, _ldapEnabled.ToString().ToLower(), $"LDAP {(_ldapEnabled ? "etkinleştirildi" : "devre dışı bırakıldı")}");
+                }
+                catch { _moduleMsg = "Kayıt sırasında hata oluştu."; _moduleIsError = true; _ldapEnabled = !next; }
+                return Task.CompletedTask;
+            },
+            next ? "Etkinleştir" : "Devre Dışı Bırak");
     }
 
     private void SaveModule(string key, bool value, string label)
@@ -1445,7 +3811,12 @@
             existing.AutoCreateUsers = _ldapCfg.AutoCreateUsers; existing.DefaultRole = _ldapCfg.DefaultRole;
             existing.UpdatedAt = _ldapCfg.UpdatedAt;
         }
-        Db.SaveChanges(); _ldapSaved = true;
+        Db.SaveChanges();
+        LogChange("ldap_config",
+            "[eski]",
+            $"server={_ldapCfg.Server};port={_ldapCfg.Port};dn={_ldapCfg.BindDn};base={_ldapCfg.UserSearchBase}",
+            "LDAP ayarları güncellendi (şifre maskelendi)");
+        _ldapSaved = true;
     }
 
     private async Task TestLdapConnection()
@@ -1644,11 +4015,25 @@
         try { _migrApplied = [.. Db.Database.GetAppliedMigrations()]; _migrPending = [.. Db.Database.GetPendingMigrations()]; }
         catch (Exception ex) { _migrLoadError = ex.Message; _migrApplied = []; _migrPending = []; }
     }
+    private void MigrRunWithConfirm()
+    {
+        ShowConfirm(
+            "Migration Çalıştır",
+            $"Veritabanı şeması güncellenecek ({_migrPending.Count} bekleyen migration). Bu işlem geri alınamaz. Önce yedek almanız önerilir.",
+            async () => await MigrRun(),
+            "Migration Çalıştır");
+    }
+
     private async Task MigrRun()
     {
         _migrRunning = true; _migrResult = null; StateHasChanged();
-        try { await Task.Run(() => Db.Database.Migrate()); MigrRefresh();
-            _migrResult = _migrPending.Count == 0 ? "Migration'lar başarıyla uygulandı." : $"Tamamlandı. Hâlâ {_migrPending.Count} bekleyen var."; }
+        try
+        {
+            var pending = string.Join(", ", _migrPending);
+            await Task.Run(() => Db.Database.Migrate()); MigrRefresh();
+            _migrResult = _migrPending.Count == 0 ? "Migration'lar başarıyla uygulandı." : $"Tamamlandı. Hâlâ {_migrPending.Count} bekleyen var.";
+            LogChange("db_migration", "[bekleyen]", pending, "Veritabanı migration çalıştırıldı");
+        }
         catch (Exception ex) { Logger.LogError(ex, "Migration hatası"); _migrResult = "Hata: " + ex.Message; MigrRefresh(); }
         finally { _migrRunning = false; }
     }

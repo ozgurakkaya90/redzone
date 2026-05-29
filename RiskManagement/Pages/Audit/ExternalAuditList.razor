@@ -4,18 +4,14 @@
 @inject AuthService Auth
 @inject AppDbContext Db
 @inject IHttpContextAccessor HttpCtx
+@inject ILogger<ExternalAuditList> Logger
 @using System.Security.Claims
 @using RiskManagement.Models
 @using Microsoft.EntityFrameworkCore
 
 <PageTitle>Dış Denetimler</PageTitle>
 
-@{
-    var userId = UserId;
-    var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == userId);
-}
-
-@if (user is null || !CanRead)
+@if (_currentUser is null || !CanRead)
 {
     <div class="card" style="padding:24px">
         <div style="font-weight:700;margin-bottom:6px">Yetki yok</div>
@@ -177,9 +173,7 @@ else
     private string _search = "", _filterBody = "", _filterStatus = "", _filterYear = "";
     private bool _canRead;
     private bool _canCreate;
-
-    private int UserId => int.TryParse(
-        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private User? _currentUser;
 
     private bool CanRead => _canRead;
     private bool CanCreateAny => _canCreate;
@@ -188,8 +182,11 @@ else
 
     protected override void OnInitialized()
     {
-        var u = Db.Users.Include(x => x.UserRoles).FirstOrDefault(x => x.Id == UserId);
+        var idStr = HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        int.TryParse(idStr, out var userId);
+        var u = Db.Users.Include(x => x.UserRoles).FirstOrDefault(x => x.Id == userId);
         if (u is null) return;
+        _currentUser = u;
         _canRead = Auth.HasPermission(u, "external_audit.read") || ExtSvc.IsAdmin(u);
         if (!_canRead) return;
 
@@ -202,7 +199,11 @@ else
         {
             _all = ExtSvc.List(u);
         }
-        catch { _all = []; }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Dış denetimler yüklenemedi (kullanıcı={UserId})", u.Id);
+            _all = [];
+        }
 
         _bodies = [.. _all.Select(a => a.AuditingBody).Distinct().OrderBy(b => b)];
         _years = [.. _all.Select(a => a.AuditDate.Year).Distinct().OrderByDescending(y => y)];

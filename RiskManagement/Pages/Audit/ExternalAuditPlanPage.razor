@@ -78,6 +78,75 @@ else
     </div>
 </div>
 
+@* ── Gantt Çizelgesi ── *@
+@if (FilteredAudits.Any())
+{
+<div class="card" style="padding:16px;margin-bottom:20px;overflow-x:auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">
+        <div style="font-size:13px;font-weight:700">Zaman Çizelgesi — @_year</div>
+        <div style="display:flex;gap:12px;flex-wrap:wrap;align-items:center;font-size:11px;color:var(--text-3)">
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#c7d2fe;margin-right:4px"></span>Planlandı</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#3b82f6;margin-right:4px"></span>Devam Ediyor</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#22c55e;margin-right:4px"></span>Tamamlandı</span>
+            <span><span style="display:inline-block;width:10px;height:10px;border-radius:3px;background:#64748b;margin-right:4px"></span>Kapatıldı</span>
+        </div>
+    </div>
+
+    <div style="min-width:700px">
+        @* Ay başlıkları *@
+        <div style="display:grid;grid-template-columns:200px 1fr;margin-bottom:4px">
+            <div></div>
+            <div style="display:grid;grid-template-columns:repeat(12,1fr);border-left:1px solid #e2e8f0">
+                @foreach (var m in _ganttMonths)
+                {
+                    <div style="text-align:center;font-size:10px;font-weight:600;color:var(--text-3);
+                                padding:2px 0;border-right:1px solid #e2e8f0;
+                                @(m.Num==DateTime.Today.Month&&_year==DateTime.Today.Year?"background:#eff6ff":"")">
+                        @m.Short
+                    </div>
+                }
+            </div>
+        </div>
+
+        @foreach (var a in FilteredAudits.OrderBy(x => x.AuditDate))
+        {
+            var barColor = GanttBarColor(a.Status);
+            var startPct = GanttDayPct(a.AuditDate);
+            var endDate  = a.EndDate ?? a.AuditDate;
+            var widthPct = GanttDayPct(endDate) - startPct;
+
+            <div style="display:grid;grid-template-columns:200px 1fr;margin-bottom:2px">
+                <div style="font-size:12px;font-weight:500;padding:4px 8px 4px 0;line-height:24px;
+                            overflow:hidden;text-overflow:ellipsis;white-space:nowrap"
+                     title="@a.AuditingBody — @a.Subject">
+                    <span style="color:var(--text-3);font-size:10px">@a.AuditingBody</span>
+                    <span style="margin-left:4px">@a.Subject</span>
+                </div>
+                <div style="position:relative;height:24px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0">
+                    @for (int mi = 1; mi <= 12; mi++)
+                    {
+                        var ml = (mi-1)*(100.0/12);
+                        <div style="position:absolute;left:@GanttPct(ml)%;top:0;bottom:0;width:1px;background:#e2e8f0;"></div>
+                    }
+                    @if (_year == DateTime.Today.Year)
+                    {
+                        <div style="position:absolute;left:@GanttPct(GanttTodayPct())%;top:0;bottom:0;width:1px;background:#f97316;z-index:2;"></div>
+                    }
+                    <div style="position:absolute;left:@GanttPct(startPct)%;width:@GanttPct(Math.Max(widthPct,0.8))%;
+                                top:4px;height:16px;background:@barColor;border-radius:4px;z-index:1;opacity:.85;
+                                display:flex;align-items:center;padding:0 4px;overflow:hidden"
+                         title="@a.AuditDate.ToString("dd.MM") – @(a.EndDate?.ToString("dd.MM") ?? a.AuditDate.ToString("dd.MM")) · @StatusLabel(a.Status)">
+                        <span style="font-size:9px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                            @a.Code
+                        </span>
+                    </div>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+}
+
 @* ── Aylık takvim ── *@
 @if (!_audits.Any())
 {
@@ -185,8 +254,7 @@ else
     private List<ExternalAudit> _audits = [];
     private List<string> _bodies = [];
 
-    private int UserId => int.TryParse(
-        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private int _userId;
 
     private IEnumerable<ExternalAudit> FilteredAudits => _audits.Where(a =>
         (string.IsNullOrEmpty(_filterBody)   || a.AuditingBody == _filterBody) &&
@@ -194,7 +262,8 @@ else
 
     protected override void OnInitialized()
     {
-        var u = Db.Users.Include(x => x.UserRoles).FirstOrDefault(x => x.Id == UserId);
+        int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out _userId);
+        var u = Db.Users.Include(x => x.UserRoles).FirstOrDefault(x => x.Id == _userId);
         if (u is null) return;
         _canRead = Auth.HasPermission(u, "external_audit.read") || ExtSvc.IsAdmin(u);
         if (!_canRead) return;
@@ -206,7 +275,7 @@ else
 
     private void LoadYear()
     {
-        var u = Db.Users.Include(x => x.UserRoles).FirstOrDefault(x => x.Id == UserId);
+        var u = Db.Users.Include(x => x.UserRoles).FirstOrDefault(x => x.Id == _userId);
         if (u is null) return;
 
         var start = new DateOnly(_year, 1, 1);
@@ -233,6 +302,33 @@ else
         yield return ("Tamamlandı",   list.Count(a => a.Status == "completed"),    "#22c55e", "completed");
         yield return ("Kapatıldı",    list.Count(a => a.Status == "closed"),       "#64748b", "closed");
     }
+
+    private static readonly (int Num, string Short)[] _ganttMonths =
+        Enumerable.Range(1, 12)
+            .Select(m => (m, new DateTime(2000, m, 1).ToString("MMM",
+                new System.Globalization.CultureInfo("tr-TR"))))
+            .ToArray();
+
+    private double GanttDayPct(DateOnly d)
+    {
+        var start = new DateOnly(_year, 1, 1);
+        var end   = new DateOnly(_year, 12, 31);
+        var total = end.DayNumber - start.DayNumber + 1;
+        return (double)Math.Clamp(d.DayNumber - start.DayNumber, 0, total) / total * 100.0;
+    }
+
+    private double GanttTodayPct() => GanttDayPct(DateOnly.FromDateTime(DateTime.Today));
+
+    private static string GanttPct(double v) =>
+        v.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string GanttBarColor(string status) => status switch
+    {
+        "in_progress" => "#3b82f6",
+        "completed"   => "#22c55e",
+        "closed"      => "#64748b",
+        _             => "#c7d2fe"
+    };
 
     private static string MonthName(int m) => m switch
     {

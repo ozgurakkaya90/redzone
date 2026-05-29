@@ -1,10 +1,12 @@
 using RiskManagement.Data;
 using RiskManagement.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace RiskManagement.Services;
 
-public class EthicsService(AppDbContext db, IWebHostEnvironment env)
+public class EthicsService(AppDbContext db, IWebHostEnvironment env, INotificationService? notifications = null,
+    ILogger<EthicsService>? logger = null)
 {
     private static readonly HashSet<string> AllowedExtensions =
         [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".txt", ".zip"];
@@ -66,6 +68,9 @@ public class EthicsService(AppDbContext db, IWebHostEnvironment env)
             });
         }
         await db.SaveChangesAsync();
+        // Bildirim hatası işlemi durdurmaz — fire-and-forget, başarısızlık yutulur.
+        if (notifications != null)
+            _ = notifications.NotifyEthicsSubmittedAsync(report.Code, report.Subject);
         return report;
     }
 
@@ -73,12 +78,21 @@ public class EthicsService(AppDbContext db, IWebHostEnvironment env)
     {
         var report = db.EthicsReports.Find(id);
         if (report == null) return false;
+        // Denetim kararı whitelist.
+        if (decision is not ("irrelevant" or "ethics_board_notified"))
+        {
+            logger?.LogWarning("Etik denetim değerlendirme reddi — geçersiz karar: {Decision}, ReportId: {ReportId}, Kullanıcı: {UserId}",
+                decision, id, reviewedById);
+            return false;
+        }
         report.AuditDecision = decision;
         report.AuditNotes = notes;
         report.AuditReviewedById = reviewedById;
         report.AuditReviewedAt = DateTime.UtcNow;
         report.Status = decision == "irrelevant" ? "irrelevant" : "ethics_board_notified";
         db.SaveChanges();
+        if (notifications != null)
+            _ = notifications.NotifyEthicsReviewedAsync(report.Code, report.Subject, "audit");
         return true;
     }
 
@@ -86,12 +100,21 @@ public class EthicsService(AppDbContext db, IWebHostEnvironment env)
     {
         var report = db.EthicsReports.Find(id);
         if (report == null) return false;
+        // EthicsDecision whitelist — bilinmeyen karar değerini reddet.
+        if (decision is not ("no_violation" or "disciplinary_referred"))
+        {
+            logger?.LogWarning("Etik kurul değerlendirme reddi — geçersiz karar: {Decision}, ReportId: {ReportId}, Kullanıcı: {UserId}",
+                decision, id, reviewedById);
+            return false;
+        }
         report.EthicsDecision = decision;
         report.EthicsNotes = notes;
         report.EthicsReviewedById = reviewedById;
         report.EthicsReviewedAt = DateTime.UtcNow;
         report.Status = decision;
         db.SaveChanges();
+        if (notifications != null)
+            _ = notifications.NotifyEthicsReviewedAsync(report.Code, report.Subject, "board");
         return true;
     }
 

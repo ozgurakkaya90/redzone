@@ -2,6 +2,7 @@
 @attribute [Authorize]
 @inject AppDbContext Db
 @inject RiskService RiskSvc
+@inject AuthService Auth
 @inject ConfigService CfgSvc
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
@@ -128,7 +129,7 @@
             </tr>
         </thead>
         <tbody>
-            @foreach (var c in Filtered)
+            @foreach (var c in PagedControls)
             {
                 <tr>
                     <td style="white-space:nowrap">
@@ -230,6 +231,29 @@
     </table>
 </div>
 
+@if (TotalControlPages > 1)
+{
+    <div class="pagination-bar">
+        <div class="pagination-info">
+            @((_cPage-1)*_cPageSize+1)–@(Math.Min(_cPage*_cPageSize, Filtered.Count())) / @Filtered.Count() kayıt
+        </div>
+        <div class="pagination-controls">
+            <button class="btn btn-outline btn-sm" @onclick="() => _cPage=1"               disabled="@(_cPage==1)">«</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _cPage--"               disabled="@(_cPage==1)">‹</button>
+            @for (int p = Math.Max(1,_cPage-2); p <= Math.Min(TotalControlPages,_cPage+2); p++)
+            { var pp = p; <button class="btn @(_cPage==pp?"btn-primary":"btn-outline") btn-sm" @onclick="() => _cPage=pp">@pp</button> }
+            <button class="btn btn-outline btn-sm" @onclick="() => _cPage++"               disabled="@(_cPage==TotalControlPages)">›</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _cPage=TotalControlPages" disabled="@(_cPage==TotalControlPages)">»</button>
+        </div>
+        <div class="pagination-size">
+            Sayfa başı:
+            <select class="form-control" @bind="_cPageSize" @bind:after="() => _cPage=1">
+                <option value="25">25</option><option value="50">50</option><option value="100">100</option>
+            </select>
+        </div>
+    </div>
+}
+
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px">
     <div class="card" style="padding:14px;text-align:center">
         <div class="stat-label">Toplam Kontrol</div>
@@ -251,10 +275,10 @@
 
 
 @code {
-    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private bool IsCommitteeOrOwner => Role is "admin" or "committee" or "risk_owner" or "risk_manager";
+    private User? _user;
+    private bool IsCommitteeOrOwner => _user?.HasAnyRole("admin", "committee", "risk_owner", "risk_manager") ?? false;
     private bool _showImport;
+    private int _cPage = 1, _cPageSize = 25;
 
     private List<Control> _allControls = [];
     private List<Department> _departments = [];
@@ -279,6 +303,7 @@
 
     protected override void OnInitialized()
     {
+        _user = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
         _controlTypes         = CfgSvc.GetList("control_types");
         _controlEffectiveness = CfgSvc.GetList("control_effectiveness");
         _controlFrequencies   = CfgSvc.GetList("control_frequencies");
@@ -291,9 +316,10 @@
 
     private void LoadControls()
     {
-        var managedOrgIds = Role is "admin" or "committee"
+        var userId = _user?.Id ?? 0;
+        var managedOrgIds = (_user?.HasAnyRole("admin", "committee") ?? false)
             ? null
-            : Db.Departments.Where(d => d.ManagerUserId == UserId && d.OrganizationId != null)
+            : Db.Departments.Where(d => d.ManagerUserId == userId && d.OrganizationId != null)
                 .Select(d => d.OrganizationId!.Value).Distinct().ToList();
 
         var q = Db.Controls
@@ -303,22 +329,26 @@
             .AsQueryable();
 
         if (managedOrgIds != null)
+        {
+            var deptIds = _user?.AllDepartmentIds.ToHashSet() ?? [];
             q = q.Where(c =>
-                c.Risk.ProposedById == UserId ||
-                c.Risk.OwnerId == UserId ||
-                (c.Risk.OrganizationId != null && managedOrgIds.Contains(c.Risk.OrganizationId.Value)));
+                c.Risk.ProposedById == userId ||
+                c.Risk.OwnerId == userId ||
+                (c.Risk.OrganizationId != null && managedOrgIds.Contains(c.Risk.OrganizationId.Value)) ||
+                (c.Risk.DepartmentId != null && deptIds.Contains(c.Risk.DepartmentId.Value)));
+        }
 
         _allControls = [.. q.OrderByDescending(c => c.EnteredAt)];
     }
 
-    private void SaveControl()
+    private async Task SaveControl()
     {
         if (_formRiskId <= 0) { _error = "Lütfen bir risk seçiniz."; return; }
         if (string.IsNullOrWhiteSpace(_formDesc)) { _error = "Kontrol açıklaması zorunludur."; return; }
 
         _loading = true;
         _error = "";
-        RiskSvc.AddControl(_formRiskId, _formDesc, _formType, _formEff, _formFreq, UserId, _formDeptId);
+        await RiskSvc.AddControlAsync(_formRiskId, _formDesc, _formType, _formEff, _formFreq, _user?.Id ?? 0, _formDeptId);
         _success = "Kontrol başarıyla eklendi.";
         _formRiskId = 0; _formDesc = ""; _formType = "Önleyici"; _formEff = ""; _formFreq = ""; _formDeptId = 0;
         _showForm = false;
@@ -336,7 +366,7 @@
         _editDeptId = c.OwnerDeptId ?? 0;
     }
 
-    private void SaveEdit()
+    private async Task SaveEdit()
     {
         if (string.IsNullOrWhiteSpace(_editDesc)) { _error = "Açıklama zorunludur."; return; }
         var ctrl = Db.Controls.Find(_editId);
@@ -346,22 +376,27 @@
         ctrl.Effectiveness = string.IsNullOrEmpty(_editEff) ? null : _editEff;
         ctrl.Frequency = string.IsNullOrEmpty(_editFreq) ? null : _editFreq;
         ctrl.OwnerDeptId = _editDeptId > 0 ? _editDeptId : null;
-        Db.SaveChanges();
+        await Db.SaveChangesAsync();
         _success = "Kontrol güncellendi.";
         _error = "";
         _editId = 0;
         LoadControls();
     }
 
-    private void DeleteControl(int controlId)
+    private async Task DeleteControl(int controlId)
     {
         var ctrl = Db.Controls.Find(controlId);
         if (ctrl == null) return;
         Db.Controls.Remove(ctrl);
-        Db.SaveChanges();
+        await Db.SaveChangesAsync();
         _success = "Kontrol silindi.";
         LoadControls();
     }
+
+    private IEnumerable<Control> PagedControls
+        => Filtered.Skip((_cPage-1)*_cPageSize).Take(_cPageSize);
+    private int TotalControlPages
+        => (int)Math.Ceiling(Filtered.Count() / (double)_cPageSize);
 
     private IEnumerable<Control> Filtered => _allControls
         .Where(c => string.IsNullOrEmpty(_filterType) || c.ControlType == _filterType)

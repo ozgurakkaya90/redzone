@@ -240,19 +240,44 @@
         }
     }
 
-    [Inject] private RiskLibraryService LibSvc { get; set; } = default!;
+    [Inject] private RiskLibraryService LibSvc      { get; set; } = default!;
+    [Inject] private RiskService        RiskSvc     { get; set; } = default!;
+    [Inject] private AuditService       AuditSvcInj { get; set; } = default!;
+    [Inject] private AuthService        AuthSvc     { get; set; } = default!;
 
-    private ImportResult RunImport(MemoryStream ms) => Module switch
+    private ImportResult RunImport(MemoryStream ms)
     {
-        "risks"         => ImportSvc.ImportRisksFromExcel(ms, UserId),
-        "controls"      => ImportSvc.ImportControlsFromExcel(ms, UserId),
-        "action-plans"  => ImportSvc.ImportActionPlansFromExcel(ms, UserId),
-        "findings"      => ImportSvc.ImportFindingsFromExcel(ms, UserId),
-        "audit-actions" => ImportSvc.ImportAuditActionsFromExcel(ms, UserId),
-        "ethics"        => ImportSvc.ImportEthicsFromExcel(ms),
-        "library"       => LibSvc.ImportFromExcel(ms, UserId),
-        _               => new ImportResult { Errors = new List<string> { "Geçersiz modül." } }
-    };
+        var userObj = AuthSvc.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
+        if (userObj is null) return new ImportResult { Errors = ["Kimlik doğrulama gerekli."] };
+
+        // controls ve action-plans: risk.manage izni olmayanlar yalnızca erişebildiği risklere yazabilir
+        HashSet<int>? allowedRiskIds = null;
+        if (Module is "controls" or "action-plans")
+        {
+            if (!AuthSvc.HasPermission(userObj, "risk.manage"))
+                allowedRiskIds = RiskSvc.GetForUser(userObj).Select(r => r.Id).ToHashSet();
+        }
+
+        // audit-actions: audit.close_approve izni olmayanlar yalnızca erişebildiği bulgulara yazabilir
+        HashSet<int>? allowedFindingIds = null;
+        if (Module is "audit-actions")
+        {
+            if (!AuthSvc.HasPermission(userObj, "audit.close_approve"))
+                allowedFindingIds = AuditSvcInj.GetFindingsForUser(userObj).Select(f => f.Id).ToHashSet();
+        }
+
+        return Module switch
+        {
+            "risks"         => ImportSvc.ImportRisksFromExcel(ms, UserId),
+            "controls"      => ImportSvc.ImportControlsFromExcel(ms, UserId, allowedRiskIds),
+            "action-plans"  => ImportSvc.ImportActionPlansFromExcel(ms, UserId, allowedRiskIds),
+            "findings"      => ImportSvc.ImportFindingsFromExcel(ms, UserId),
+            "audit-actions" => ImportSvc.ImportAuditActionsFromExcel(ms, UserId, allowedFindingIds),
+            "ethics"        => ImportSvc.ImportEthicsFromExcel(ms),
+            "library"       => LibSvc.ImportFromExcel(ms, UserId),
+            _               => new ImportResult { Errors = ["Geçersiz modül."] }
+        };
+    }
 
     private void Reset()
     {

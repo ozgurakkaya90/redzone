@@ -37,6 +37,24 @@ public class LoginModel(AuthService auth, AppDbContext db, ConfigService config,
             return Page();
         }
 
+        // Hesap kilidi kontrolü (yalnızca lokal giriş; LDAP için AD kendi kilitler)
+        // Mesaj kullanıcı varlığını sızdırmamak için geneldir.
+        if (AuthType != "ad")
+        {
+            var maxFails = config.GetMaxFailedLogins();
+            if (maxFails > 0)
+            {
+                var candidate = db.Users.FirstOrDefault(u => u.Username == Username && u.AuthType == "local");
+                if (candidate?.LockoutUntil > DateTime.UtcNow)
+                {
+                    logger.LogWarning("Kilitli hesaba giriş denemesi: {Username}", Username);
+                    // Enum: "too many failed attempts" — kullanıcı varlığını açıklamaz
+                    Error = "Çok fazla hatalı giriş denemesi yapıldı. Lütfen daha sonra tekrar deneyin.";
+                    return Page();
+                }
+            }
+        }
+
         Models.User? user = null;
 
         if (AuthType == "ad")
@@ -47,15 +65,49 @@ public class LoginModel(AuthService auth, AppDbContext db, ConfigService config,
         if (user == null)
         {
             logger.LogWarning("Hatalı giriş denemesi: {Username}, Tür: {AuthType}", Username, AuthType);
+
+            // Başarısız giriş sayacını güncelle
+            if (AuthType != "ad")
+            {
+                var maxFails = config.GetMaxFailedLogins();
+                if (maxFails > 0)
+                {
+                    var dbUser = db.Users.FirstOrDefault(u => u.Username == Username && u.AuthType == "local");
+                    if (dbUser != null)
+                    {
+                        dbUser.FailedLoginCount++;
+                        if (dbUser.FailedLoginCount >= maxFails)
+                        {
+                            var lockoutMins = config.GetLockoutMinutes();
+                            dbUser.LockoutUntil = DateTime.UtcNow.AddMinutes(lockoutMins);
+                            dbUser.FailedLoginCount = 0;
+                            logger.LogWarning("Hesap kilitlendi: {Username} ({Count} hatalı giriş, {Min} dk)", Username, maxFails, lockoutMins);
+                        }
+                        db.SaveChanges();
+                    }
+                }
+            }
+
             Error = AuthType == "ad"
                 ? "Active Directory kimlik doğrulaması başarısız. Kullanıcı adı veya şifrenizi kontrol edin."
                 : "Kullanıcı adı veya şifre hatalı.";
             return Page();
         }
 
+        // Başarılı giriş: sayacı sıfırla
+        if (user.FailedLoginCount > 0 || user.LockoutUntil.HasValue)
+        {
+            user.FailedLoginCount = 0;
+            user.LockoutUntil    = null;
+            db.SaveChanges();
+        }
+
         logger.LogInformation("Kullanıcı giriş yaptı: {Username}", user.Username);
         var principal = auth.BuildPrincipal(user);
         await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
+        // Reverse proxies can produce absolute returnUrls with http:// — extract just the path
+        if (!string.IsNullOrEmpty(returnUrl) && Uri.TryCreate(returnUrl, UriKind.Absolute, out var parsed))
+            returnUrl = parsed.PathAndQuery;
         var destination = !string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl)
             ? returnUrl : "/dashboard";
         return LocalRedirect(destination);

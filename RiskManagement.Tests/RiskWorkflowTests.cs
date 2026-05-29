@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using RiskManagement.Data;
 using RiskManagement.Models;
@@ -15,7 +16,8 @@ file static class Seed
         var db   = TestDb.Create();
         var cfg  = new ConfigService(db, NullLogger<ConfigService>.Instance);
         var calc = new RiskCalculator(cfg);
-        var svc  = new RiskService(db, calc);
+        var auth = new AuthService(db, new MemoryCache(new MemoryCacheOptions()));
+        var svc  = new RiskService(db, calc, auth);
         return (db, cfg, svc);
     }
 

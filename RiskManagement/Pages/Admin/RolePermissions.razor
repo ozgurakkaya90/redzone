@@ -1,161 +1,185 @@
 @page "/admin/permissions"
 @attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
+@inject AuthService Auth
 @inject AppDbContext Db
+@using Microsoft.EntityFrameworkCore
+@using RiskManagement.Models
 @using RiskManagement.Services
 
 <PageTitle>Yetki Yönetimi</PageTitle>
 
-
-<div class="page-header">
-    <h1 class="page-title"> Yetki Yönetimi</h1>
-    <p class="page-subtitle">Rol bazlı erişim kontrolü — Okuma · Yazma · Düzenleme katmanları</p>
-</div>
-
-<!-- Legend -->
-<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:20px">
-    @foreach (var badge in _levelBadges)
-    {
-        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:5px 12px;background:@badge.Bg;border:1px solid @badge.Border;border-radius:20px;font-weight:600;color:@badge.Color">
-            @badge.Icon @badge.Label
-        </span>
-    }
-    <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px;padding:5px 12px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:20px;font-weight:600;color:#15803d">
-        * Yönetici — tüm yetkiler sabit
-    </span>
+<div class="page-toolbar">
+    <div class="page-toolbar-left">
+        <h1 class="page-toolbar-title">Yetki Yönetimi</h1>
+        <div class="page-toolbar-sub">Rol bazlı erişim kontrolü — her role hangi işlemlerin açık olduğunu belirleyin. Özel rol oluşturmak için <a href="/admin/roles">Rol Yönetimi</a> sayfasına gidin.</div>
+    </div>
+    <div class="page-toolbar-actions">
+        @if (_dirty)
+        {
+            <span style="font-size:12px;font-weight:600;color:#92400e;background:#fef3c7;padding:5px 12px;border-radius:6px;border:1px solid #fcd34d">
+                Kaydedilmemiş değişiklik
+            </span>
+        }
+        <button class="btn btn-outline btn-sm" @onclick="ResetDefaults">↺ Varsayılanlara Sıfırla</button>
+        <button class="btn btn-primary btn-sm" @onclick="SaveAsync">Kaydet</button>
+    </div>
 </div>
 
 @if (_saved)
 {
-    <div class="alert alert-success" style="margin-bottom:16px;display:flex;align-items:center;gap:8px">
-        Yetki matrisi başarıyla kaydedildi.
-    </div>
+    <div class="alert alert-success" style="margin-bottom:16px">Yetki matrisi başarıyla kaydedildi.</div>
 }
 
-<div class="card" style="padding:0;overflow:hidden;overflow-x:auto">
-    <table class="perm-matrix">
+<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;overflow-x:auto;box-shadow:var(--shadow-sm)">
+    <table style="border-collapse:collapse;width:100%;font-size:13px">
         <thead>
             <tr style="border-bottom:2px solid var(--border)">
-                <!-- Permission column header -->
-                <th style="padding:16px 16px;text-align:left;background:var(--gray-50);min-width:260px;border-right:2px solid var(--border)">
-                    <span style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">
-                        İzin / Kaynak
-                    </span>
+                <th style="padding:14px 20px;text-align:left;background:#f8fafc;min-width:260px;
+                            font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3)">
+                    İzin
                 </th>
-                <!-- Role column headers -->
-                @foreach (var role in _roles)
+                @foreach (var role in _editableRoles)
                 {
-                    var isAdmin = role == "admin";
-                    <th style="background:@(isAdmin ? "#f0fdf4" : "var(--gray-50)");border-left:1px solid var(--border);@(isAdmin ? "border-left:2px solid #bbf7d0;" : "")">
-                        <div class="role-col-head" style="@(isAdmin ? "color:#15803d" : "")">
-                            @AuthService.RoleLabels.GetValueOrDefault(role, role)
-                            @if (isAdmin) { <span style="font-size:9px;opacity:.7"> *</span> }
+                    var cnt = _matrix.TryGetValue(role, out var s) ? s.Count : 0;
+                    var total = AuthService.Permissions.Count;
+                    <th style="background:#f8fafc;border-left:1px solid var(--border);
+                                padding:12px 8px;text-align:center;min-width:88px;max-width:100px">
+                        <div style="font-size:12px;font-weight:600;color:var(--text);line-height:1.3;margin-bottom:4px">
+                            @Auth.GetRoleLabel(role)
+                        </div>
+                        <div style="display:inline-block;font-size:10px;font-weight:600;
+                                    padding:1px 7px;border-radius:10px;
+                                    background:@(cnt==total?"#dcfce7":cnt>0?"#dbeafe":"var(--gray-100)");
+                                    color:@(cnt==total?"#15803d":cnt>0?"#1d4ed8":"var(--text-3)")">
+                            @cnt / @total
                         </div>
                     </th>
                 }
+                <th style="background:#f0fdf4;border-left:1px solid #bbf7d0;padding:12px 8px;text-align:center;min-width:88px">
+                    <div style="font-size:12px;font-weight:600;color:#15803d;line-height:1.3;margin-bottom:4px">
+                        @Auth.GetRoleLabel("admin")
+                    </div>
+                    <div style="display:inline-block;font-size:10px;font-weight:600;
+                                padding:1px 7px;border-radius:10px;background:#bbf7d0;color:#15803d">
+                        Tümü
+                    </div>
+                </th>
             </tr>
         </thead>
         <tbody>
             @foreach (var group in AuthService.PermGroups)
             {
-                <!-- Group header -->
-                <tr class="group-header-row">
-                    <td colspan="@(_roles.Length + 1)"
-                        style="background:@group.Bg;color:@group.Color;border-color:@group.Color">
-                        @group.Name
+                <tr>
+                    <td colspan="@(_editableRoles.Length + 2)"
+                        style="padding:8px 20px;background:#f8fafc;border-top:1px solid var(--border);border-bottom:1px solid var(--border);
+                               border-left:3px solid @group.Color">
+                        <span style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:@group.Color">
+                            @group.Name
+                        </span>
                     </td>
                 </tr>
 
                 @foreach (var item in group.Items)
                 {
-                    var badgeInfo = _levelBadges.FirstOrDefault(b => b.Key == item.Level) ?? _levelBadges[0];
-                    <tr class="perm-row">
-                        <!-- Permission label -->
-                        <td class="perm-label-cell">
-                            <div style="display:flex;align-items:center;gap:0">
-                                <span class="level-badge"
-                                      style="background:@badgeInfo.Bg;color:@badgeInfo.Color;border-color:@badgeInfo.Border">
-                                    @badgeInfo.Icon @item.Level
+                    <tr style="border-bottom:1px solid #f1f5f9;transition:background .1s"
+                        @onmouseenter="@(() => _hoverRow = item.Key)"
+                        @onmouseleave="@(() => _hoverRow = null)">
+                        <td style="padding:10px 20px;min-width:260px">
+                            <div style="display:flex;align-items:center;gap:8px">
+                                <span style="width:7px;height:7px;border-radius:50%;flex-shrink:0;background:@(_levelColors.GetValueOrDefault(item.Level,"#94a3b8"))"></span>
+                                <span style="font-size:13px;color:var(--text);flex:1">@item.Description</span>
+                                <span style="font-size:10px;font-family:monospace;color:var(--text-3);
+                                             background:var(--gray-100);padding:1px 5px;border-radius:4px;
+                                             opacity:@(_hoverRow==item.Key?"1":"0");transition:opacity .15s">
+                                    @item.Key
                                 </span>
-                                <span style="color:var(--text-2);font-size:12px">@item.Description</span>
                             </div>
                         </td>
 
-                        @foreach (var role in _roles)
+                        @foreach (var role in _editableRoles)
                         {
-                            @if (role == "admin")
-                            {
-                                <td class="admin-cell">*</td>
-                            }
-                            else
-                            {
-                                var key = item.Key;
-                                var r   = role;
-                                var chk = _matrix.TryGetValue(r, out var set) && set.Contains(key);
-                                <td class="perm-check-cell">
-                                    <label class="toggle-wrap">
-                                        <input class="toggle-input" type="checkbox"
-                                               checked="@chk"
-                                               @onchange="e => OnToggle(r, key, (bool)(e.Value ?? false))" />
-                                        <span class="toggle-track"></span>
-                                    </label>
-                                </td>
-                            }
+                            var key = item.Key;
+                            var r   = role;
+                            var chk = _matrix.TryGetValue(r, out var set) && set.Contains(key);
+                            <td style="text-align:center;border-left:1px solid #f1f5f9;padding:8px 0;width:88px">
+                                <button style="display:inline-flex;align-items:center;justify-content:center;
+                                               width:28px;height:28px;border-radius:6px;cursor:pointer;
+                                               border:@(chk?"none":"1.5px solid var(--border)");
+                                               background:@(chk?"#1e3a5f":"var(--surface)");
+                                               color:@(chk?"#fff":"transparent");
+                                               box-shadow:@(chk?"0 1px 3px rgba(30,58,95,.25)":"none");
+                                               transition:all .15s"
+                                        @onclick="() => OnToggle(r, key, !chk)"
+                                        title="@(chk?"Kaldır":"Ver")">
+                                    @if (chk)
+                                    {
+                                        <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                                            <path d="M2.5 7L5.5 10L11.5 4" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    }
+                                </button>
+                            </td>
                         }
+
+                        <td style="text-align:center;border-left:1px solid #d1fae5;background:#f8fffe;width:88px">
+                            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                                <path d="M2.5 7L5.5 10L11.5 4" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                            </svg>
+                        </td>
                     </tr>
                 }
             }
         </tbody>
     </table>
+</div>
 
-    <!-- Sticky footer -->
-    <div class="sticky-save">
-        <button class="btn btn-primary" @onclick="Save">
-            Değişiklikleri Kaydet
-        </button>
-        <button class="btn btn-outline" @onclick="ResetDefaults">
-            ↺ Varsayılanlara Sıfırla
-        </button>
-        @if (_dirty)
-        {
-            <span style="font-size:12px;color:#92400e;background:#fef3c7;padding:4px 10px;border-radius:6px;border:1px solid #fcd34d;font-weight:600">
-                ● Kaydedilmemiş değişiklik var
-            </span>
-        }
-    </div>
+<div style="display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:12px;padding:4px">
+    @foreach (var (key, color) in _levelColors)
+    {
+        <span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-2)">
+            <span style="width:7px;height:7px;border-radius:50%;background:@color;display:inline-block"></span>
+            @key
+        </span>
+    }
 </div>
 
 @code {
-    private static readonly string[] _roles = AuthService.AllRoles;
-
-    // role → set of granted permission keys
+    private string[] _editableRoles = [];
     private Dictionary<string, HashSet<string>> _matrix = [];
     private bool _saved;
     private bool _dirty;
+    private string? _hoverRow;
 
-    private record LevelBadge(string Key, string Label, string Icon, string Color, string Bg, string Border);
-    private static readonly LevelBadge[] _levelBadges =
-    [
-        new("Okuma",     "Okuma",     "",  "#065f46", "#dcfce7", "#86efac"),
-        new("Yazma",     "Yazma",     "", "#1e40af", "#dbeafe", "#93c5fd"),
-        new("Düzenleme", "Düzenleme", "", "#92400e", "#fef3c7", "#fcd34d"),
-        new("Onaylama",  "Onaylama",  "", "#581c87", "#f3e8ff", "#c4b5fd"),
-        new("Denetim",   "Denetim",   "", "#0f766e", "#ccfbf1", "#5eead4"),
-        new("Kurul",     "Kurul",     "", "#7c3aed", "#ede9fe", "#c4b5fd"),
-    ];
+    private static readonly Dictionary<string, string> _levelColors = new()
+    {
+        ["Okuma"]     = "#15803d",
+        ["Yazma"]     = "#1d4ed8",
+        ["Düzenleme"] = "#b45309",
+        ["Onaylama"]  = "#7c3aed",
+        ["Denetim"]   = "#0f766e",
+        ["Yönetim"]   = "#9f1239",
+        ["Kurul"]     = "#7c3aed",
+        ["İnceleme"]  = "#0369a1",
+    };
 
-    protected override void OnInitialized() => LoadFromDb();
+    protected override async Task OnInitializedAsync()
+    {
+        _editableRoles = Auth.GetAllRoles()
+            .Where(r => r.Name != "admin")
+            .Select(r => r.Name)
+            .ToArray();
+        await LoadFromDbAsync();
+    }
 
-    private void LoadFromDb()
+    private async Task LoadFromDbAsync()
     {
         _matrix = [];
-        foreach (var role in _roles.Where(r => r != "admin"))
-        {
-            var perms = Db.RolePermissions
+        foreach (var role in _editableRoles)
+            _matrix[role] = (await Db.RolePermissions
                 .Where(rp => rp.Role == role)
                 .Select(rp => rp.Permission)
+                .ToListAsync())
                 .ToHashSet();
-            _matrix[role] = perms;
-        }
         _saved = false;
         _dirty = false;
     }
@@ -169,17 +193,18 @@
         _saved = false;
     }
 
-    private void Save()
+    private async Task SaveAsync()
     {
-        foreach (var role in _roles.Where(r => r != "admin"))
+        foreach (var role in _editableRoles)
         {
-            var existing = Db.RolePermissions.Where(rp => rp.Role == role).ToList();
-            Db.RolePermissions.RemoveRange(existing);
+            Db.RolePermissions.RemoveRange(Db.RolePermissions.Where(rp => rp.Role == role));
             if (_matrix.TryGetValue(role, out var perms))
                 foreach (var perm in perms)
                     Db.RolePermissions.Add(new RiskManagement.Models.RolePermission { Role = role, Permission = perm });
         }
-        Db.SaveChanges();
+        await Db.SaveChangesAsync();
+        foreach (var role in _editableRoles)
+            Auth.InvalidateRoleCache(role);
         _saved = true;
         _dirty = false;
     }
@@ -188,8 +213,7 @@
     {
         _matrix = [];
         foreach (var (role, perms) in AuthService.DefaultPermissions)
-            if (role != "admin")
-                _matrix[role] = [.. perms];
+            if (role != "admin") _matrix[role] = [.. perms];
         _dirty = true;
         _saved = false;
     }

@@ -1,0 +1,227 @@
+@page "/admin/roles"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
+@inject AuthService Auth
+@inject AppDbContext Db
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using RiskManagement.Models
+@using RiskManagement.Services
+
+<PageTitle>Rol Yönetimi</PageTitle>
+
+<div class="page-toolbar">
+    <div class="page-toolbar-left">
+        <h1 class="page-toolbar-title">Rol Yönetimi</h1>
+        <div class="page-toolbar-sub">Özel roller oluşturun ve izinlerini <a href="/admin/permissions">Yetki Yönetimi</a> sayfasından atayın</div>
+    </div>
+    <div class="page-toolbar-actions">
+        <button class="btn btn-primary btn-sm" @onclick="OpenCreate">+ Yeni Rol</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_success))
+{
+    <div class="alert alert-success" style="margin-bottom:16px">@_success</div>
+}
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-danger" style="margin-bottom:16px">@_error</div>
+}
+
+<div style="border:1px solid var(--border);border-radius:10px;overflow:hidden;box-shadow:var(--shadow-sm)">
+    <table style="border-collapse:collapse;width:100%;font-size:13px">
+        <thead>
+            <tr style="border-bottom:2px solid var(--border);background:#f8fafc">
+                <th style="padding:12px 20px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3)">Rol Adı (Slug)</th>
+                <th style="padding:12px 20px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3)">Görünen Ad</th>
+                <th style="padding:12px 20px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3)">Tür</th>
+                <th style="padding:12px 20px;text-align:center;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3)">Kullanıcı Sayısı</th>
+                <th style="padding:12px 20px;text-align:right;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--text-3)">İşlemler</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var role in _roles)
+            {
+                var userCount = _userCounts.GetValueOrDefault(role.Name, 0);
+                <tr style="border-bottom:1px solid #f1f5f9">
+                    <td style="padding:12px 20px;font-family:monospace;font-size:12px;color:var(--text-3)">@role.Name</td>
+                    <td style="padding:12px 20px;font-weight:500;color:var(--text)">@role.Label</td>
+                    <td style="padding:12px 20px;text-align:center">
+                        @if (role.IsSystem)
+                        {
+                            <span style="display:inline-block;font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:#dbeafe;color:#1d4ed8">Yerleşik</span>
+                        }
+                        else
+                        {
+                            <span style="display:inline-block;font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:#fef9c3;color:#854d0e">Özel</span>
+                        }
+                    </td>
+                    <td style="padding:12px 20px;text-align:center;color:var(--text-2)">@userCount</td>
+                    <td style="padding:12px 20px;text-align:right">
+                        @if (!role.IsSystem)
+                        {
+                            <button class="btn btn-outline btn-sm" style="margin-right:6px" @onclick="() => OpenEdit(role)">Düzenle</button>
+                            <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#fca5a5"
+                                    @onclick="() => ConfirmDelete(role)"
+                                    disabled="@(userCount > 0)">Sil</button>
+                        }
+                        else
+                        {
+                            <span style="font-size:12px;color:var(--text-3)">—</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@* Oluştur / Düzenle Modal *@
+@if (_showForm)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center" @onclick="CloseForm">
+        <div style="background:var(--surface);border-radius:12px;padding:28px;width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3)" @onclick:stopPropagation>
+            <h3 style="margin:0 0 20px;font-size:16px;font-weight:700">@(_editId == 0 ? "Yeni Rol Oluştur" : "Rolü Düzenle")</h3>
+
+            @if (_editId == 0)
+            {
+                <div style="margin-bottom:16px;padding:12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;font-size:13px;color:#92400e">
+                    Rol oluşturulduktan sonra <a href="/admin/permissions" style="color:#92400e;font-weight:600">Yetki Yönetimi</a> sayfasından bu role izin atayabilirsiniz.
+                </div>
+            }
+
+            <div style="margin-bottom:16px">
+                <label class="form-label">Görünen Ad <span style="color:#dc2626">*</span></label>
+                <input class="form-input" @bind="_formLabel" placeholder="örn: Muhasebe Müdürü" style="width:100%" />
+                @if (_editId == 0 && !string.IsNullOrWhiteSpace(_formLabel))
+                {
+                    <div style="font-size:11px;color:var(--text-3);margin-top:4px">
+                        Slug: <code>@GeneratePreviewSlug(_formLabel)</code>
+                    </div>
+                }
+            </div>
+
+            @if (!string.IsNullOrEmpty(_formError))
+            {
+                <div style="padding:8px 12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;font-size:13px;color:#dc2626;margin-bottom:12px">
+                    @_formError
+                </div>
+            }
+
+            <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+                <button class="btn btn-outline btn-sm" @onclick="CloseForm">İptal</button>
+                <button class="btn btn-primary btn-sm" @onclick="SaveForm">
+                    @(_editId == 0 ? "Oluştur" : "Kaydet")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Silme Onayı Modal *@
+@if (_deleteRole != null)
+{
+    <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center">
+        <div style="background:var(--surface);border-radius:12px;padding:28px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+            <h3 style="margin:0 0 12px;font-size:16px;font-weight:700;color:#dc2626">Rolü Sil</h3>
+            <p style="font-size:14px;color:var(--text-2);margin:0 0 20px">
+                <strong>@_deleteRole.Label</strong> rolü silinecek. Bu işlem geri alınamaz.
+            </p>
+            <div style="display:flex;gap:10px;justify-content:flex-end">
+                <button class="btn btn-outline btn-sm" @onclick="() => _deleteRole = null">İptal</button>
+                <button class="btn btn-sm" style="background:#dc2626;color:#fff;border:none" @onclick="ExecuteDelete">Sil</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private List<CustomRole> _roles = [];
+    private Dictionary<string, int> _userCounts = [];
+    private string _success = "", _error = "";
+
+    private bool   _showForm;
+    private int    _editId;
+    private string _formLabel = "", _formError = "";
+
+    private CustomRole? _deleteRole;
+
+    protected override void OnInitialized() => Load();
+
+    private void Load()
+    {
+        _roles = Auth.GetAllRoles();
+        _userCounts = Db.UserRoles
+            .GroupBy(ur => ur.RoleName)
+            .ToDictionary(g => g.Key, g => g.Count());
+        // Primary role'dan da say
+        foreach (var u in Db.Users.Where(u => u.IsActive))
+        {
+            if (!_userCounts.ContainsKey(u.Role)) _userCounts[u.Role] = 0;
+        }
+    }
+
+    private void OpenCreate()
+    {
+        _editId = 0; _formLabel = ""; _formError = "";
+        _showForm = true;
+    }
+
+    private void OpenEdit(CustomRole role)
+    {
+        _editId = role.Id; _formLabel = role.Label; _formError = "";
+        _showForm = true;
+    }
+
+    private void CloseForm() { _showForm = false; _formError = ""; }
+
+    private void SaveForm()
+    {
+        _formError = "";
+        if (string.IsNullOrWhiteSpace(_formLabel)) { _formError = "Görünen ad boş olamaz."; return; }
+
+        try
+        {
+            if (_editId == 0)
+                Auth.CreateRole(_formLabel.Trim());
+            else
+                Auth.UpdateRole(_editId, _formLabel.Trim());
+
+            _success = _editId == 0 ? "Rol oluşturuldu." : "Rol güncellendi.";
+            _showForm = false;
+            Load();
+        }
+        catch (Exception ex)
+        {
+            _formError = ex.InnerException?.Message ?? ex.Message;
+        }
+    }
+
+    private void ConfirmDelete(CustomRole role) { _deleteRole = role; _error = ""; }
+
+    private void ExecuteDelete()
+    {
+        if (_deleteRole == null) return;
+        try
+        {
+            Auth.DeleteRole(_deleteRole.Id);
+            _success = $"'{_deleteRole.Label}' rolü silindi.";
+            _deleteRole = null;
+            Load();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+            _deleteRole = null;
+        }
+    }
+
+    private static string GeneratePreviewSlug(string label)
+    {
+        var slug = label.ToLowerInvariant()
+            .Replace(" ", "_").Replace("ı", "i").Replace("ğ", "g")
+            .Replace("ü", "u").Replace("ş", "s").Replace("ö", "o")
+            .Replace("ç", "c").Replace("İ", "i");
+        return new string(slug.Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray());
+    }
+}

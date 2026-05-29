@@ -17,7 +17,7 @@
         <h1 class="page-toolbar-title">Denetim Paneli</h1>
         <div class="page-toolbar-sub">@DateTime.Today.Year · İç denetim durumu ve bulgular</div>
     </div>
-    @if (HasRole("auditor","audit_manager","admin"))
+    @if (HasPerm("audit.read"))
     {
         <div class="page-toolbar-actions">
             <a href="/audit/plan"         class="btn btn-outline btn-sm">Yıllık Plan</a>
@@ -188,7 +188,7 @@
         <a href="/audit/internal" class="btn btn-outline btn-sm">İç Denetimler</a>
         <a href="/audit/findings" class="btn btn-outline btn-sm">Tüm Bulgular</a>
         <a href="/audit/actions"  class="btn btn-outline btn-sm">Aksiyon Planları</a>
-        @if (HasRole("auditor","audit_manager","admin"))
+        @if (HasPerm("audit.read"))
         {
             <a href="/audit/plan" class="btn btn-outline btn-sm">Denetim Planı</a>
         }
@@ -203,32 +203,43 @@
     private AuditDashboardStats? _stats;
     private ExternalAuditStats? _extStats;
     private bool _canSeeExternal;
-    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private bool   HasRole(params string[] roles) => roles.Contains(Role);
+    private int    _userId;
+    private User?  _user;
+    private bool   HasPerm(string perm) => _user != null && Auth.HasPermission(_user, perm);
 
     private string _initError = "";
 
     protected override void OnInitialized()
     {
+        var ctx = HttpCtx.HttpContext;
+        if (ctx is not null)
+            int.TryParse(ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out _userId);
+
+        _user = Db.Users
+            .Include(u => u.UserRoles)
+            .Include(u => u.UserDepartments)
+            .FirstOrDefault(u => u.Id == _userId);
+
         try
         {
-            _stats = AuditSvc.GetDashboardForUser(UserId, Role, CfgSvc.GetList("audit_severities"));
+            _stats = _user is not null
+                ? AuditSvc.GetDashboardForUser(_user, CfgSvc.GetList("audit_severities"))
+                : new AuditDashboardStats();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _initError = ex.Message;
+            _initError = "Veriler yüklenirken bir sorun oluştu. Lütfen sayfayı yenileyin.";
             _stats = new AuditDashboardStats();
         }
 
         // Dış denetim istatistikleri (yetki varsa)
         try
         {
-            var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == UserId);
-            if (user != null)
+            // _user zaten yüklendi
+            if (_user != null)
             {
-                _canSeeExternal = Auth.HasPermission(user, "external_audit.read") || ExtSvc.IsAdmin(user);
-                if (_canSeeExternal) _extStats = ExtSvc.GetStats(user);
+                _canSeeExternal = Auth.HasPermission(_user, "external_audit.read") || ExtSvc.IsAdmin(_user);
+                if (_canSeeExternal) _extStats = ExtSvc.GetStats(_user);
             }
         }
         catch { /* migration uygulanmamışsa sessizce yut */ }

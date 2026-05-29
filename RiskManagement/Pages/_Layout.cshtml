@@ -12,21 +12,76 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="css/tokens.css?v=3" />
-    <link rel="stylesheet" href="css/layout.css?v=3" />
-    <link rel="stylesheet" href="css/components.css?v=3" />
-    <link rel="stylesheet" href="css/domain.css?v=3" />
+    <link rel="stylesheet" href="css/tokens.css?v=4" />
+    <link rel="stylesheet" href="css/layout.css?v=4" />
+    <link rel="stylesheet" href="css/components.css?v=4" />
+    <link rel="stylesheet" href="css/domain.css?v=4" />
     <link rel="stylesheet" href="RiskManagement.styles.css" />
     <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
 </head>
 <body>
     @RenderBody()
 
+    <!-- Bağlantı durumu banner'ı -->
+    <div id="components-reconnect-modal" class="reconnect-modal">
+        <div class="reconnect-content">
+            <div class="reconnect-spinner"></div>
+            <div>
+                <div class="reconnect-title">Yeniden bağlanıyor…</div>
+                <div class="reconnect-sub">Ağ bağlantısı geçici olarak kesildi. Lütfen bekleyin.</div>
+            </div>
+        </div>
+    </div>
+
     <div id="blazor-error-ui">
-        Bağlantı kesildi.
-        <a href="" class="reload">Yenile</a>
+        <span>Bağlantı kesildi.</span>
+        <a href="" class="reload">Sayfayı Yenile</a>
         <a class="dismiss">✕</a>
     </div>
+
     <script src="_framework/blazor.server.js"></script>
+    <script>
+        // Reconnect modal durumunu yönet
+        (function () {
+            const modal = document.getElementById('components-reconnect-modal');
+            if (!modal) return;
+            const observer = new MutationObserver(() => {
+                const cls = modal.className;
+                if (cls.includes('components-reconnect-show')) {
+                    modal.style.display = 'flex';
+                } else {
+                    modal.style.display = 'none';
+                }
+            });
+            observer.observe(modal, { attributes: true, attributeFilter: ['class'] });
+
+            // Base64 içerik olarak dosya indirme yardımcısı (Blazor Server export)
+            window.downloadFileFromBase64 = function (fileName, base64, mimeType) {
+                try {
+                    var bytes = atob(base64);
+                    var arr = new Uint8Array(bytes.length);
+                    for (var i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+                    var blob = new Blob([arr], { type: mimeType || 'application/octet-stream' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url; a.download = fileName; document.body.appendChild(a);
+                    a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
+                } catch (e) { console.error('downloadFileFromBase64 hatası:', e); }
+            };
+
+            // Enter tuşuyla form submit — key formlar için global
+            document.addEventListener('keydown', function (e) {
+                if (e.key !== 'Enter' || e.shiftKey) return;
+                const active = document.activeElement;
+                if (!active) return;
+                // Textarea değilse ve form içindeyse primary butonu tıkla
+                if (active.tagName === 'TEXTAREA') return;
+                const form = active.closest('.card, .modal-content, [data-enter-submit]');
+                if (!form) return;
+                const btn = form.querySelector('button.btn-primary:not([disabled])');
+                if (btn) { e.preventDefault(); btn.click(); }
+            });
+        })();
+    </script>
 </body>
 </html>

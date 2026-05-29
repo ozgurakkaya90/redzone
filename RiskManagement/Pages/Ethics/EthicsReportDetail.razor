@@ -1,10 +1,14 @@
 @page "/ethics/reports/{Id:int}"
 @attribute [Authorize(Roles = "audit_manager,ethics_board,admin")]
 @inject EthicsService EthicsSvc
+@inject AuthService Auth
+@inject AppDbContext Db
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
 @using RiskManagement.Models
+@using System.Threading.Tasks
 
 <PageTitle>Etik Bildirim Detayı</PageTitle>
 
@@ -41,7 +45,7 @@ else
         </div>
 
         <!-- Denetim Müdürü Değerlendirmesi -->
-        @if (_report.Status == "pending" && HasRole("audit_manager", "admin"))
+        @if (_report.Status == "pending" && HasPerm("ethics.audit_review"))
         {
             <div class="card">
                 <div class="section-title">Denetim Müdürü Değerlendirmesi</div>
@@ -64,7 +68,7 @@ else
         }
 
         <!-- Etik Kurul Değerlendirmesi -->
-        @if (_report.Status == "ethics_board_notified" && HasRole("ethics_board", "admin"))
+        @if (_report.Status == "ethics_board_notified" && HasPerm("ethics.board_review"))
         {
             <div class="card">
                 <div class="section-title">Etik Kurul Değerlendirmesi</div>
@@ -143,14 +147,16 @@ else
     private string _auditDecision = "", _auditNotes = "";
     private string _ethicsDecision = "", _ethicsNotes = "";
 
-    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private bool HasRole(params string[] roles) =>
-        HttpCtx.HttpContext?.User.Claims
-            .Where(c => c.Type == ClaimTypes.Role)
-            .Any(c => roles.Contains(c.Value)) ?? false;
+    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private User?  _user;
+    private bool   HasPerm(string perm) => _user != null && Auth.HasPermission(_user, perm);
 
-    protected override void OnInitialized() => Load();
+    protected override async Task OnInitializedAsync()
+    {
+        _user = await Db.Users.Include(u => u.UserRoles).FirstOrDefaultAsync(u => u.Id == UserId);
+        Load();
+    }
 
     private void Load()
     {
@@ -161,8 +167,12 @@ else
     private void SaveAuditReview()
     {
         if (string.IsNullOrEmpty(_auditDecision)) { _error = "Karar seçiniz."; return; }
-        _loading = true;
-        EthicsSvc.AuditReview(Id, _auditDecision, _auditNotes, UserId);
+        _loading = true; _error = "";
+        if (!EthicsSvc.AuditReview(Id, _auditDecision, _auditNotes, UserId))
+        {
+            _error = "Değerlendirme kaydedilemedi. Geçersiz karar değeri veya yetki sorunu.";
+            _loading = false; return;
+        }
         _success = "Değerlendirme kaydedildi.";
         _auditDecision = ""; _auditNotes = "";
         Load(); _loading = false;
@@ -171,8 +181,12 @@ else
     private void SaveEthicsReview()
     {
         if (string.IsNullOrEmpty(_ethicsDecision)) { _error = "Karar seçiniz."; return; }
-        _loading = true;
-        EthicsSvc.EthicsReview(Id, _ethicsDecision, _ethicsNotes, UserId);
+        _loading = true; _error = "";
+        if (!EthicsSvc.EthicsReview(Id, _ethicsDecision, _ethicsNotes, UserId))
+        {
+            _error = "Karar kaydedilemedi. Geçersiz karar değeri veya yetki sorunu.";
+            _loading = false; return;
+        }
         _success = "Etik Kurul kararı kaydedildi.";
         _ethicsDecision = ""; _ethicsNotes = "";
         Load(); _loading = false;
@@ -202,6 +216,7 @@ else
     {
         "irrelevant"            => "İlgisiz — İşleme alınmadı",
         "ethics_board_notified" => "Etik Kurul'a Bildirildi",
+        "investigate"           => "Soruşturma Başlatıldı",
         _ => s
     };
 

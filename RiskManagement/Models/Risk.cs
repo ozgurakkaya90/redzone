@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json;
 
 namespace RiskManagement.Models;
 
@@ -39,7 +40,22 @@ public class Risk
     [MaxLength(500)]
     public string? PossibleImpact { get; set; }
 
-    public string? AffectedPersons { get; set; } // JSON array
+    public string? AffectedPersons { get; set; } // JSON array — GetAffectedPersonsList()/SetAffectedPersonsList() kullan
+
+    private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    public List<string> GetAffectedPersonsList() =>
+        string.IsNullOrEmpty(AffectedPersons) ? [] :
+        JsonSerializer.Deserialize<List<string>>(AffectedPersons, _jsonOpts) ?? [];
+
+    public void SetAffectedPersonsList(IEnumerable<string> items)
+        => AffectedPersons = SerializePersonsList(items);
+
+    public static string? SerializePersonsList(IEnumerable<string> items)
+    {
+        var list = items.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
+        return list.Count > 0 ? JsonSerializer.Serialize(list, _jsonOpts) : null;
+    }
 
     [MaxLength(500)]
     public string? RelevantLegislation { get; set; }
@@ -69,6 +85,13 @@ public class Risk
     [MaxLength(1000)]
     public string? RejectionReason { get; set; }
 
+    /// <summary>
+    /// Status == risk_accepted ise RejectionReason alanındaki gerekçeyi semantik olarak döner.
+    /// Veritabanı sütunu değildir; UI katmanının her iki durumu ayrı göstermesini sağlar.
+    /// </summary>
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public string? AcceptanceReason => Status == RiskStatus.RiskAccepted ? RejectionReason : null;
+
     public User? ProposedBy { get; set; }
     public User? Owner { get; set; }
     public ICollection<Evaluation> Evaluations { get; set; } = [];
@@ -76,6 +99,7 @@ public class Risk
     public ICollection<ActionPlan> ActionPlans { get; set; } = [];
     public ICollection<RiskReview> Reviews { get; set; } = [];
     public ICollection<RiskAuditLog> AuditLogs { get; set; } = [];
+    public ICollection<RiskFindingLink> FindingLinks { get; set; } = [];
 }
 
 public class RiskReview
@@ -89,6 +113,19 @@ public class RiskReview
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Risk Risk { get; set; } = null!;
+    public User CreatedBy { get; set; } = null!;
+}
+
+public class RiskFindingLink
+{
+    public int Id { get; set; }
+    public int RiskId { get; set; }
+    public int FindingId { get; set; }
+    public int CreatedById { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public Risk Risk { get; set; } = null!;
+    public RiskManagement.Models.AuditFinding Finding { get; set; } = null!;
     public User CreatedBy { get; set; } = null!;
 }
 
@@ -172,6 +209,14 @@ public class ActionPlan
     public int CreatedById { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
+
+    /// <summary>Gecikme açıklaması — vadesi geçmişse sorumlu tarafından girilir.</summary>
+    [MaxLength(500)]
+    public string? DelayReason { get; set; }
+
+    /// <summary>Kapanış notu — aksiyon tamamlandığında girilir.</summary>
+    [MaxLength(1000)]
+    public string? ClosureNote { get; set; }
 
     public Risk Risk { get; set; } = null!;
     public User CreatedBy { get; set; } = null!;

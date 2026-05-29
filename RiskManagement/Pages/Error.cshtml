@@ -1,0 +1,45 @@
+@page "/Error"
+@namespace RiskManagement.Pages
+@addTagHelper *, Microsoft.AspNetCore.Mvc.TagHelpers
+@model RiskManagement.Pages.ErrorModel
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Bir hata oluştu</title>
+    <base href="~/" />
+    <link rel="stylesheet" href="css/tokens.css?v=4" />
+    <link rel="stylesheet" href="css/layout.css?v=4" />
+    <link rel="stylesheet" href="css/components.css?v=4" />
+    <style>
+        .error-wrap { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+        .error-card { max-width: 480px; width: 100%; text-align: center; }
+        .error-code { font-size: 56px; font-weight: 700; color: var(--color-danger, #dc2626); line-height: 1; margin-bottom: 12px; }
+        .error-rid  { font-family: monospace; font-size: 12px; color: #6b7280; word-break: break-all; margin-top: 16px; }
+        .error-actions { margin-top: 24px; display: flex; gap: 12px; justify-content: center; }
+    </style>
+</head>
+<body>
+    <div class="error-wrap">
+        <div class="card error-card">
+            <div class="error-code">500</div>
+            <h2>Beklenmeyen bir hata oluştu</h2>
+            <p class="text-muted">
+                İşleminiz tamamlanamadı. Sorun devam ederse aşağıdaki referans numarasıyla
+                sistem yöneticinize başvurabilirsiniz.
+            </p>
+            @if (Model.ShowRequestId)
+            {
+                <div class="error-rid">Referans: @Model.RequestId</div>
+            }
+            <div class="error-actions">
+                <a href="/" class="btn btn-primary btn-sm">Ana sayfaya dön</a>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

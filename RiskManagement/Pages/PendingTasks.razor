@@ -1,9 +1,11 @@
 @page "/pending"
 @attribute [Authorize]
 @inject TaskService TaskSvc
+@inject AuthService Auth
 @inject IHttpContextAccessor HttpCtx
 @inject NavigationManager Nav
 @using System.Security.Claims
+@using RiskManagement.Models
 
 <PageTitle>Bekleyen İşler</PageTitle>
 
@@ -23,6 +25,11 @@
     </a>
 </div>
 
+@{
+    var urgentTasks = _tasks.Where(t => t.Priority == "urgent").ToList();
+    var normalTasks = _tasks.Where(t => t.Priority != "urgent").ToList();
+}
+
 @if (_tasks.Count == 0)
 {
     <div class="card" style="padding:48px">
@@ -39,37 +46,66 @@
 }
 else
 {
-    @foreach (var group in _tasks.GroupBy(t => t.Category).OrderBy(g => g.Key))
-    {
-        <div class="task-group">
-            <div class="task-group-label">
-                @group.Key
-                <span class="task-group-count">@group.Count()</span>
-            </div>
-            <div class="task-list">
-                @foreach (var task in group)
+    <div class="card" style="padding:0;overflow:hidden">
+        @if (urgentTasks.Any())
+        {
+            <div class="task-urgency-strip task-urgency-urgent">
+                <div class="task-urgency-label">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                    Hemen Gerekli
+                    <span class="task-urgency-count">@urgentTasks.Count</span>
+                </div>
+                @foreach (var task in urgentTasks)
                 {
-                    <a href="@task.Url" class="task-item" style="border-left-color:@task.Color">
+                    <a href="@task.Url" class="task-item"
+                       style="--task-color:@task.Color;--task-bg:@task.Bg;--task-border:@(task.Color+"40")">
+                        <span class="task-item-bar"></span>
                         <div class="task-item-body">
                             <div class="task-item-title">@task.Title</div>
                             <div class="task-item-detail">@task.Detail</div>
                         </div>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--gray-400)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><polyline points="9 18 15 12 9 6"/></svg>
+                        <span class="task-item-cat">@task.Category</span>
+                        <span style="color:var(--text-3);font-size:12px">›</span>
                     </a>
                 }
             </div>
-        </div>
-    }
+        }
+        @if (normalTasks.Any())
+        {
+            <div class="task-urgency-strip">
+                <div class="task-urgency-label">
+                    Bekleyen İşlerim
+                    <span class="task-urgency-count">@normalTasks.Count</span>
+                </div>
+                @foreach (var task in normalTasks)
+                {
+                    <a href="@task.Url" class="task-item"
+                       style="--task-color:@task.Color;--task-bg:@task.Bg;--task-border:@(task.Color+"40")">
+                        <span class="task-item-bar"></span>
+                        <div class="task-item-body">
+                            <div class="task-item-title">@task.Title</div>
+                            <div class="task-item-detail">@task.Detail</div>
+                        </div>
+                        <span class="task-item-cat">@task.Category</span>
+                        <span style="color:var(--text-3);font-size:12px">›</span>
+                    </a>
+                }
+            </div>
+        }
+    </div>
 }
 
 @code {
     private List<UserTask> _tasks = [];
-
-    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private User? _user;
 
     protected override void OnInitialized()
     {
-        _tasks = TaskSvc.GetTasksForUser(UserId, Role);
+        _user  = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
+        _tasks = _user is not null ? TaskSvc.GetTasksForUser(_user) : [];
     }
 }

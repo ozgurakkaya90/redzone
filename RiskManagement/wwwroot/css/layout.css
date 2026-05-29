@@ -67,11 +67,11 @@ body {
 .sidebar-nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 1px; }
 
 .nav-section {
-  font-size: 10px;
+  font-size: var(--nav-section-font-size, 10px);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
-  color: var(--gray-600);
+  color: var(--nav-section-color, var(--gray-600));
   padding: 16px 8px 6px;
 }
 
@@ -176,11 +176,32 @@ body {
   .dashboard-grid { grid-template-columns: 1fr 1fr; }
 }
 
-@media (max-width: 540px) {
-  .app-shell { flex-direction: column; }
-  .sidebar { width: 100%; height: auto; position: relative; }
+@media (max-width: 640px) {
+  /* Drawer modu — sidebar gizli, overlay + slide-in */
+  .mobile-menu-btn { display: flex !important; }
+  .app-shell { flex-direction: row; }
+  .sidebar {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    width: 260px !important;
+    height: 100vh !important;
+    z-index: 1060;
+    transform: translateX(-100%);
+    transition: transform .25s cubic-bezier(.4,0,.2,1);
+    box-shadow: none;
+  }
+  .sidebar.drawer-open {
+    transform: translateX(0);
+    box-shadow: 4px 0 24px rgba(0,0,0,.35);
+  }
+  .main-content {
+    width: 100%;
+    padding-top: 64px; /* hamburger butonu için boşluk */
+  }
   .page-body { padding: 16px; }
   .dashboard-grid { grid-template-columns: 1fr; }
+  /* Daraltma butonu mobilde gizle */
+  .sidebar-toggle-btn { display: none !important; }
 }
 
 /* ══════════════════════════════════════════════════════════
@@ -214,7 +235,8 @@ body {
   gap: 12px;
   flex-wrap: wrap;
 }
-.page-toolbar-left { flex: 1; min-width: 0; }
+.page-toolbar-left  { flex: 1; min-width: 0; }
+.page-toolbar-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .page-toolbar-title {
   font-size: 20px;
   font-weight: 700;

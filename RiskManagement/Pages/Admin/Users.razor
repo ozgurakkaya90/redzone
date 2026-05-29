@@ -2,6 +2,7 @@
 @attribute [Authorize(Roles = "admin")]
 @inject AppDbContext Db
 @inject AuthService Auth
+@inject ConfigService CfgSvc
 @inject IHttpContextAccessor HttpCtx
 @using Microsoft.EntityFrameworkCore
 @using RiskManagement.Models
@@ -38,13 +39,15 @@
                         <td>
                             <div style="font-weight:600">@u.FullName</div>
                             <div style="font-size:11px;color:var(--text-3)">@u.Username</div>
+                            @if (!string.IsNullOrEmpty(u.Email))
+                            { <div style="font-size:11px;color:var(--text-3)">@u.Email</div> }
                         </td>
                         <td style="font-size:12px">
                             <div style="display:flex;flex-wrap:wrap;gap:4px">
                                 @foreach (var r in u.UserRoles.Select(x => x.RoleName).Distinct())
-                                { <span class="tag" style="font-size:10px">@AuthService.RoleLabels.GetValueOrDefault(r, r)</span> }
+                                { <span class="tag" style="font-size:10px">@Auth.GetRoleLabel(r)</span> }
                                 @if (!u.UserRoles.Any())
-                                { <span class="tag" style="font-size:10px">@AuthService.RoleLabels.GetValueOrDefault(u.Role, u.Role)</span> }
+                                { <span class="tag" style="font-size:10px">@Auth.GetRoleLabel(u.Role)</span> }
                             </div>
                         </td>
                         <td style="font-size:12px;line-height:1.7">
@@ -90,6 +93,10 @@
                     <label class="form-label">Ad Soyad *</label>
                     <input class="form-control" @bind="_editUser.FullName" />
                 </div>
+                <div>
+                    <label class="form-label">E-posta</label>
+                    <input type="email" class="form-control" @bind="_editUser.Email" placeholder="ornek@sirket.com" />
+                </div>
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
                     <input type="checkbox" @bind="_editUser.IsActive" />
                     <span style="font-size:13px">Aktif</span>
@@ -109,14 +116,19 @@
                 <div>
                     <div class="form-label" style="margin-bottom:8px">Roller</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;padding:10px;background:#f8fafc;border:1px solid var(--border);border-radius:8px">
-                        @foreach (var r in AuthService.AllRoles.Where(r => r != "user"))
+                        @foreach (var r in _allRoles.Where(r => r.Name != "user"))
                         {
-                            var role = r;
-                            var isChecked = _selectedRoles.Contains(role);
-                            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap">
+                            var roleName = r.Name;
+                            var isChecked = _selectedRoles.Contains(roleName);
+                            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;white-space:nowrap"
+                                   title="@(r.IsSystem ? "Yerleşik" : "Özel")">
                                 <input type="checkbox" checked="@isChecked"
-                                       @onchange="e => ToggleRole(role, (bool)(e.Value ?? false))" />
-                                @AuthService.RoleLabels.GetValueOrDefault(role, role)
+                                       @onchange="e => ToggleRole(roleName, (bool)(e.Value ?? false))" />
+                                @r.Label
+                                @if (!r.IsSystem)
+                                {
+                                    <span style="font-size:10px;padding:1px 5px;background:#fef9c3;color:#854d0e;border-radius:4px">özel</span>
+                                }
                             </label>
                         }
                     </div>
@@ -220,6 +232,7 @@
 
 @code {
     private List<User> _users = [];
+    private List<CustomRole> _allRoles = [];
     private List<Company> _companies = [];
     private List<Organization> _allOrgs = [];
     private List<Models.Department> _allDepts = [];
@@ -239,25 +252,28 @@
     // "Ekle" dropdown geçici seçimleri
     private int _addCompanyId, _addOrgId, _addDeptId;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        Reload();
+        _allRoles = Auth.GetAllRoles();
+        await ReloadAsync();
         var req = HttpCtx.HttpContext?.Request;
         if (req != null) _baseUrl = $"{req.Scheme}://{req.Host}";
     }
 
-    void Reload()
+    async Task ReloadAsync()
     {
-        _users = [.. Db.Users
+        _users = await Db.Users
             .Include(u => u.UserRoles)
             .Include(u => u.UserDepartments).ThenInclude(ud => ud.Department)
             .Include(u => u.UserOrganizations).ThenInclude(uo => uo.Organization)
             .Include(u => u.UserCompanies).ThenInclude(uc => uc.Company)
-            .OrderBy(u => u.FullName)];
-        _companies = [.. Db.Companies.OrderBy(c => c.Name)];
-        _allOrgs   = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
-        _allDepts  = [.. Db.Departments.OrderBy(d => d.Name)];
+            .OrderBy(u => u.FullName)
+            .ToListAsync();
+        _companies = await Db.Companies.OrderBy(c => c.Name).ToListAsync();
+        _allOrgs   = await Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name).ToListAsync();
+        _allDepts  = await Db.Departments.OrderBy(d => d.Name).ToListAsync();
     }
+
 
     void NewUser()
     {
@@ -271,7 +287,7 @@
 
     void StartEdit(User u)
     {
-        _editUser = new User { Id = u.Id, Username = u.Username, FullName = u.FullName, IsActive = u.IsActive, Role = u.Role };
+        _editUser = new User { Id = u.Id, Username = u.Username, FullName = u.FullName, Email = u.Email, IsActive = u.IsActive, Role = u.Role };
         _isNew = false;
         _selectedRoles      = [.. u.UserRoles.Select(r => r.RoleName)];
         _selectedCompanyIds = [.. u.UserCompanies.Select(c => c.CompanyId)];
@@ -288,7 +304,7 @@
     void AddOrg()     { if (_addOrgId     > 0) { _selectedOrgIds.Add(_addOrgId);         _addOrgId     = 0; } }
     void AddDept()    { if (_addDeptId    > 0) { _selectedDeptIds.Add(_addDeptId);        _addDeptId    = 0; } }
 
-    void SaveEdit()
+    async Task SaveEdit()
     {
         _error = ""; _success = "";
         if (_editUser == null) return;
@@ -296,10 +312,10 @@
 
         // Rol yoksa varsayılan "user"
         if (_selectedRoles.Count == 0) _selectedRoles.Add("user");
-        var primaryRole = _selectedRoles.Contains("admin") ? "admin"
-            : _selectedRoles.Contains("risk_manager") ? "risk_manager"
-            : _selectedRoles.Contains("committee") ? "committee"
-            : _selectedRoles.First();
+        // Öncelik: admin > sistem rolleri > özel roller
+        var systemPriority = new[] { "admin", "risk_manager", "committee", "audit_manager", "risk_owner", "auditor", "finding_owner", "ethics_board" };
+        var primaryRole = systemPriority.FirstOrDefault(r => _selectedRoles.Contains(r))
+                          ?? _selectedRoles.First();
 
         // İlk atanan departmanın adını User.Department legacy alanına yaz
         var primaryDeptName = _selectedDeptIds.Count > 0
@@ -309,13 +325,15 @@
         if (_isNew)
         {
             if (string.IsNullOrWhiteSpace(_editUser.Username)) { _error = "Kullanıcı adı zorunludur."; return; }
-            if (_newPassword.Length < 6) { _error = "Şifre en az 6 karakter olmalıdır."; return; }
+            var _pwErr = CfgSvc.ValidatePassword(_newPassword);
+            if (_pwErr != null) { _error = _pwErr; return; }
             if (Db.Users.Any(u => u.Username == _editUser.Username)) { _error = "Bu kullanıcı adı kullanılıyor."; return; }
 
             var newUser = new User
             {
                 Username     = _editUser.Username,
                 FullName     = _editUser.FullName,
+                Email        = string.IsNullOrWhiteSpace(_editUser.Email) ? null : _editUser.Email.Trim(),
                 Role         = primaryRole,
                 Department   = primaryDeptName,
                 IsActive     = _editUser.IsActive,
@@ -325,32 +343,33 @@
                 CompanyId      = _selectedCompanyIds.Count > 0 ? _selectedCompanyIds.First() : null,
             };
             Db.Users.Add(newUser);
-            Db.SaveChanges();
+            await Db.SaveChangesAsync();
 
-            SyncAssignments(newUser.Id, primaryRole);
+            await SyncAssignmentsAsync(newUser.Id, primaryRole);
         }
         else
         {
             var existing = Db.Users.Find(_editUser.Id);
             if (existing == null) { _error = "Kullanıcı bulunamadı."; return; }
             existing.FullName      = _editUser.FullName;
+            existing.Email         = string.IsNullOrWhiteSpace(_editUser.Email) ? null : _editUser.Email.Trim();
             existing.Role          = primaryRole;
             existing.IsActive      = _editUser.IsActive;
             existing.Department    = primaryDeptName;
             existing.DepartmentId   = _selectedDeptIds.Count > 0 ? _selectedDeptIds.First() : null;
             existing.OrganizationId = _selectedOrgIds.Count > 0 ? _selectedOrgIds.First() : null;
             existing.CompanyId      = _selectedCompanyIds.Count > 0 ? _selectedCompanyIds.First() : null;
-            Db.SaveChanges();
+            await Db.SaveChangesAsync();
 
-            SyncAssignments(_editUser.Id, primaryRole);
+            await SyncAssignmentsAsync(_editUser.Id, primaryRole);
         }
 
         _success = _isNew ? "Kullanıcı oluşturuldu." : "Kullanıcı güncellendi.";
         CloseEdit();
-        Reload();
+        await ReloadAsync();
     }
 
-    void SyncAssignments(int userId, string primaryRole)
+    async Task SyncAssignmentsAsync(int userId, string primaryRole)
     {
         // UserRoles — temizle ve yeniden ekle
         Db.UserRoles.RemoveRange(Db.UserRoles.Where(r => r.UserId == userId));
@@ -372,10 +391,10 @@
         foreach (var did in _selectedDeptIds)
             Db.UserDepartments.Add(new UserDepartment { UserId = userId, DepartmentId = did });
 
-        Db.SaveChanges();
+        await Db.SaveChangesAsync();
     }
 
-    void GenerateResetLink()
+    async Task GenerateResetLink()
     {
         _resetLink = string.Empty;
         if (_editUser == null) return;
@@ -388,18 +407,18 @@
             Token = AuthService.HashResetToken(token),
             ExpiresAt = DateTime.UtcNow.Add(AuthService.PasswordResetTokenLifetime)
         });
-        Db.SaveChanges();
+        await Db.SaveChangesAsync();
         _resetLink = $"{_baseUrl}/reset-password?token={Uri.EscapeDataString(token)}";
     }
 
-    void DeleteUser(int id)
+    async Task DeleteUser(int id)
     {
         if (_editUser?.Id == id) CloseEdit();
         var u = Db.Users.Find(id);
         if (u == null) return;
         Db.Users.Remove(u);
-        Db.SaveChanges();
+        await Db.SaveChangesAsync();
         _success = "Kullanıcı silindi.";
-        Reload();
+        await ReloadAsync();
     }
 }

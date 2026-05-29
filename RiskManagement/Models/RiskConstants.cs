@@ -4,7 +4,6 @@ public static class RiskStatus
 {
     public const string Proposed          = "proposed";
     public const string UnderReview       = "under_review";
-    public const string Drafting          = "drafting";
     public const string AwaitingApproval  = "awaiting_approval";
     public const string Approved          = "approved";
     public const string StrategySet       = "strategy_set";
@@ -13,18 +12,18 @@ public static class RiskStatus
     public const string ActionPlanned     = "action_planned";
     public const string RiskAccepted      = "risk_accepted";
     public const string Rejected          = "rejected";
+    public const string Closed            = "closed";
 
     public static readonly string[] All =
     [
-        Proposed, UnderReview, Drafting, AwaitingApproval, Approved,
-        StrategySet, Controlled, ResidualEvaluated, ActionPlanned, RiskAccepted, Rejected
+        Proposed, UnderReview, AwaitingApproval, Approved,
+        StrategySet, Controlled, ResidualEvaluated, ActionPlanned, RiskAccepted, Rejected, Closed
     ];
 
     public static string Label(string s) => s switch
     {
         Proposed          => "Risk Önerisi",
         UnderReview       => "İncelemede",
-        Drafting          => "İncelemede",
         AwaitingApproval  => "Onay Bekliyor",
         Approved          => "Komite Onaylı",
         StrategySet       => "Strateji Belirlendi",
@@ -79,4 +78,11 @@ public static class EvalType
 {
     public const string Initial  = "initial";
     public const string Residual = "residual";
+}
+
+public static class AuditStatus
+{
+    public const string Planned    = "planned";
+    public const string InProgress = "in_progress";
+    public const string Completed  = "completed";
 }

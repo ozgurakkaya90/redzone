@@ -7,9 +7,12 @@
 @inject ConfigService CfgSvc
 @inject TaskService TaskSvc
 @inject AppDbContext Db
+@inject AuthService Auth
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
+@inject Microsoft.Extensions.Caching.Memory.IMemoryCache Cache
 @using System.Security.Claims
+@using Microsoft.Extensions.Caching.Memory
 @using RiskManagement.Models
 @using Microsoft.EntityFrameworkCore
 
@@ -21,6 +24,9 @@
         <h1 class="page-toolbar-title">Hoş geldiniz, @FullName.Split(' ')[0]</h1>
         <div class="page-toolbar-sub">
             @DateTime.Now.ToString("dd MMMM yyyy, dddd", new System.Globalization.CultureInfo("tr-TR"))
+        </div>
+        <div style="font-size:12px;color:var(--text-3);margin-top:4px">
+            @RoleGreeting
         </div>
     </div>
     <div class="page-toolbar-actions">
@@ -89,7 +95,12 @@
         </div>
     </div>
 
-    @if (SortedTasks.Count == 0)
+    @{
+        var urgentTasks = SortedTasks.Where(t => t.Priority == "urgent").ToList();
+        var normalTasks = SortedTasks.Where(t => t.Priority != "urgent").ToList();
+    }
+
+    @if (!_tasks.Any())
     {
         <div class="task-item" style="color:var(--text-3)">
             <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none"
@@ -102,10 +113,20 @@
             </div>
         </div>
     }
-    else
+
+    @if (urgentTasks.Any())
     {
-        <div class="task-list-body">
-            @foreach (var task in SortedTasks)
+        <div class="task-urgency-strip task-urgency-urgent">
+            <div class="task-urgency-label">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                     stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                    <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                Hemen Gerekli
+                <span class="task-urgency-count">@urgentTasks.Count</span>
+            </div>
+            @foreach (var task in urgentTasks)
             {
                 <a href="@task.Url" class="task-item"
                    style="--task-color:@task.Color;--task-bg:@task.Bg;--task-border:@(task.Color+"40")">
@@ -116,6 +137,35 @@
                     </div>
                     <span class="task-item-cat">@task.Category</span>
                     <span style="color:var(--text-3);font-size:12px">›</span>
+                </a>
+            }
+        </div>
+    }
+
+    @if (normalTasks.Any())
+    {
+        <div class="task-urgency-strip">
+            <div class="task-urgency-label">
+                Bekleyen İşlerim
+                <span class="task-urgency-count">@normalTasks.Count</span>
+            </div>
+            @foreach (var task in normalTasks.Take(8))
+            {
+                <a href="@task.Url" class="task-item"
+                   style="--task-color:@task.Color;--task-bg:@task.Bg;--task-border:@(task.Color+"40")">
+                    <span class="task-item-bar"></span>
+                    <div class="task-item-body">
+                        <div class="task-item-title">@task.Title</div>
+                        <div class="task-item-detail">@task.Detail</div>
+                    </div>
+                    <span class="task-item-cat">@task.Category</span>
+                    <span style="color:var(--text-3);font-size:12px">›</span>
+                </a>
+            }
+            @if (normalTasks.Count > 8)
+            {
+                <a href="/pending" style="display:block;padding:10px 16px;font-size:12px;color:var(--text-3);text-align:center">
+                    + @(normalTasks.Count - 8) iş daha — Tümünü Gör →
                 </a>
             }
         </div>
@@ -182,10 +232,9 @@
 </div>
 
 @code {
-    private string Role    => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int    UserId  => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
     private string FullName => HttpCtx.HttpContext?.User.FindFirst("full_name")?.Value ?? "Kullanıcı";
-    private bool CanSeeEthics => Role is "audit_manager" or "ethics_board" or "admin";
+    private User?  _user;
+    private bool CanSeeEthics => _user?.HasAnyRole("audit_manager", "ethics_board", "admin") ?? false;
 
     private bool _modRisk, _modAudit, _modEthics, _modExternal;
     private bool _canSeeExternal;
@@ -209,28 +258,53 @@
 
     private List<(string Label, int Value, string Color, string Bg, string Href)> _summaryCards = [];
 
-    protected override void OnInitialized()
+    // Dashboard istatistikleri — kullanıcı başına 60s cache
+    private record DashStats(
+        int RiskTotal, int RiskProposedReview, int RiskApproved, int RiskControlled, int RiskRejected, int HighRisk,
+        int AuditTotal, int AuditOpen, int AuditClosureReq, int AuditClosed, int AuditOverdue,
+        int EthicsTotal, int EthicsPending, int EthicsBoard, int EthicsClosed,
+        int ExtTotal, int ExtPlanned, int ExtInProgress, int ExtCompleted, int ExtUpcoming,
+        bool CanSeeExternal,
+        List<(string Label, int Value, string Color, string Bg, string Href)> Cards);
+
+    private static string StatsCacheKey(int userId) => $"dash:stats:u{userId}";
+
+    protected override async Task OnInitializedAsync()
     {
+        await Task.Yield(); // Blazor render döngüsünü bloke etmemek için
+
+        _user = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
+
         _modRisk     = CfgSvc.IsModuleActive("risk");
         _modAudit    = CfgSvc.IsModuleActive("audit");
         _modEthics   = CfgSvc.IsModuleActive("ethics");
         _modExternal = CfgSvc.IsModuleActive("external");
 
-        _tasks  = TaskSvc.GetTasksForUser(UserId, Role);
+        if (_user is null) return;
+
+        _tasks  = TaskSvc.GetTasksForUser(_user);
         _urgent = _tasks.Where(t => t.Priority == "urgent").ToList();
 
-        var risks = RiskSvc.GetForUser(UserId, Role);
+        // İstatistikler cache'den al; yoksa hesapla
+        var cacheKey = StatsCacheKey(_user.Id);
+        if (Cache.TryGetValue<DashStats>(cacheKey, out var cached) && cached is not null)
+        {
+            ApplyStats(cached);
+            return;
+        }
+
+        var risks = RiskSvc.GetForUser(_user);
         _riskTotal          = risks.Count;
         _riskProposedReview = risks.Count(r => r.Status is "proposed" or "under_review" or "awaiting_approval");
         _riskApproved       = risks.Count(r => r.Status is "approved" or "strategy_set");
-        _riskControlled     = risks.Count(r => r.Status is "controlled" or "residual_evaluated" or "action_planned");
+        _riskControlled     = risks.Count(r => r.Status is "controlled" or "residual_evaluated" or "action_planned" or "risk_accepted");
         _riskRejected       = risks.Count(r => r.Status == "rejected");
 
         var highRisk = risks.Count(r =>
             r.Evaluations.FirstOrDefault(e => e.EvalType == "initial")?.RiskLevel
             is "Çok Yüksek Risk" or "Yüksek Risk");
 
-        var stats = AuditSvc.GetDashboardForUser(UserId, Role, CfgSvc.GetList("audit_severities"));
+        var stats = AuditSvc.GetDashboardForUser(_user, CfgSvc.GetList("audit_severities"));
         _auditTotal = stats.Total; _auditOpen = stats.Open;
         _auditClosureRequested = stats.ClosureRequested;
         _auditClosed = stats.Closed; _auditOverdue = stats.Overdue;
@@ -248,33 +322,89 @@
         {
             try
             {
-                var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == UserId);
-                if (user != null)
+                _canSeeExternal = ExtAuditSvc.IsAdmin(_user) ||
+                    _user.HasAnyRole("auditor", "audit_manager") ||
+                    Db.UserExternalAuditBodies.Any(b => b.UserId == _user.Id);
+                if (_canSeeExternal)
                 {
-                    _canSeeExternal = ExtAuditSvc.IsAdmin(user) ||
-                        user.UserRoles.Any(r => r.RoleName is "auditor" or "audit_manager") ||
-                        Db.UserExternalAuditBodies.Any(b => b.UserId == user.Id);
-                    if (_canSeeExternal)
-                    {
-                        var extStats = ExtAuditSvc.GetStats(user);
-                        _extTotal      = extStats.Total;
-                        _extPlanned    = extStats.Planned;
-                        _extInProgress = extStats.InProgress;
-                        _extCompleted  = extStats.Completed;
-                        _extUpcoming   = extStats.Upcoming;
-                    }
+                    var extStats = ExtAuditSvc.GetStats(_user);
+                    _extTotal      = extStats.Total;
+                    _extPlanned    = extStats.Planned;
+                    _extInProgress = extStats.InProgress;
+                    _extCompleted  = extStats.Completed;
+                    _extUpcoming   = extStats.Upcoming;
                 }
             }
             catch { /* migration uygulanmamışsa sessizce yut */ }
         }
 
-        _summaryCards =
-        [
+        var cards = new List<(string Label, int Value, string Color, string Bg, string Href)>
+        {
             ("Toplam Risk",       _riskTotal,          "#374151", "#f9fafb", "/risk"),
             ("İncelemede",        _riskProposedReview, "#1d4ed8", "#eff6ff", "/risk?status=under_review"),
             ("Yüksek / Kritik",   highRisk,            "#dc2626", "#fef2f2", "/risk?level=Yüksek Risk"),
             ("Açık Bulgular",     _auditOpen,          "#b45309", "#fffbeb", "/audit/findings"),
             ("Vadesi Geçmiş",     _auditOverdue,       "#7f1d1d", "#fff1f0", "/audit/findings"),
-        ];
+        };
+
+        // İstatistikleri cache'e yaz
+        var dashStats = new DashStats(
+            _riskTotal, _riskProposedReview, _riskApproved, _riskControlled, _riskRejected, highRisk,
+            _auditTotal, _auditOpen, _auditClosureRequested, _auditClosed, _auditOverdue,
+            _ethicsTotal, _ethicsPending, _ethicsBoard, _ethicsClosed,
+            _extTotal, _extPlanned, _extInProgress, _extCompleted, _extUpcoming,
+            _canSeeExternal, cards);
+
+        Cache.Set(cacheKey, dashStats, TimeSpan.FromSeconds(60));
+
+        _summaryCards = SortCards(cards, _user);
     }
+
+    private void ApplyStats(DashStats s)
+    {
+        _riskTotal = s.RiskTotal; _riskProposedReview = s.RiskProposedReview;
+        _riskApproved = s.RiskApproved; _riskControlled = s.RiskControlled;
+        _riskRejected = s.RiskRejected;
+        _auditTotal = s.AuditTotal; _auditOpen = s.AuditOpen;
+        _auditClosureRequested = s.AuditClosureReq; _auditClosed = s.AuditClosed;
+        _auditOverdue = s.AuditOverdue;
+        _ethicsTotal = s.EthicsTotal; _ethicsPending = s.EthicsPending;
+        _ethicsBoard = s.EthicsBoard; _ethicsClosed = s.EthicsClosed;
+        _extTotal = s.ExtTotal; _extPlanned = s.ExtPlanned;
+        _extInProgress = s.ExtInProgress; _extCompleted = s.ExtCompleted;
+        _extUpcoming = s.ExtUpcoming;
+        _canSeeExternal = s.CanSeeExternal;
+        _summaryCards = SortCards(s.Cards, _user);
+    }
+
+    /// <summary>
+    /// Rol bazlı kart sıralaması — hem ilk yükleme hem cache path'i aynı sonucu verir.
+    /// </summary>
+    private static List<(string Label, int Value, string Color, string Bg, string Href)> SortCards(
+        List<(string Label, int Value, string Color, string Bg, string Href)> cards, User? user)
+    {
+        if (user?.HasAnyRole("risk_manager", "committee") ?? false)
+            return [.. cards.OrderBy(c => c.Label == "Toplam Risk" ? 0
+                : c.Label.Contains("İnceleme") ? 1
+                : c.Label.Contains("Yüksek")   ? 2
+                : 3)];
+
+        if (user?.HasAnyRole("auditor", "audit_manager") ?? false)
+            return [.. cards.OrderBy(c => c.Label.Contains("Bulgu") ? 0
+                : c.Label.Contains("Vadesi") ? 1
+                : 2)];
+
+        return cards;
+    }
+
+    private string RoleGreeting => (_user?.Role) switch
+    {
+        "risk_manager"  => "Risk envanterinizi yönetin, onay bekleyen önerileri inceleyin.",
+        "risk_owner"    => "Sahip olduğunuz riskleri ve aksiyon planlarını takip edin.",
+        "auditor"       => "Denetim bulgularınızı girin ve aksiyon planlarını güncelleyin.",
+        "audit_manager" => "Denetim programınızı planlayın, bulguları takip edin.",
+        "committee"     => "Risk komitesi gündemini ve onay bekleyen riskleri görüntüleyin.",
+        "admin"         => "Sistem durumunu izleyin ve yapılandırmaları yönetin.",
+        _               => "Bekleyen işlerinizi tamamlayın."
+    };
 }

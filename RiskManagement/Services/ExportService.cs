@@ -35,25 +35,25 @@ public class ExportService
         int row = 2;
         foreach (var r in risks)
         {
-            var initial  = r.Evaluations.FirstOrDefault(e => e.EvalType == "initial");
+            var initial  = r.Evaluations.LastOrDefault(e => e.EvalType == "initial");
             var residual = r.Evaluations.LastOrDefault(e => e.EvalType == "residual");
 
-            ws.Cell(row, 1).Value  = r.Code;
-            ws.Cell(row, 2).Value  = r.Title;
-            ws.Cell(row, 3).Value  = r.Category ?? "";
+            ws.Cell(row, 1).Value  = SafeCell(r.Code);
+            ws.Cell(row, 2).Value  = SafeCell(r.Title);
+            ws.Cell(row, 3).Value  = SafeCell(r.Category);
             ws.Cell(row, 4).Value  = StatusLabel(r.Status);
             ws.Cell(row, 5).Value  = r.SourceType == "internal" ? "İç" : "Dış";
-            ws.Cell(row, 6).Value  = r.ProposedBy?.FullName ?? r.ProposerName ?? "";
-            ws.Cell(row, 7).Value  = r.Owner?.FullName ?? "";
-            ws.Cell(row, 8).Value  = r.Department?.Name ?? "";
-            ws.Cell(row, 9).Value  = r.Organization?.Name ?? "";
+            ws.Cell(row, 6).Value  = SafeCell(r.ProposedBy?.FullName ?? r.ProposerName);
+            ws.Cell(row, 7).Value  = SafeCell(r.Owner?.FullName);
+            ws.Cell(row, 8).Value  = SafeCell(r.Department?.Name);
+            ws.Cell(row, 9).Value  = SafeCell(r.Organization?.Name);
             ws.Cell(row, 10).Value = r.ProposedAt.ToString("dd.MM.yyyy");
             ws.Cell(row, 11).Value = r.LastReviewedAt?.ToString("dd.MM.yyyy") ?? "";
             ws.Cell(row, 12).Value = initial?.Score.ToString("F1") ?? "";
-            ws.Cell(row, 13).Value = initial?.RiskLevel ?? "";
+            ws.Cell(row, 13).Value = SafeCell(initial?.RiskLevel);
             ws.Cell(row, 14).Value = residual?.Score.ToString("F1") ?? "";
-            ws.Cell(row, 15).Value = residual?.RiskLevel ?? "";
-            ws.Cell(row, 16).Value = r.RiskStrategy ?? "";
+            ws.Cell(row, 15).Value = SafeCell(residual?.RiskLevel);
+            ws.Cell(row, 16).Value = SafeCell(r.RiskStrategy);
             row++;
         }
 
@@ -89,18 +89,18 @@ public class ExportService
         int row = 2;
         foreach (var f in findings)
         {
-            ws.Cell(row, 1).Value  = f.Code;
-            ws.Cell(row, 2).Value  = f.Title;
-            ws.Cell(row, 3).Value  = f.Category ?? "";
-            ws.Cell(row, 4).Value  = f.Severity ?? "";
+            ws.Cell(row, 1).Value  = SafeCell(f.Code);
+            ws.Cell(row, 2).Value  = SafeCell(f.Title);
+            ws.Cell(row, 3).Value  = SafeCell(f.Category);
+            ws.Cell(row, 4).Value  = SafeCell(f.Severity);
             ws.Cell(row, 5).Value  = FindingStatusLabel(f.Status);
-            ws.Cell(row, 6).Value  = f.Auditor?.FullName ?? "";
-            ws.Cell(row, 7).Value  = f.Owner?.FullName ?? "";
-            ws.Cell(row, 8).Value  = f.Department?.Name ?? "";
+            ws.Cell(row, 6).Value  = SafeCell(f.Auditor?.FullName);
+            ws.Cell(row, 7).Value  = SafeCell(f.Owner?.FullName);
+            ws.Cell(row, 8).Value  = SafeCell(f.Department?.Name);
             ws.Cell(row, 9).Value  = f.DueDate?.ToString("dd.MM.yyyy") ?? "";
             ws.Cell(row, 10).Value = f.CreatedAt.ToString("dd.MM.yyyy");
             ws.Cell(row, 11).Value = f.ClosedAt?.ToString("dd.MM.yyyy") ?? "";
-            ws.Cell(row, 12).Value = f.InternalAudit?.Title ?? "";
+            ws.Cell(row, 12).Value = SafeCell(f.InternalAudit?.Title);
             row++;
         }
 
@@ -313,14 +313,14 @@ public class ExportService
         int row = 2;
         foreach (var c in controls)
         {
-            ws.Cell(row, 1).Value = c.Risk?.Code ?? "";
-            ws.Cell(row, 2).Value = c.Risk?.Title ?? "";
-            ws.Cell(row, 3).Value = c.Description;
-            ws.Cell(row, 4).Value = c.ControlType;
-            ws.Cell(row, 5).Value = c.Effectiveness ?? "";
-            ws.Cell(row, 6).Value = c.Frequency ?? "";
-            ws.Cell(row, 7).Value = c.OwnerDept?.Name ?? "";
-            ws.Cell(row, 8).Value = c.EnteredBy?.FullName ?? "";
+            ws.Cell(row, 1).Value = SafeCell(c.Risk?.Code);
+            ws.Cell(row, 2).Value = SafeCell(c.Risk?.Title);
+            ws.Cell(row, 3).Value = SafeCell(c.Description);
+            ws.Cell(row, 4).Value = SafeCell(c.ControlType);
+            ws.Cell(row, 5).Value = SafeCell(c.Effectiveness);
+            ws.Cell(row, 6).Value = SafeCell(c.Frequency);
+            ws.Cell(row, 7).Value = SafeCell(c.OwnerDept?.Name);
+            ws.Cell(row, 8).Value = SafeCell(c.EnteredBy?.FullName);
             ws.Cell(row, 9).Value = c.EnteredAt.ToString("dd.MM.yyyy");
             row++;
         }
@@ -426,14 +426,14 @@ public class ExportService
         int row = 2;
         foreach (var a in plans)
         {
-            ws.Cell(row, 1).Value = a.Risk?.Code ?? "";
-            ws.Cell(row, 2).Value = a.Risk?.Title ?? "";
-            ws.Cell(row, 3).Value = a.Description;
-            ws.Cell(row, 4).Value = a.Responsible;
-            ws.Cell(row, 5).Value = a.OwnerDept?.Name ?? "";
+            ws.Cell(row, 1).Value = SafeCell(a.Risk?.Code);
+            ws.Cell(row, 2).Value = SafeCell(a.Risk?.Title);
+            ws.Cell(row, 3).Value = SafeCell(a.Description);
+            ws.Cell(row, 4).Value = SafeCell(a.Responsible);
+            ws.Cell(row, 5).Value = SafeCell(a.OwnerDept?.Name);
             ws.Cell(row, 6).Value = a.DueDate?.ToString("dd.MM.yyyy") ?? "";
             ws.Cell(row, 7).Value = ActionStatusLabel(a.Status);
-            ws.Cell(row, 8).Value = a.CreatedBy?.FullName ?? "";
+            ws.Cell(row, 8).Value = SafeCell(a.CreatedBy?.FullName);
             ws.Cell(row, 9).Value = a.CreatedAt.ToString("dd.MM.yyyy");
             row++;
         }
@@ -539,13 +539,13 @@ public class ExportService
         int row = 2;
         foreach (var a in actions)
         {
-            ws.Cell(row, 1).Value = a.Finding?.Code ?? "";
-            ws.Cell(row, 2).Value = a.Finding?.Title ?? "";
-            ws.Cell(row, 3).Value = a.Description;
-            ws.Cell(row, 4).Value = a.Responsible ?? "";
+            ws.Cell(row, 1).Value = SafeCell(a.Finding?.Code);
+            ws.Cell(row, 2).Value = SafeCell(a.Finding?.Title);
+            ws.Cell(row, 3).Value = SafeCell(a.Description);
+            ws.Cell(row, 4).Value = SafeCell(a.Responsible);
             ws.Cell(row, 5).Value = a.DueDate?.ToString("dd.MM.yyyy") ?? "";
             ws.Cell(row, 6).Value = ActionStatusLabel(a.Status);
-            ws.Cell(row, 7).Value = a.CreatedBy?.FullName ?? "";
+            ws.Cell(row, 7).Value = SafeCell(a.CreatedBy?.FullName);
             ws.Cell(row, 8).Value = a.CreatedAt.ToString("dd.MM.yyyy");
             row++;
         }
@@ -649,13 +649,13 @@ public class ExportService
         int row = 2;
         foreach (var r in reports)
         {
-            ws.Cell(row, 1).Value = r.Code;
-            ws.Cell(row, 2).Value = r.Subject;
-            ws.Cell(row, 3).Value = r.ReportCategory ?? "";
+            ws.Cell(row, 1).Value = SafeCell(r.Code);
+            ws.Cell(row, 2).Value = SafeCell(r.Subject);
+            ws.Cell(row, 3).Value = SafeCell(r.ReportCategory);
             ws.Cell(row, 4).Value = EthicsStatusLabel(r.Status);
             ws.Cell(row, 5).Value = r.SubmittedAt.ToString("dd.MM.yyyy");
-            ws.Cell(row, 6).Value = r.AuditDecision ?? "";
-            ws.Cell(row, 7).Value = r.EthicsDecision ?? "";
+            ws.Cell(row, 6).Value = SafeCell(r.AuditDecision);
+            ws.Cell(row, 7).Value = SafeCell(r.EthicsDecision);
             row++;
         }
 
@@ -831,6 +831,14 @@ public class ExportService
 
     // ── Yardımcılar ──────────────────────────────────────────────────────────
 
+    // Excel formula injection: '=' ile başlayan değerler formül olarak yorumlanır.
+    // Kullanıcıdan gelen string'ler buradan geçirilmeli.
+    private static string SafeCell(string? value)
+    {
+        if (string.IsNullOrEmpty(value)) return "";
+        return value[0] is '=' or '+' or '-' or '@' or '\t' or '\r' ? "'" + value : value;
+    }
+
     private static string StatusLabel(string status) => status switch
     {
         "proposed"           => "Önerildi",
@@ -841,6 +849,7 @@ public class ExportService
         "controlled"         => "Kontrol Altında",
         "residual_evaluated" => "Artık Risk Değerlendi",
         "action_planned"     => "Aksiyon Planlandı",
+        "risk_accepted"      => "Risk Kabul Edildi",
         "rejected"           => "Reddedildi",
         _                    => status
     };

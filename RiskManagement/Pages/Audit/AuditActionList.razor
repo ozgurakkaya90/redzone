@@ -1,6 +1,8 @@
 @page "/audit/actions"
 @attribute [Authorize]
 @inject AuditService AuditSvc
+@inject ConfigService CfgSvc
+@inject AuthService Auth
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
 @using RiskManagement.Models
@@ -24,9 +26,33 @@
 </div>
 
 
+@* Preset hızlı filtreler *@
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    @{
+        var aOverdueCount = _all.Count(a => a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress");
+        var aWeekCount    = _all.Count(a => a.DueDate.HasValue && a.DueDate.Value >= _today && a.DueDate.Value <= _today.AddDays(_weekDays) && a.Status is "planned" or "in_progress");
+        var aMineCount    = _all.Count(a => a.CreatedById == (_user?.Id ?? 0));
+    }
+    @foreach (var (label, preset, count) in new[]{
+        ("Tümü",        "",         0),
+        ("Geciken",     "overdue",  aOverdueCount),
+        ("Bu Hafta",    "week",     aWeekCount),
+        ("Bana Atanan", "mine",     aMineCount),
+    })
+    {
+        var p = preset;
+        var isActive = _auditPreset == p;
+        <button class="preset-chip @(isActive ? "preset-chip-active" : "") @(p == "overdue" && aOverdueCount > 0 ? "preset-overdue" : "")"
+                @onclick="() => ApplyAuditPreset(p)">
+            @label
+            @if (count > 0) { <span class="preset-chip-count">@count</span> }
+        </button>
+    }
+</div>
+
 <div class="card" style="margin-bottom:16px">
     <div style="display:flex;gap:12px;flex-wrap:wrap">
-        <select class="form-control" style="width:160px" @bind="_filterStatus">
+        <select class="form-control" style="width:160px" @bind="_filterStatus" @bind:after="StateHasChanged">
             <option value="">Tüm Durumlar</option>
             <option value="planned">Planlandı</option>
             <option value="in_progress">Devam Ediyor</option>
@@ -39,21 +65,26 @@
 </div>
 
 <div class="card" style="padding:0;overflow-x:auto">
-    <table class="table">
+    <table class="table table-sticky">
         <thead>
             <tr>
                 <th>Bulgu</th>
                 <th>Aksiyon Açıklaması</th>
                 <th>Sorumlu Birim</th>
                 <th>Durum</th>
+                <th>Termin</th>
                 <th>Oluşturan</th>
                 <th></th>
             </tr>
         </thead>
         <tbody>
-            @foreach (var a in Filtered)
+            @foreach (var a in PagedActions)
             {
-                <tr>
+                var aToday   = DateOnly.FromDateTime(DateTime.Today);
+                var aDaysLeft = a.DueDate.HasValue ? (a.DueDate.Value.DayNumber - aToday.DayNumber) : (int?)null;
+                var aOverdue  = aDaysLeft.HasValue && aDaysLeft.Value < 0 && a.Status is not "completed" and not "cancelled";
+                var aRowCls   = aDaysLeft.HasValue && aDaysLeft.Value < -_critDays ? "overdue-row-crit" : aOverdue ? "overdue-row" : "";
+                <tr class="@aRowCls">
                     <td style="white-space:nowrap">
                         <a href="/audit/findings/@a.FindingId" style="color:#1e40af;font-weight:600;font-size:12px;text-decoration:none">
                             @a.Finding.Code
@@ -66,26 +97,84 @@
                             <div style="font-size:10px;color:#9ca3af">@a.Finding.InternalAudit.Code</div>
                         }
                     </td>
-                    <td style="max-width:260px">@a.Description</td>
+                    <td style="max-width:260px">
+                        @a.Description
+                        @if (!string.IsNullOrEmpty(a.ClosureNote))
+                        {
+                            <div style="margin-top:4px;font-size:11px;color:#16a34a;background:#f0fdf4;padding:3px 7px;border-radius:4px;border:1px solid #bbf7d0">
+                                <strong>Kapanış:</strong> @a.ClosureNote
+                            </div>
+                        }
+                        @if (aOverdue && !string.IsNullOrEmpty(a.DelayReason))
+                        {
+                            <div style="margin-top:4px;font-size:11px;color:#92400e;background:#fffbeb;padding:3px 7px;border-radius:4px;border:1px solid #fcd34d">
+                                <strong>Gecikme:</strong> @a.DelayReason
+                            </div>
+                        }
+                    </td>
                     <td>
                         @if (!string.IsNullOrEmpty(a.Responsible))
                         { <span class="badge badge-orange" style="font-size:10px">@a.Responsible</span> }
                         else { <span style="color:#9ca3af">—</span> }
                     </td>
                     <td><span class="badge @StatusBadge(a.Status)">@StatusLabel(a.Status)</span></td>
+                    <td>
+                        @if (a.DueDate.HasValue)
+                        {
+                            <span class="@(aOverdue ? "overdue-date" : "")">
+                                @a.DueDate.Value.ToString("dd.MM.yyyy")
+                            </span>
+                            @if (aDaysLeft.HasValue)
+                            {
+                                @if (aDaysLeft.Value < -_critDays)
+                                { <span class="overdue-badge-crit">KRİTİK</span> }
+                                else if (aDaysLeft.Value < 0)
+                                { <span class="overdue-badge-late">GECİKTİ</span> }
+                                else if (aDaysLeft.Value <= _warnDays && a.Status is not "completed" and not "cancelled")
+                                { <span class="overdue-badge-warn">@aDaysLeft.Value GÜN</span> }
+                            }
+                        }
+                        else { <span style="color:#9ca3af">—</span> }
+                    </td>
                     <td style="font-size:12px;color:#6b7280">@a.CreatedBy?.FullName</td>
                     <td>
-                        <a href="/audit/findings/@a.FindingId" class="btn btn-outline btn-sm">Bulgu →</a>
+                        <a href="/audit/findings/@a.FindingId" class="btn btn-outline btn-sm">Bulgu Detayı</a>
                     </td>
                 </tr>
             }
             @if (!Filtered.Any())
             {
-                <tr><td colspan="7" class="empty-state">Kayıt bulunamadı.</td></tr>
+                <EmptyState Colspan="8" Icon="" Title="Aksiyon planı bulunamadı"
+                            Subtitle="Denetim bulgularına ait aksiyon planları bulgu detay sayfalarından oluşturulur."
+                            ActionHref="/audit/findings"
+                            ActionLabel="Bulgulara Git" />
             }
         </tbody>
     </table>
 </div>
+
+@if (TotalActionPages > 1)
+{
+    <div class="pagination-bar">
+        <div class="pagination-info">
+            @((_aPage-1)*_aPageSize+1)–@(Math.Min(_aPage*_aPageSize, Filtered.Count())) / @Filtered.Count() kayıt
+        </div>
+        <div class="pagination-controls">
+            <button class="btn btn-outline btn-sm" @onclick="() => _aPage=1"              disabled="@(_aPage==1)">«</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _aPage--"              disabled="@(_aPage==1)">‹</button>
+            @for (int p = Math.Max(1,_aPage-2); p <= Math.Min(TotalActionPages,_aPage+2); p++)
+            { var pp = p; <button class="btn @(_aPage==pp?"btn-primary":"btn-outline") btn-sm" @onclick="() => _aPage=pp">@pp</button> }
+            <button class="btn btn-outline btn-sm" @onclick="() => _aPage++"              disabled="@(_aPage==TotalActionPages)">›</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _aPage=TotalActionPages" disabled="@(_aPage==TotalActionPages)">»</button>
+        </div>
+        <div class="pagination-size">
+            Sayfa başı:
+            <select class="form-control" @bind="_aPageSize" @bind:after="() => _aPage=1">
+                <option value="25">25</option><option value="50">50</option><option value="100">100</option>
+            </select>
+        </div>
+    </div>
+}
 
 <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-top:8px">
     <div class="card" style="padding:14px;text-align:center">
@@ -109,16 +198,41 @@
 @code {
     private List<AuditFindingAction> _all = [];
     private string _filterStatus = "", _search = "";
-    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private string _auditPreset = "";
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+    private int _weekDays, _warnDays, _critDays;
+    private User? _user;
     private bool _showImport;
+    private int _aPage = 1, _aPageSize = 25;
 
     protected override void OnInitialized()
     {
-        _all = AuditSvc.GetFindingActionsForUser(UserId, Role);
+        _weekDays = CfgSvc.GetWeekDays();
+        _warnDays = CfgSvc.GetWarnDays();
+        _critDays = CfgSvc.GetCritDays();
+        _user = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
+        _all  = _user is not null ? AuditSvc.GetFindingActionsForUser(_user) : [];
     }
 
+    private void ApplyAuditPreset(string preset)
+    {
+        _auditPreset = preset;
+        _filterStatus = ""; _search = "";
+    }
+
+    private IEnumerable<AuditFindingAction> PagedActions
+        => Filtered.Skip((_aPage-1)*_aPageSize).Take(_aPageSize);
+    private int TotalActionPages
+        => (int)Math.Ceiling(Filtered.Count() / (double)_aPageSize);
+
     private IEnumerable<AuditFindingAction> Filtered => _all
+        .Where(a =>
+        {
+            if (_auditPreset == "overdue") return a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress";
+            if (_auditPreset == "week")    return a.DueDate.HasValue && a.DueDate.Value >= _today && a.DueDate.Value <= _today.AddDays(_weekDays) && a.Status is "planned" or "in_progress";
+            if (_auditPreset == "mine")    return a.CreatedById == (_user?.Id ?? 0);
+            return true;
+        })
         .Where(a => string.IsNullOrEmpty(_filterStatus) || a.Status == _filterStatus)
         .Where(a => string.IsNullOrEmpty(_search) ||
                     a.Description.Contains(_search, StringComparison.OrdinalIgnoreCase) ||

@@ -33,6 +33,10 @@ public class User
     public bool IsActive { get; set; } = true;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
+    // Brute-force koruması: GetMaxFailedLogins() > 0 olduğunda etkin
+    public int FailedLoginCount { get; set; } = 0;
+    public DateTime? LockoutUntil { get; set; }
+
     // Nav — tekil (primary)
     public Models.Department? DepartmentNav { get; set; }
     public Models.Organization? OrganizationNav { get; set; }
@@ -49,16 +53,16 @@ public class User
 
     // Yardımcılar
     public bool HasRole(string role) =>
-        Role == role || UserRoles.Any(r => r.RoleName == role);
+        Role == role || (UserRoles?.Any(r => r.RoleName == role) ?? false);
 
     public bool HasAnyRole(params string[] roles) =>
-        roles.Contains(Role) || UserRoles.Any(r => roles.Contains(r.RoleName));
+        roles.Contains(Role) || (UserRoles?.Any(r => roles.Contains(r.RoleName)) ?? false);
 
     public IEnumerable<string> AllRoleNames =>
-        UserRoles.Select(r => r.RoleName)
-                 .Prepend(Role)
-                 .Where(r => !string.IsNullOrEmpty(r))
-                 .Distinct();
+        (UserRoles ?? []).Select(r => r.RoleName)
+                         .Prepend(Role)
+                         .Where(r => !string.IsNullOrEmpty(r))
+                         .Distinct();
 
     public IEnumerable<int> AllDepartmentIds =>
         UserDepartments.Select(d => d.DepartmentId)
@@ -123,4 +127,29 @@ public class PasswordResetToken
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public User User { get; set; } = null!;
+}
+
+public class McpApiKey
+{
+    public int Id { get; set; }
+
+    [Required, MaxLength(100)]
+    public string Name { get; set; } = "";
+
+    [Required, MaxLength(16)]
+    public string KeyPrefix { get; set; } = "";
+
+    [Required]
+    public string KeyHash { get; set; } = "";
+
+    public int CreatedById { get; set; }
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public DateTime? LastUsedAt { get; set; }
+    public bool IsActive { get; set; } = true;
+
+    /// <summary>null = tam erişim (admin davranışı). Dolu = bu kullanıcının rol ve yetkileriyle kısıtlı erişim.</summary>
+    public int? ScopeUserId { get; set; }
+
+    public User CreatedBy { get; set; } = null!;
+    public User? ScopeUser { get; set; }
 }

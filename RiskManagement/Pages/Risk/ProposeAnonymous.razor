@@ -70,8 +70,7 @@
         try
         {
             var name = string.IsNullOrWhiteSpace(_proposerName) ? null : _proposerName.Trim();
-            var risk = await Task.Run(() =>
-                RiskSvc.Create(_title.Trim(), _description.Trim(), null, null, null, null, name));
+            var risk = await RiskSvc.CreateAsync(_title.Trim(), _description.Trim(), null, null, null, null, name);
             _code = risk.Code;
             _submitted = true;
         }

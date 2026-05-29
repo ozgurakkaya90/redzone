@@ -1,0 +1,254 @@
+@page "/admin/mcp-keys"
+@attribute [Authorize(Roles = "admin")]
+@inject McpApiKeyService KeySvc
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@* HttpCtx yalnızca OnInitialized'da kullanılır — event handler'larda null olur *@
+
+<PageTitle>MCP API Anahtarları</PageTitle>
+
+<div class="page-toolbar">
+    <div class="page-toolbar-left">
+        <h1 class="page-toolbar-title">MCP API Anahtarları</h1>
+        <div class="page-toolbar-sub">Yapay zeka araçlarını (Claude, Cursor vb.) sisteme bağlamak için API anahtarı yönetimi</div>
+    </div>
+    <div class="page-toolbar-right">
+        <button class="btn btn-primary" @onclick="ShowCreate">+ Yeni Anahtar</button>
+    </div>
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div class="alert alert-error" style="margin-bottom:12px">@_error</div>
+}
+
+@if (_newKey is not null)
+{
+    <div class="alert alert-success" style="margin-bottom:16px">
+        <strong>Anahtar oluşturuldu.</strong> Bu değeri şimdi kopyalayın — bir daha gösterilmeyecek:
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+            <code style="background:#f0fdf4;border:1px solid #bbf7d0;padding:8px 12px;border-radius:6px;font-size:13px;flex:1;word-break:break-all">@_newKey</code>
+        </div>
+        <div style="margin-top:10px;font-size:12px;color:var(--text-3)">
+            <strong>Claude Desktop için config örneği:</strong>
+            <pre style="margin-top:6px;background:#1e293b;color:#e2e8f0;padding:10px;border-radius:6px;font-size:11px;overflow-x:auto">@GetClaudeConfig()</pre>
+        </div>
+        <button class="btn btn-sm" style="margin-top:8px" @onclick="CloseNewKey">Kapat</button>
+    </div>
+}
+
+@if (_showCreate)
+{
+    <div class="card" style="padding:16px;margin-bottom:16px;max-width:520px">
+        <h3 style="margin:0 0 12px">Yeni API Anahtarı</h3>
+        <div class="form-group">
+            <label>Anahtar Adı</label>
+            <input class="form-control" @bind="_createName" placeholder="örn: Claude Desktop, Cursor, VS Code" />
+            <small class="form-hint">Bu anahtarı hangi araç için oluşturduğunuzu belirtin</small>
+        </div>
+        <div class="form-group" style="margin-top:10px">
+            <label>Kapsam (isteğe bağlı)</label>
+            <select class="form-control" @bind="_createScopeUserId">
+                <option value="">— Tam erişim (admin davranışı) —</option>
+                @foreach (var u in _userChoices)
+                {
+                    <option value="@u.Id">@u.FullName (@u.Role)</option>
+                }
+            </select>
+            <small class="form-hint">Bir kullanıcı seçilirse bu anahtar yalnızca o kullanıcının görebildiği verilere erişebilir.</small>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:12px">
+            <button class="btn btn-primary" @onclick="CreateKey">Oluştur</button>
+            <button class="btn btn-secondary" @onclick="CancelCreate">İptal</button>
+        </div>
+    </div>
+}
+
+<div class="card" style="padding:0;overflow:auto">
+    @if (!_keys.Any())
+    {
+        <div style="padding:32px;text-align:center;color:var(--text-3)">
+            Henüz API anahtarı oluşturulmamış.<br />
+            <small>Yapay zeka araçlarınızı bağlamak için yukarıdan yeni anahtar oluşturun.</small>
+        </div>
+    }
+    else
+    {
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Ad</th>
+                    <th>Anahtar Öneki</th>
+                    <th>Kapsam</th>
+                    <th>Oluşturan</th>
+                    <th>Oluşturulma</th>
+                    <th>Son Kullanım</th>
+                    <th>Durum</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var k in _keys)
+                {
+                    <tr>
+                        <td style="font-weight:600">@k.Name</td>
+                        <td><code style="font-size:12px">@k.KeyPrefix…</code></td>
+                        <td style="font-size:12px">
+                            @if (k.ScopeUserName is not null)
+                            {
+                                <span class="tag" style="font-size:10px">@k.ScopeUserName</span>
+                                <div style="font-size:10px;color:var(--text-3)">@k.ScopeUserRole</div>
+                            }
+                            else
+                            {
+                                <span style="color:var(--text-3);font-size:11px">Tam erişim</span>
+                            }
+                        </td>
+                        <td style="font-size:12px">@k.CreatedByName</td>
+                        <td style="font-size:12px">@k.CreatedAt.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</td>
+                        <td style="font-size:12px">
+                            @(k.LastUsedAt.HasValue ? k.LastUsedAt.Value.ToLocalTime().ToString("dd.MM.yyyy HH:mm") : "—")
+                        </td>
+                        <td>
+                            @if (k.IsActive)
+                            {
+                                <span class="tag tag-success">Aktif</span>
+                            }
+                            else
+                            {
+                                <span class="tag tag-error">İptal Edildi</span>
+                            }
+                        </td>
+                        <td>
+                            @if (k.IsActive)
+                            {
+                                <button class="btn btn-sm btn-danger" @onclick="() => Revoke(k.Id)">İptal Et</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-sm" @onclick="() => Delete(k.Id)">Sil</button>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+</div>
+
+<div class="card" style="padding:16px;margin-top:16px">
+    <h3 style="margin:0 0 12px;font-size:14px">MCP Endpoint Bilgisi</h3>
+    <p style="font-size:13px;color:var(--text-2);margin:0 0 8px">
+        MCP sunucusuna bağlanmak için aşağıdaki URL'yi kullanın:
+    </p>
+    <code style="background:var(--bg-2);padding:8px 12px;border-radius:6px;font-size:12px;display:block">
+        @(_baseUrl)/mcp
+    </code>
+    <p style="font-size:12px;color:var(--text-3);margin:8px 0 0">
+        Bağlantı için <code>X-Api-Key</code> header'ı veya <code>Authorization: Bearer &lt;key&gt;</code> kullanın.
+    </p>
+</div>
+
+@code {
+    private List<McpApiKeyListItem> _keys = [];
+    private List<UserChoice> _userChoices = [];
+    private bool _showCreate;
+    private string _createName = "";
+    private string _createScopeUserId = "";
+    private string? _newKey;
+    private string? _error;
+    private string _baseUrl = "";
+    private int _currentUserId;
+
+    protected override void OnInitialized()
+    {
+        // HttpContext yalnızca OnInitialized sırasında geçerli;
+        // event handler'larda null olur (Blazor Server SignalR kısıtı)
+        var ctx = HttpCtx.HttpContext;
+        if (ctx is not null)
+        {
+            var idStr = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            int.TryParse(idStr, out _currentUserId);
+            _baseUrl = $"{ctx.Request.Scheme}://{ctx.Request.Host}";
+        }
+
+        try { _keys = KeySvc.GetAll(); }
+        catch (Exception ex) { _error = $"API anahtarları yüklenemedi: {ex.Message}"; }
+
+        try { _userChoices = KeySvc.GetUserChoices(); }
+        catch (Exception ex) { _error = (_error is null ? "" : _error + " | ") + $"Kullanıcılar yüklenemedi: {ex.Message}"; }
+    }
+
+    private void ShowCreate() => _showCreate = true;
+
+    private void CancelCreate()
+    {
+        _showCreate = false;
+        _createName = "";
+        _createScopeUserId = "";
+    }
+
+    private void CloseNewKey() => _newKey = null;
+
+    private void CreateKey()
+    {
+        if (string.IsNullOrWhiteSpace(_createName))
+        {
+            _error = "Anahtar adı zorunludur.";
+            return;
+        }
+
+        if (_currentUserId == 0)
+        {
+            _error = "Oturum bilgisi alınamadı. Sayfayı yenileyip tekrar deneyin.";
+            return;
+        }
+
+        try
+        {
+            int? scopeUserId = int.TryParse(_createScopeUserId, out var sid) ? sid : null;
+            var (_, plain) = KeySvc.Create(_createName.Trim(), _currentUserId, scopeUserId);
+            _newKey = plain;
+            _showCreate = false;
+            _createName = "";
+            _createScopeUserId = "";
+            _error = null;
+            _keys = KeySvc.GetAll();
+        }
+        catch (Exception ex)
+        {
+            var inner = ex.InnerException?.InnerException?.Message
+                     ?? ex.InnerException?.Message
+                     ?? ex.Message;
+            _error = $"Anahtar oluşturulamadı: {inner}";
+        }
+    }
+
+    private void Revoke(int id)
+    {
+        KeySvc.Revoke(id);
+        _keys = KeySvc.GetAll();
+    }
+
+    private void Delete(int id)
+    {
+        KeySvc.Delete(id);
+        _keys = KeySvc.GetAll();
+    }
+
+    private string GetClaudeConfig()
+    {
+        var key = _newKey ?? "<API_KEY>";
+        return "{\n" +
+               "  \"mcpServers\": {\n" +
+               "    \"redzone\": {\n" +
+               "      \"type\": \"http\",\n" +
+               "      \"url\": \"" + _baseUrl + "/mcp\",\n" +
+               "      \"headers\": {\n" +
+               "        \"X-Api-Key\": \"" + key + "\"\n" +
+               "      }\n" +
+               "    }\n" +
+               "  }\n" +
+               "}";
+    }
+}

@@ -13,7 +13,9 @@ services:
       AppSettings__UseSqlite: "false"
       AppSettings__MaxUploadSizeMb: "${MAX_UPLOAD_MB:-10}"
     volumes:
-      - uploads:/app/uploads
+      - uploads:/app/uploads           # ethics + findings ekleri
+      - logo-uploads:/app/wwwroot/uploads  # logo ve görsel varlıklar
+      - dp-keys:/root/.aspnet/DataProtection-Keys  # oturum anahtarları (yeniden başlatmada geçersiz olmaz)
     depends_on:
       db:
         condition: service_healthy
@@ -41,4 +43,6 @@ services:
 
 volumes:
   mysql_data:
-  uploads:
+  uploads:        # /app/uploads — ethics + findings ekleri
+  logo-uploads:   # /app/wwwroot/uploads — logo + görsel varlıklar
+  dp-keys:        # /root/.aspnet/DataProtection-Keys — oturum şifreleme anahtarları

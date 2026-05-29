@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using RiskManagement.Data;
+using RiskManagement.Models;
 
 namespace RiskManagement.Services;
 
@@ -14,9 +16,58 @@ public record UserTask(
     string Priority = "normal"   // "urgent" | "normal"
 );
 
-public class TaskService(AppDbContext db, ConfigService config)
+// Sidebar görev rozeti, tüm oturum boyunca yaşayan MainLayout tarafından çağrılır.
+// Circuit-ömrü paylaşımlı context yerine IDbContextFactory ile her çağrıda kısa-ömürlü
+// context kullanılır; böylece her-zaman-açık sidebar sorgusu, sayfa sorgularıyla aynı
+// context üzerinde örtüşmez. Servis tamamen salt-okunurdur (DTO döndürür, SaveChanges yok).
+public class TaskService(IDbContextFactory<AppDbContext> dbFactory, ConfigService config, IMemoryCache cache)
 {
+    private static readonly TimeSpan CacheTtl = TimeSpan.FromSeconds(30);
+
+    // Cache key: rol + userId — farklı kullanıcılar asla aynı key'i paylaşmaz
+    private static string CacheKey(int userId, string role) => $"tasks:u{userId}:r{role}";
+
+    /// <summary>Cache'i geçersiz kıl (örn. yeni risk eklendikten sonra çağırılabilir).</summary>
+    public void InvalidateCache(int userId, string role) =>
+        cache.Remove(CacheKey(userId, role));
+
     public List<UserTask> GetTasksForUser(int userId, string role)
+    {
+        var key = CacheKey(userId, role);
+        if (cache.TryGetValue(key, out List<UserTask>? cached) && cached is not null)
+            return cached;
+
+        using var db = dbFactory.CreateDbContext();
+        var result = ComputeTasksForUser(db, userId, role)
+            .GroupBy(t => t.Url)
+            .Select(g => g.First())
+            .ToList();
+        cache.Set(key, result, new MemoryCacheEntryOptions
+        {
+            AbsoluteExpirationRelativeToNow = CacheTtl,
+            Size = 1,
+        });
+        return result;
+    }
+
+    public List<UserTask> GetTasksForUser(User user)
+    {
+        // Union tasks across all roles the user holds, deduplicated by Url
+        var allRoles = user.AllRoleNames.ToList();
+        if (allRoles.Count == 0) return [];
+
+        var seen = new HashSet<string>();
+        var combined = new List<UserTask>();
+        foreach (var role in allRoles)
+        {
+            var roleTasks = GetTasksForUser(user.Id, role);
+            foreach (var t in roleTasks)
+                if (seen.Add(t.Url)) combined.Add(t);
+        }
+        return combined;
+    }
+
+    private List<UserTask> ComputeTasksForUser(AppDbContext db, int userId, string role)
     {
         var tasks = new List<UserTask>();
 
@@ -24,42 +75,31 @@ public class TaskService(AppDbContext db, ConfigService config)
 
         if (role is "admin" or "committee")
         {
-            // Risks proposed, waiting for review
-            var proposed = db.Risks
-                .Where(r => r.Status == "proposed")
-                .Select(r => new { r.Id, r.Code, r.Title })
-                .ToList();
-            foreach (var r in proposed)
+            // 4 ayrı sorgu yerine tek sorguda tüm durumlara göre grupla
+            var adminStatuses = new[] { RiskStatus.Proposed, RiskStatus.AwaitingApproval, RiskStatus.UnderReview, RiskStatus.Controlled };
+            var adminRisks = db.Risks
+                .Where(r => adminStatuses.Contains(r.Status))
+                .Select(r => new { r.Id, r.Code, r.Title, r.Status })
+                .ToList()
+                .GroupBy(r => r.Status)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var r in adminRisks.GetValueOrDefault(RiskStatus.Proposed, []))
                 tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "İnceleme bekliyor", $"/risk/{r.Id}",
                     "#7c3aed", "#faf5ff", "Risk İnceleme"));
 
-            // Risks awaiting committee approval
-            var awaitingApproval = db.Risks
-                .Where(r => r.Status == "awaiting_approval")
-                .Select(r => new { r.Id, r.Code, r.Title })
-                .ToList();
-            foreach (var r in awaitingApproval)
+            foreach (var r in adminRisks.GetValueOrDefault(RiskStatus.AwaitingApproval, []))
                 tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "Komite onayı bekliyor", $"/risk/{r.Id}",
                     "#7c3aed", "#faf5ff", "Risk Onayı"));
 
-            // Risks under review, waiting for initial evaluation
-            var underReview = db.Risks
-                .Where(r => r.Status == "under_review")
-                .Select(r => new { r.Id, r.Code, r.Title })
-                .ToList();
-            foreach (var r in underReview)
+            foreach (var r in adminRisks.GetValueOrDefault(RiskStatus.UnderReview, []))
                 tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "İlk değerlendirme bekliyor", $"/risk/{r.Id}",
                     "#0369a1", "#eff6ff", "Risk Değerlendirme"));
 
-            // Residual evaluation needed
-            var controlled = db.Risks
-                .Where(r => r.Status == "controlled")
-                .Select(r => new { r.Id, r.Code, r.Title })
-                .ToList();
-            foreach (var r in controlled)
+            foreach (var r in adminRisks.GetValueOrDefault(RiskStatus.Controlled, []))
                 tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "Kalıntı risk değerlendirmesi bekliyor", $"/risk/{r.Id}",
                     "#0f766e", "#f0fdfa", "Risk Değerlendirme"));
@@ -67,47 +107,38 @@ public class TaskService(AppDbContext db, ConfigService config)
 
         if (role is "admin" or "risk_owner" or "committee")
         {
-            // Approved risks waiting for strategy + responsible unit
-            var approved = db.Risks
-                .Where(r => r.Status == "approved"
+            // 3 ayrı sorgu yerine tek sorguda kapsama ve duruma göre filtrele
+            var ownerStatuses = new[] { RiskStatus.Approved, RiskStatus.StrategySet, RiskStatus.ResidualEvaluated };
+            var ownerRisks = db.Risks
+                .Where(r => ownerStatuses.Contains(r.Status)
                     && (r.OwnerId == userId || role == "admin" || role == "committee"))
-                .Select(r => new { r.Id, r.Code, r.Title })
-                .ToList();
-            foreach (var r in approved)
+                .Select(r => new { r.Id, r.Code, r.Title, r.Status })
+                .ToList()
+                .GroupBy(r => r.Status)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            foreach (var r in ownerRisks.GetValueOrDefault(RiskStatus.Approved, []))
                 tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "Strateji ve sorumlu birim belirlenmesi gerekiyor", $"/risk/{r.Id}",
                     "#92400e", "#fffbeb", "Strateji Belirleme"));
 
-            // Strategy set, waiting for controls
-            var strategySet = db.Risks
-                .Where(r => r.Status == "strategy_set"
-                    && (r.OwnerId == userId || role == "admin" || role == "committee"))
-                .Select(r => new { r.Id, r.Code, r.Title })
-                .ToList();
-            foreach (var r in strategySet)
+            foreach (var r in ownerRisks.GetValueOrDefault(RiskStatus.StrategySet, []))
                 tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "Kontrol eklenmesi gerekiyor", $"/risk/{r.Id}",
                     "#0369a1", "#eff6ff", "Kontrol Ekleme"));
 
-            // Residual evaluated, waiting for action plan
-            var residualEval = db.Risks
-                .Where(r => r.Status == "residual_evaluated"
-                    && (r.OwnerId == userId || role == "admin" || role == "committee"))
-                .Select(r => new { r.Id, r.Code, r.Title })
-                .ToList();
-            foreach (var r in residualEval)
+            foreach (var r in ownerRisks.GetValueOrDefault(RiskStatus.ResidualEvaluated, []))
                 tasks.Add(new("", $"{r.Code} — {r.Title}",
                     "Aksiyon planı oluşturulması gerekiyor", $"/risk/{r.Id}",
                     "#166534", "#f0fdf4", "Aksiyon Planı"));
         }
 
-        // Overdue action plans the user created or is responsible for
+        // Vadesi geçmiş aksiyon planları (planned veya in_progress)
         var overdueActions = db.ActionPlans
-            .Include(a => a.Risk)
-            .Where(a => a.Status == "planned"
+            .Where(a => (a.Status == ActionStatus.Planned || a.Status == ActionStatus.InProgress)
                 && a.DueDate < DateOnly.FromDateTime(DateTime.Today)
                 && (a.CreatedById == userId || role == "admin"))
-            .Select(a => new { a.RiskId, RiskCode = a.Risk.Code, RiskTitle = a.Risk.Title,
+            .Select(a => new { a.RiskId, RiskCode = a.Risk!.Code, RiskTitle = a.Risk.Title,
                                a.Description, a.DueDate })
             .ToList();
         foreach (var a in overdueActions)
@@ -119,11 +150,9 @@ public class TaskService(AppDbContext db, ConfigService config)
 
         if (role is "admin" or "audit_manager")
         {
-            // Closure requests pending approval
             var closureRequests = db.ClosureRequests
-                .Include(c => c.Finding)
-                .Where(c => c.Status == "pending")
-                .Select(c => new { c.Id, c.FindingId, c.Finding.Code, c.Finding.Title })
+                .Where(c => c.Status == ClosureRequestStatus.Pending)
+                .Select(c => new { c.Id, c.FindingId, c.Finding!.Code, c.Finding.Title })
                 .ToList();
             foreach (var c in closureRequests)
                 tasks.Add(new("", $"{c.Code} — {c.Title}",
@@ -133,9 +162,8 @@ public class TaskService(AppDbContext db, ConfigService config)
 
         if (role is "admin" or "auditor" or "audit_manager")
         {
-            // Open findings the user is the auditor on
             var myOpenFindings = db.AuditFindings
-                .Where(f => f.Status == "open" && f.AuditorId == userId)
+                .Where(f => f.Status == FindingStatus.Open && f.AuditorId == userId)
                 .Select(f => new { f.Id, f.Code, f.Title, f.DueDate })
                 .ToList();
             foreach (var f in myOpenFindings)
@@ -153,9 +181,8 @@ public class TaskService(AppDbContext db, ConfigService config)
 
         if (role is "finding_owner")
         {
-            // Findings assigned to this user as owner
             var assigned = db.AuditFindings
-                .Where(f => f.OwnerId == userId && f.Status == "open")
+                .Where(f => f.OwnerId == userId && f.Status == FindingStatus.Open)
                 .Select(f => new { f.Id, f.Code, f.Title, f.DueDate })
                 .ToList();
             foreach (var f in assigned)
@@ -173,25 +200,23 @@ public class TaskService(AppDbContext db, ConfigService config)
 
         // ── Ethics tasks ─────────────────────────────────────────────
 
-        if (role is "admin" or "audit_manager")
+        if (role is "admin" or "audit_manager" or "ethics_board")
         {
-            var pendingAuditReview = db.EthicsReports
-                .Where(r => r.Status == "pending")
-                .Select(r => new { r.Id, r.Code, r.Subject })
+            // 2 ayrı sorgu yerine tek sorguda iki durumu birlikte al
+            var ethicsStatuses = new[] { EthicsStatus.Pending, EthicsStatus.EthicsBoardNotified };
+            var ethicsReports = db.EthicsReports
+                .Where(r => ethicsStatuses.Contains(r.Status))
+                .Select(r => new { r.Id, r.Code, r.Subject, r.Status })
                 .ToList();
-            foreach (var r in pendingAuditReview)
+
+            foreach (var r in ethicsReports.Where(r => r.Status == EthicsStatus.Pending
+                && role is "admin" or "audit_manager"))
                 tasks.Add(new("", $"{r.Code} — {r.Subject}",
                     "Denetim değerlendirmesi bekliyor", $"/ethics/reports/{r.Id}",
                     "#7c3aed", "#faf5ff", "Etik Değerlendirme"));
-        }
 
-        if (role is "admin" or "ethics_board")
-        {
-            var pendingBoardReview = db.EthicsReports
-                .Where(r => r.Status == "ethics_board_notified")
-                .Select(r => new { r.Id, r.Code, r.Subject })
-                .ToList();
-            foreach (var r in pendingBoardReview)
+            foreach (var r in ethicsReports.Where(r => r.Status == EthicsStatus.EthicsBoardNotified
+                && role is "admin" or "ethics_board"))
                 tasks.Add(new("", $"{r.Code} — {r.Subject}",
                     "Kurul değerlendirmesi bekliyor", $"/ethics/reports/{r.Id}",
                     "#7c3aed", "#faf5ff", "Etik Kurul"));
@@ -205,7 +230,7 @@ public class TaskService(AppDbContext db, ConfigService config)
             var cutoff = DateTime.UtcNow.AddDays(-thresholdDays);
 
             var overdueReviews = db.Risks
-                .Where(r => r.Status != "rejected" && r.Status != "proposed"
+                .Where(r => r.Status != RiskStatus.Rejected && r.Status != RiskStatus.Proposed
                     && (r.LastReviewedAt == null || r.LastReviewedAt < cutoff))
                 .Select(r => new { r.Id, r.Code, r.Title, r.LastReviewedAt })
                 .ToList();
@@ -221,7 +246,7 @@ public class TaskService(AppDbContext db, ConfigService config)
             }
         }
 
-        // ── Admin: pending password reset requests ───────────────────
+        // ── Admin: bekleyen şifre sıfırlama talepleri ───────────────
         if (role is "admin")
         {
             var resets = (

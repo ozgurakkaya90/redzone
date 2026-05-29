@@ -8,6 +8,18 @@ KOBİ'ler için kurumsal risk yönetimi, iç denetim ve etik raporlamayı tek pl
 
 ---
 
+## Dokümantasyon
+
+| Belge | Açıklama |
+|-------|----------|
+| [Kurulum Kılavuzu](docs/SETUP.md) | Ayrıntılı kurulum adımları (Docker, Manuel, Linux, Windows) |
+| [Yapılandırma Rehberi](docs/CONFIGURATION.md) | SMTP, LDAP, güvenlik, modüller, dosya yükleme |
+| [Yedekleme ve Geri Yükleme](docs/BACKUP_RESTORE.md) | Yedek alma, geri yükleme, güncelleme öncesi kontrol listesi |
+| [Sorun Giderme](docs/TROUBLESHOOTING.md) | Yaygın sorunlar ve çözümleri |
+| [Değişiklik Geçmişi](CHANGELOG.md) | Sürüm notları |
+
+---
+
 ## Özellikler
 
 | Modül | Açıklama |
@@ -98,7 +110,6 @@ dotnet run --environment Production
 | `AppSettings__UseSqlite` | `false` | `true` = SQLite kullan (sadece geliştirme için) |
 | `AppSettings__SqlitePath` | `risk_management.db` | SQLite dosya yolu |
 | `AppSettings__MaxUploadSizeMb` | `10` | Dosya yükleme boyut limiti (MB) |
-| `SEED_ADMIN_PASSWORD` | `Admin123!` | Demo modda oluşturulan admin şifresi |
 
 ---
 

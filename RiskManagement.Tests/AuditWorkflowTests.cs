@@ -104,7 +104,7 @@ public class FindingLifecycleTests
         var auditor = AuditSeed.AddUser(db, "auditor");
         var f = svc.CreateFinding("Eski başlık", null, null, null, null, auditor.Id, null, null, null);
 
-        var ok = svc.UpdateFinding(f.Id, "Yeni başlık", "Açıklama", "Operasyonel", "Kritik", null, null, null);
+        var ok = svc.InternalUpdateFinding(f.Id, "Yeni başlık", "Açıklama", "Operasyonel", "Kritik", null, null, null);
 
         Assert.True(ok);
         var updated = db.AuditFindings.Find(f.Id)!;
@@ -120,7 +120,7 @@ public class FindingLifecycleTests
         var f = svc.CreateFinding("Test", null, null, null, null, auditor.Id, null, null, null);
         f.Status = "closed"; db.SaveChanges();
 
-        var ok = svc.UpdateFinding(f.Id, "Değişiklik", null, null, null, null, null, null);
+        var ok = svc.InternalUpdateFinding(f.Id, "Değişiklik", null, null, null, null, null, null);
 
         Assert.False(ok);
     }
@@ -132,7 +132,7 @@ public class FindingLifecycleTests
         var auditor = AuditSeed.AddUser(db, "auditor");
         var f = AuditSeed.AddFinding(db, auditor.Id);
 
-        svc.AddFindingAction(f.Id, "Kontrol güçlendir", "BT", null, auditor.Id);
+        svc.InternalAddFindingAction(f.Id, "Kontrol güçlendir", "BT", null, auditor.Id);
 
         var updated = db.AuditFindings.Find(f.Id)!;
         Assert.Equal("action_planned", updated.ActionDecision);
@@ -144,9 +144,9 @@ public class FindingLifecycleTests
         var (db, svc) = AuditSeed.Build();
         var auditor = AuditSeed.AddUser(db, "auditor");
         var f = AuditSeed.AddFinding(db, auditor.Id);
-        var action = svc.AddFindingAction(f.Id, "Aksiyon", null, null, auditor.Id);
+        var action = svc.InternalAddFindingAction(f.Id, "Aksiyon", null, null, auditor.Id);
 
-        svc.UpdateFindingActionStatus(f.Id, action.Id, "completed");
+        svc.InternalUpdateFindingActionStatus(f.Id, action.Id, "completed");
 
         var updated = db.AuditFindingActions.Find(action.Id)!;
         Assert.Equal("completed", updated.Status);
@@ -166,7 +166,7 @@ public class ClosureRequestTests
         var owner   = AuditSeed.AddUser(db, "finding_owner");
         var f = AuditSeed.AddFinding(db, auditor.Id);
 
-        svc.SubmitClosureRequest(f.Id, "Kontroller uygulandı", null, owner.Id);
+        svc.InternalSubmitClosureRequest(f.Id, "Kontroller uygulandı", null, owner.Id);
 
         Assert.Equal("closure_requested", db.AuditFindings.Find(f.Id)!.Status);
     }
@@ -178,9 +178,9 @@ public class ClosureRequestTests
         var auditor = AuditSeed.AddUser(db, "auditor");
         var mgr     = AuditSeed.AddUser(db, "audit_manager");
         var f = AuditSeed.AddFinding(db, auditor.Id);
-        var req = svc.SubmitClosureRequest(f.Id, "Kanıt eklendi", null, auditor.Id);
+        var req = svc.InternalSubmitClosureRequest(f.Id, "Kanıt eklendi", null, auditor.Id);
 
-        svc.ReviewClosureRequest(f.Id, req.Id, "approved", "Uygun", mgr.Id);
+        svc.InternalReviewClosureRequest(f.Id, req.Id, "approved", "Uygun", mgr.Id);
 
         var finding = db.AuditFindings.Find(f.Id)!;
         Assert.Equal("closed", finding.Status);
@@ -194,9 +194,9 @@ public class ClosureRequestTests
         var auditor = AuditSeed.AddUser(db, "auditor");
         var mgr     = AuditSeed.AddUser(db, "audit_manager");
         var f = AuditSeed.AddFinding(db, auditor.Id);
-        var req = svc.SubmitClosureRequest(f.Id, "İlk başvuru", null, auditor.Id);
+        var req = svc.InternalSubmitClosureRequest(f.Id, "İlk başvuru", null, auditor.Id);
 
-        svc.ReviewClosureRequest(f.Id, req.Id, "rejected", "Yetersiz kanıt", mgr.Id);
+        svc.InternalReviewClosureRequest(f.Id, req.Id, "rejected", "Yetersiz kanıt", mgr.Id);
 
         Assert.Equal("open", db.AuditFindings.Find(f.Id)!.Status);
     }
@@ -208,10 +208,10 @@ public class ClosureRequestTests
         var auditor = AuditSeed.AddUser(db, "auditor");
         var mgr     = AuditSeed.AddUser(db, "audit_manager");
         var f = AuditSeed.AddFinding(db, auditor.Id);
-        var req = svc.SubmitClosureRequest(f.Id, "Test", null, auditor.Id);
+        var req = svc.InternalSubmitClosureRequest(f.Id, "Test", null, auditor.Id);
 
         var before = DateTime.UtcNow;
-        svc.ReviewClosureRequest(f.Id, req.Id, "approved", "Ok", mgr.Id);
+        svc.InternalReviewClosureRequest(f.Id, req.Id, "approved", "Ok", mgr.Id);
 
         var updated = db.ClosureRequests.Find(req.Id)!;
         Assert.Equal("approved", updated.Status);
@@ -227,10 +227,10 @@ public class ClosureRequestTests
         var mgr     = AuditSeed.AddUser(db, "audit_manager");
         var f = AuditSeed.AddFinding(db, auditor.Id);
 
-        var req1 = svc.SubmitClosureRequest(f.Id, "İlk deneme", null, auditor.Id);
-        svc.ReviewClosureRequest(f.Id, req1.Id, "rejected", "Eksik", mgr.Id);
-        var req2 = svc.SubmitClosureRequest(f.Id, "İkinci deneme", null, auditor.Id);
-        svc.ReviewClosureRequest(f.Id, req2.Id, "approved", "Tamam", mgr.Id);
+        var req1 = svc.InternalSubmitClosureRequest(f.Id, "İlk deneme", null, auditor.Id);
+        svc.InternalReviewClosureRequest(f.Id, req1.Id, "rejected", "Eksik", mgr.Id);
+        var req2 = svc.InternalSubmitClosureRequest(f.Id, "İkinci deneme", null, auditor.Id);
+        svc.InternalReviewClosureRequest(f.Id, req2.Id, "approved", "Tamam", mgr.Id);
 
         Assert.Equal(2, db.ClosureRequests.Count(r => r.FindingId == f.Id));
         Assert.Equal("closed", db.AuditFindings.Find(f.Id)!.Status);

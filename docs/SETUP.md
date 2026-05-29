@@ -123,6 +123,7 @@ docker run -d \
   --restart unless-stopped \
   -p 127.0.0.1:8080:8080 \
   -v red-uploads:/app/uploads \
+  -v red-logo:/app/wwwroot/uploads \
   -v red-dp-keys:/root/.aspnet/DataProtection-Keys \
   -e ASPNETCORE_ENVIRONMENT=Production \
   -e ConnectionStrings__DefaultConnection="Server=db;Database=RiskManagement;User=riskapp;Password=...;SslMode=Required;" \
@@ -131,8 +132,9 @@ docker run -d \
   red-app
 ```
 
-`DataProtection-Keys` volume'u olmadan her yeniden başlatmada oturum cookie'leri
-geçersiz kalır — volume'u kalıcı tutun.
+> **Önemli:** `DataProtection-Keys` ve `uploads` volume'larını kalıcı tutun.  
+> `DataProtection-Keys` olmadan her yeniden başlatmada tüm aktif oturumlar geçersiz kalır (kullanıcılar oturumunu kaybeder).  
+> `uploads` olmadan yüklenen dosyalar container silindiğinde kaybolur.
 
 ---
 
@@ -331,10 +333,13 @@ RiskManagement/
 
 | Kullanıcı adı | Şifre | Rol |
 |---------------|-------|-----|
-| `admin` | `admin123` | Yönetici |
-| `komite1` | `komite123` | Risk Komitesi |
-| `riskmanager1` | `manager123` | Risk Yöneticisi |
-| `riskowner1` | `owner123` | Risk Sahibi |
-| `denetci1` | `denetci123` | Denetçi |
-| `denetimmgr` | `manager123` | Denetim Müdürü |
-| `etikkurul1` | `etik123` | Etik Kurul |
+| `admin` | `Admin123!` | Yönetici |
+| `demo` | `Demo123!` | Yönetici (demo) |
+| `t.yilmaz` | `Demo123!` | Risk Komitesi |
+| `f.arslan` | `Demo123!` | Risk Yöneticisi |
+| `m.yilmaz` | `Demo123!` | Risk Sahibi |
+| `c.sahin` | `Demo123!` | Denetim Müdürü |
+| `e.kurt` | `Demo123!` | Denetçi |
+| `s.yildiz` | `Demo123!` | Etik Kurul |
+
+> Tüm demo hesapların şifresi `Demo123!`, yalnızca `admin` hesabı `Admin123!` kullanır.

@@ -219,7 +219,7 @@
             CancelAddBody();
             ReloadBodies();
         }
-        catch (Exception ex) { _bodyError = "Hata: " + ex.Message; }
+        catch (Exception) { _bodyError = "Kayıt sırasında bir sorun oluştu. Lütfen tekrar deneyin."; }
     }
 
     private void CancelAddBody()

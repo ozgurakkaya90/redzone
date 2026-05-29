@@ -5,6 +5,7 @@
 @inject AppDbContext Db
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
+@inject ToastService Toast
 @using System.Security.Claims
 @using RiskManagement.Models
 @using Microsoft.EntityFrameworkCore
@@ -21,6 +22,14 @@
 }
 else
 {
+    <div class="breadcrumb-bar">
+        <a href="/audit/external" class="breadcrumb-back">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+            Dış Denetimler
+        </a>
+        <span class="breadcrumb-sep">›</span>
+        <span class="breadcrumb-current">@_audit.Code</span>
+    </div>
     <div class="detail-header-strip">
         <div class="detail-header-top">
             <div style="flex:1;min-width:0">
@@ -133,29 +142,94 @@ else
                         <div class="ead-finding-card">
                             <div class="ead-finding-top">
                                 <div style="flex:1">
-                                    <div class="ead-finding-title">
-                                        <code>@f.Code</code>
-                                        <span style="margin-left:6px">@f.Title</span>
-                                    </div>
-                                    @if (!string.IsNullOrEmpty(f.Description))
+                                    @if (_editFindingId == f.Id)
                                     {
-                                        <div class="text-muted" style="margin-top:6px;white-space:pre-wrap">@f.Description</div>
+                                        @* ── Bulgu düzenleme formu ── *@
+                                        <div style="background:#f8fafc;padding:14px;border-radius:8px;border:1px solid var(--border);margin-bottom:8px">
+                                            <div style="font-weight:700;font-size:13px;margin-bottom:10px">Bulgu Düzenle</div>
+                                            @if (!string.IsNullOrEmpty(_editFindingError))
+                                            { <div class="alert alert-error" style="margin-bottom:8px">@_editFindingError</div> }
+                                            <div class="form-group">
+                                                <label class="form-label">Başlık *</label>
+                                                <input class="form-control" @bind="_editFinding.Title" maxlength="200" />
+                                            </div>
+                                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                                                <div class="form-group">
+                                                    <label class="form-label">Önem</label>
+                                                    <select class="form-control" @bind="_editFinding.Severity">
+                                                        <option value="">— Seçin —</option>
+                                                        <option value="low">Düşük</option>
+                                                        <option value="medium">Orta</option>
+                                                        <option value="high">Yüksek</option>
+                                                        <option value="critical">Kritik</option>
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">Bulgu Sahibi</label>
+                                                    <select class="form-control" @bind="_editFinding.OwnerId">
+                                                        <option value="">— Seçin —</option>
+                                                        @foreach (var u in _users)
+                                                        { <option value="@u.Id">@u.FullName</option> }
+                                                    </select>
+                                                </div>
+                                            </div>
+                                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+                                                <div class="form-group">
+                                                    <label class="form-label">Sahip Birimi</label>
+                                                    <select class="form-control" @bind="_editFinding.DepartmentId">
+                                                        <option value="">— Seçin —</option>
+                                                        @foreach (var d in _departments)
+                                                        { <option value="@d.Id">@d.Name</option> }
+                                                    </select>
+                                                </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">Termin</label>
+                                                    <input type="date" class="form-control" @bind="_editFindingDue" />
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label">Açıklama</label>
+                                                <textarea class="form-control" rows="2" @bind="_editFinding.Description" maxlength="2000"></textarea>
+                                            </div>
+                                            <div style="display:flex;gap:8px">
+                                                <button class="btn btn-success btn-sm" @onclick="() => SaveFindingEdit(f.Id)">Kaydet</button>
+                                                <button class="btn btn-outline btn-sm" @onclick="CancelFindingEdit">İptal</button>
+                                            </div>
+                                        </div>
                                     }
-                                    <div class="ead-finding-meta">
-                                        @if (!string.IsNullOrEmpty(f.Severity))
-                                        { <span class="badge @SeverityBadge(f.Severity)">@SeverityLabel(f.Severity)</span> }
-                                        @if (f.Owner != null)
-                                        { <span class="tag">@f.Owner.FullName</span> }
-                                        @if (f.Department != null)
-                                        { <span class="tag">@f.Department.Name</span> }
-                                        @if (f.DueDate.HasValue)
-                                        { <span class="tag">@f.DueDate.Value.ToString("dd.MM.yyyy")</span> }
-                                    </div>
+                                    else
+                                    {
+                                        <div class="ead-finding-title">
+                                            <code>@f.Code</code>
+                                            <span style="margin-left:6px">@f.Title</span>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(f.Description))
+                                        {
+                                            <div class="text-muted" style="margin-top:6px;white-space:pre-wrap">@f.Description</div>
+                                        }
+                                        <div class="ead-finding-meta">
+                                            @if (!string.IsNullOrEmpty(f.Severity))
+                                            { <span class="badge @SeverityBadge(f.Severity)">@SeverityLabel(f.Severity)</span> }
+                                            @if (f.Owner != null)
+                                            { <span class="tag">@f.Owner.FullName</span> }
+                                            @if (f.Department != null)
+                                            { <span class="tag">@f.Department.Name</span> }
+                                            @if (f.DueDate.HasValue)
+                                            { <span class="tag">@f.DueDate.Value.ToString("dd.MM.yyyy")</span> }
+                                        </div>
+                                    }
                                 </div>
-                                <span class="badge @FindingStatusBadge(f.Status)">@FindingStatusLabel(f.Status)</span>
+                                <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end;flex-shrink:0">
+                                    <span class="badge @FindingStatusBadge(f.Status)">@FindingStatusLabel(f.Status)</span>
+                                    @if (_canEdit && _editFindingId != f.Id)
+                                    {
+                                        <button class="btn btn-outline btn-sm" style="font-size:11px;padding:2px 8px"
+                                                @onclick="() => StartFindingEdit(f)">Düzenle</button>
+                                    }
+                                </div>
                             </div>
 
-                            @* Actions *@
+                            @* Aksiyonlar *@
                             <div class="ead-actions-section">
                                 <div class="ead-actions-header">
                                     <span class="section-title" style="margin-bottom:0">Aksiyonlar (@actions.Count)</span>
@@ -167,14 +241,47 @@ else
                                 </div>
                                 @foreach (var a in actions)
                                 {
-                                    <div class="ead-action-row">
-                                        <span class="badge @ActionStatusBadge(a.Status)" style="font-size:10px">@ActionStatusLabel(a.Status)</span>
-                                        <span>@a.Description</span>
-                                        @if (!string.IsNullOrEmpty(a.Responsible))
-                                        { <span class="text-muted">— @a.Responsible</span> }
-                                        @if (a.DueDate.HasValue)
-                                        { <span class="text-muted">@a.DueDate.Value.ToString("dd.MM.yyyy")</span> }
-                                    </div>
+                                    @if (_editActionId == a.Id)
+                                    {
+                                        @* ── Aksiyon düzenleme satır içi ── *@
+                                        <div class="ead-add-action-form">
+                                            <input class="form-control" placeholder="Aksiyon açıklaması…"
+                                                   @bind="_editAction.Description" maxlength="1000" style="margin-bottom:6px" />
+                                            <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:6px">
+                                                <input class="form-control" placeholder="Sorumlu"
+                                                       @bind="_editAction.Responsible" maxlength="200" />
+                                                <input type="date" class="form-control" @bind="_editActionDue" />
+                                                <select class="form-control" @bind="_editAction.Status">
+                                                    <option value="planned">Planlandı</option>
+                                                    <option value="in_progress">Devam Ediyor</option>
+                                                    <option value="completed">Tamamlandı</option>
+                                                    <option value="cancelled">İptal</option>
+                                                </select>
+                                            </div>
+                                            <div style="display:flex;gap:6px">
+                                                <button class="btn btn-primary btn-sm" @onclick="() => SaveActionEdit(a.Id)">Kaydet</button>
+                                                <button class="btn btn-outline btn-sm" @onclick="() => _editActionId = 0">İptal</button>
+                                            </div>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="ead-action-row" style="justify-content:space-between">
+                                            <div style="display:flex;gap:8px;align-items:center;flex:1;flex-wrap:wrap">
+                                                <span class="badge @ActionStatusBadge(a.Status)" style="font-size:10px">@ActionStatusLabel(a.Status)</span>
+                                                <span>@a.Description</span>
+                                                @if (!string.IsNullOrEmpty(a.Responsible))
+                                                { <span class="text-muted">— @a.Responsible</span> }
+                                                @if (a.DueDate.HasValue)
+                                                { <span class="text-muted">@a.DueDate.Value.ToString("dd.MM.yyyy")</span> }
+                                            </div>
+                                            @if (_canEdit)
+                                            {
+                                                <button class="btn btn-outline btn-sm" style="font-size:11px;padding:2px 8px;flex-shrink:0"
+                                                        @onclick="() => StartActionEdit(a)">Düzenle</button>
+                                            }
+                                        </div>
+                                    }
                                 }
                                 @if (_addActionFor == f.Id)
                                 {
@@ -281,6 +388,7 @@ else
     private List<Department> _departments = [];
     private bool _canEdit;
     private bool _confirmDelete;
+    private string _prevStatus = "";
 
     // New finding
     private bool _addingFinding;
@@ -293,17 +401,32 @@ else
     private AuditFindingAction _newAction = new();
     private DateTime? _newActionDue;
 
-    private int UserId => int.TryParse(
-        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    // Bulgu düzenleme
+    private int _editFindingId;
+    private AuditFinding _editFinding = new();
+    private DateTime? _editFindingDue;
+    private string _editFindingError = "";
 
-    protected override void OnInitialized() => Load();
+    // Aksiyon düzenleme
+    private int _editActionId;
+    private AuditFindingAction _editAction = new();
+    private DateTime? _editActionDue;
+
+    private int _userId;
+
+    protected override void OnInitialized()
+    {
+        int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out _userId);
+        Load();
+    }
 
     private void Load()
     {
-        var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == UserId);
+        var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == _userId);
         if (user is null) return;
         _audit = ExtSvc.Get(Id, user);
         if (_audit is null) return;
+        _prevStatus = _audit.Status;
         _canEdit = ExtSvc.CanEdit(user, _audit.AuditingBody);
         _findings = LoadFindingsForAudit(Id);
         LoadActions();
@@ -346,24 +469,106 @@ else
         _findingError = "";
     }
 
+    // ── Bulgu düzenleme ────────────────────────────────────────────────────────
+    private void StartFindingEdit(AuditFinding f)
+    {
+        _editFindingId    = f.Id;
+        _editFinding      = new AuditFinding
+        {
+            Title        = f.Title,
+            Description  = f.Description,
+            Severity     = f.Severity,
+            OwnerId      = f.OwnerId,
+            DepartmentId = f.DepartmentId,
+        };
+        _editFindingDue   = f.DueDate.HasValue ? f.DueDate.Value.ToDateTime(TimeOnly.MinValue) : null;
+        _editFindingError = "";
+        _editActionId     = 0; // başka formu kapat
+    }
+
+    private void CancelFindingEdit()
+    {
+        _editFindingId    = 0;
+        _editFinding      = new();
+        _editFindingDue   = null;
+        _editFindingError = "";
+    }
+
+    private async Task SaveFindingEdit(int findingId)
+    {
+        _editFindingError = "";
+        if (string.IsNullOrWhiteSpace(_editFinding.Title))
+        { _editFindingError = "Başlık zorunludur."; return; }
+
+        try
+        {
+            var f = await Db.AuditFindings.FindAsync(findingId);
+            if (f is null) return;
+            f.Title        = _editFinding.Title.Trim();
+            f.Description  = string.IsNullOrWhiteSpace(_editFinding.Description) ? null : _editFinding.Description.Trim();
+            f.Severity     = string.IsNullOrWhiteSpace(_editFinding.Severity)    ? null : _editFinding.Severity;
+            f.OwnerId      = _editFinding.OwnerId;
+            f.DepartmentId = _editFinding.DepartmentId;
+            f.DueDate      = _editFindingDue.HasValue ? DateOnly.FromDateTime(_editFindingDue.Value) : null;
+            await Db.SaveChangesAsync();
+            CancelFindingEdit();
+            _findings = LoadFindingsForAudit(_audit!.Id);
+        }
+        catch
+        {
+            _editFindingError = "Kayıt sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
+        }
+    }
+
+    // ── Aksiyon düzenleme ─────────────────────────────────────────────────────
+    private void StartActionEdit(AuditFindingAction a)
+    {
+        _editActionId  = a.Id;
+        _editAction    = new AuditFindingAction
+        {
+            Description = a.Description,
+            Responsible = a.Responsible,
+            Status      = a.Status,
+        };
+        _editActionDue = a.DueDate.HasValue ? a.DueDate.Value.ToDateTime(TimeOnly.MinValue) : null;
+        _addActionFor  = 0; // ekle formunu kapat
+    }
+
+    private async Task SaveActionEdit(int actionId)
+    {
+        if (string.IsNullOrWhiteSpace(_editAction.Description)) return;
+        var a = await Db.AuditFindingActions.FindAsync(actionId);
+        if (a is null) return;
+        a.Description = _editAction.Description.Trim();
+        a.Responsible = string.IsNullOrWhiteSpace(_editAction.Responsible) ? null : _editAction.Responsible.Trim();
+        a.Status      = _editAction.Status;
+        a.DueDate     = _editActionDue.HasValue ? DateOnly.FromDateTime(_editActionDue.Value) : null;
+        if (a.Status == "completed" && !a.CompletedAt.HasValue)
+            a.CompletedAt = DateTime.UtcNow;
+        await Db.SaveChangesAsync();
+        _editActionId = 0;
+        LoadActions();
+    }
+
     private void SaveFinding()
     {
         _findingError = "";
         if (string.IsNullOrWhiteSpace(_newFinding.Title))
         { _findingError = "Başlık zorunludur."; return; }
+        if (_audit is null) return;
 
         try
         {
-            _newFinding.DueDate = _newFindingDue.HasValue ? DateOnly.FromDateTime(_newFindingDue.Value) : null;
+            _newFinding.DueDate  = _newFindingDue.HasValue ? DateOnly.FromDateTime(_newFindingDue.Value) : null;
             _newFinding.Severity = string.IsNullOrEmpty(_newFinding.Severity) ? null : _newFinding.Severity;
-            ExtSvc.CreateFinding(_audit!.Id, _newFinding, UserId);
+            ExtSvc.CreateFinding(_audit.Id, _newFinding, _userId);
             CancelAddFinding();
             _findings = LoadFindingsForAudit(_audit.Id);
             LoadActions();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _findingError = "Hata: " + ex.Message;
+            _findingError = "Kayıt sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
         }
     }
 
@@ -374,16 +579,16 @@ else
         _newActionDue = null;
     }
 
-    private void SaveAction(int findingId)
+    private async Task SaveAction(int findingId)
     {
         if (string.IsNullOrWhiteSpace(_newAction.Description)) return;
-        _newAction.FindingId = findingId;
-        _newAction.CreatedById = UserId;
-        _newAction.CreatedAt = DateTime.UtcNow;
-        _newAction.Status = "planned";
-        _newAction.DueDate = _newActionDue.HasValue ? DateOnly.FromDateTime(_newActionDue.Value) : null;
+        _newAction.FindingId   = findingId;
+        _newAction.CreatedById = _userId;
+        _newAction.CreatedAt   = DateTime.UtcNow;
+        _newAction.Status      = "planned";
+        _newAction.DueDate     = _newActionDue.HasValue ? DateOnly.FromDateTime(_newActionDue.Value) : null;
         Db.AuditFindingActions.Add(_newAction);
-        Db.SaveChanges();
+        await Db.SaveChangesAsync();
         _addActionFor = 0;
         LoadActions();
     }
@@ -391,7 +596,24 @@ else
     private void SaveStatus()
     {
         if (_audit is null) return;
-        try { ExtSvc.Update(_audit); }
+
+        // Kapanış koruması: açık veya kapanış-bekleyen bulgu varken denetim kapatılamaz.
+        if (_audit.Status == "closed")
+        {
+            var openCount = _findings.Count(f => f.Status is "open" or "closure_requested");
+            if (openCount > 0)
+            {
+                Toast.Error($"Denetim kapatılamaz: {openCount} açık bulgu mevcut. Önce tüm bulgular kapatılmalıdır.");
+                _audit.Status = _prevStatus; // Önceki duruma geri al
+                return;
+            }
+        }
+
+        try
+        {
+            ExtSvc.Update(_audit);
+            _prevStatus = _audit.Status;
+        }
         catch { /* sessizce yut */ }
     }
 

@@ -1,6 +1,7 @@
 @page "/risk/dashboard"
 @attribute [Authorize]
 @inject RiskService RiskSvc
+@inject AuthService Auth
 @inject ConfigService CfgSvc
 @inject IRiskCalculator RiskCalc
 @inject IHttpContextAccessor HttpCtx
@@ -272,9 +273,7 @@ else
     }
 }
 @code {
-    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-
+    private User? _user;
     private bool _showRadar;
     private DashboardStats? _stats;
     private List<RiskManagement.Models.Risk> _risks = [];
@@ -300,7 +299,8 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        _risks = await RiskSvc.GetForUserAsync(UserId, Role);
+        _user  = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
+        _risks = _user is not null ? await RiskSvc.GetForUserAsync(_user) : [];
         _stats = new DashboardStats
         {
             Total         = _risks.Count,
@@ -313,7 +313,7 @@ else
         };
         _radar          = RiskSvc.GetRadarData();
         _categories     = CfgSvc.GetList("risk_categories");
-        _overdueActions = RiskSvc.GetOverdueActions(UserId, Role);
+        _overdueActions = _user is not null ? RiskSvc.GetOverdueActions(_user) : [];
 
         _statCards =
         [

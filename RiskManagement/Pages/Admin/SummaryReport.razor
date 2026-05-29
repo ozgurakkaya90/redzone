@@ -1,0 +1,209 @@
+@page "/admin/report"
+@attribute [Authorize(Roles = "admin,committee")]
+@inject AppDbContext Db
+@inject ConfigService CfgSvc
+@inject IHttpContextAccessor HttpCtx
+@using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
+@using RiskManagement.Models
+
+<PageTitle>Yönetici Özet Raporu</PageTitle>
+
+<div class="page-header">
+    <div>
+        <h1>Yönetici Özet Raporu</h1>
+        <div class="page-toolbar-sub">Son 30 günün aktivitesi ve genel sistem durumu</div>
+    </div>
+    <a href="/export/admin-report/excel" class="btn btn-outline btn-sm">
+        <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        Excel'e Aktar
+    </a>
+</div>
+
+@* ── Risk Özeti ─────────────────────────────────────────────────────────── *@
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-bottom:20px">
+    @foreach (var (label, val, color) in _riskStats)
+    {
+        <div class="card" style="padding:14px;text-align:center">
+            <div class="stat-label">@label</div>
+            <div style="font-size:28px;font-weight:700;color:@color">@val</div>
+        </div>
+    }
+</div>
+
+@* ── İki Kolon: Aksiyon + Denetim ──────────────────────────────────────── *@
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+
+    @* Aksiyon Özeti *@
+    <div class="card">
+        <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:var(--text-1)">Aksiyon Planları</div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+            @foreach (var (label, val, color) in _actionStats)
+            {
+                <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:7px 0;color:var(--text-2)">@label</td>
+                    <td style="padding:7px 0;text-align:right;font-weight:700;color:@color">@val</td>
+                </tr>
+            }
+        </table>
+    </div>
+
+    @* Denetim Özeti *@
+    <div class="card">
+        <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:var(--text-1)">Denetim Bulguları</div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+            @foreach (var (label, val, color) in _findingStats)
+            {
+                <tr style="border-bottom:1px solid var(--border)">
+                    <td style="padding:7px 0;color:var(--text-2)">@label</td>
+                    <td style="padding:7px 0;text-align:right;font-weight:700;color:@color">@val</td>
+                </tr>
+            }
+        </table>
+    </div>
+</div>
+
+@* ── Son 30 Gün Aktivitesi ──────────────────────────────────────────────── *@
+<div class="card" style="margin-bottom:20px">
+    <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:var(--text-1)">Son 30 Gün</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
+        @foreach (var (label, val, icon) in _recentActivity)
+        {
+            <div style="padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">@icon @label</div>
+                <div style="font-size:22px;font-weight:700;color:var(--text-1)">@val</div>
+            </div>
+        }
+    </div>
+</div>
+
+@* ── Kullanıcı Aktivitesi ────────────────────────────────────────────────── *@
+@if (_topUsers.Any())
+{
+    <div class="card" style="margin-bottom:20px">
+        <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:var(--text-1)">En Aktif Kullanıcılar (son 30 gün)</div>
+        <table class="table" style="font-size:13px">
+            <thead><tr><th>Kullanıcı</th><th>Rol</th><th style="text-align:right">İşlem</th></tr></thead>
+            <tbody>
+                @foreach (var (name, role, count) in _topUsers)
+                {
+                    <tr>
+                        <td>@name</td>
+                        <td><span class="badge badge-gray" style="font-size:10px">@role</span></td>
+                        <td style="text-align:right;font-weight:600">@count</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@* ── Gecikmiş İşler ─────────────────────────────────────────────────────── *@
+@if (_overdueActions > 0 || _overdueFindings > 0)
+{
+    <div class="card" style="border:1.5px solid #fca5a5;background:#fff5f5">
+        <div style="font-weight:700;font-size:14px;margin-bottom:10px;color:#991b1b">Dikkat — Gecikmiş İşler</div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:13px">
+            @if (_overdueActions > 0)
+            { <span style="color:#991b1b"><strong>@_overdueActions</strong> gecikmiş aksiyon planı</span> }
+            @if (_overdueFindings > 0)
+            { <span style="color:#991b1b"><strong>@_overdueFindings</strong> gecikmiş denetim bulgusu</span> }
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            <a href="/risk/actions" class="btn btn-outline btn-sm" style="font-size:12px">Aksiyon Listesi</a>
+            <a href="/audit/findings" class="btn btn-outline btn-sm" style="font-size:12px">Bulgu Listesi</a>
+        </div>
+    </div>
+}
+
+@code {
+    private (string Label, int Val, string Color)[] _riskStats = [];
+    private (string Label, int Val, string Color)[] _actionStats = [];
+    private (string Label, int Val, string Color)[] _findingStats = [];
+    private (string Label, int Val, string Icon)[] _recentActivity = [];
+    private List<(string Name, string Role, int Count)> _topUsers = [];
+    private int _overdueActions, _overdueFindings;
+
+    protected override void OnInitialized()
+    {
+        var today   = DateOnly.FromDateTime(DateTime.Today);
+        var cutoff  = DateTime.UtcNow.AddDays(-30);
+
+        // ── Riskler ─────────────────────────────────────────────────────────
+        var risks = Db.Risks.AsNoTracking().ToList();
+        _riskStats =
+        [
+            ("Toplam Risk",    risks.Count,                                       "var(--text-1)"),
+            ("Öneri",         risks.Count(r => r.Status == "proposed"),           "#ca8a04"),
+            ("Onaylı",        risks.Count(r => r.Status == "approved"),           "#2563eb"),
+            ("Tamamlandı",    risks.Count(r => r.Status == "completed"),          "#16a34a"),
+            ("Kabul Edildi",  risks.Count(r => r.Status == "risk_accepted"),      "#6b7280"),
+        ];
+
+        // ── Aksiyon Planları ─────────────────────────────────────────────────
+        var actions = Db.ActionPlans.AsNoTracking().ToList();
+        _overdueActions = actions.Count(a => a.DueDate.HasValue && a.DueDate.Value < today
+                                          && a.Status is "planned" or "in_progress");
+        _actionStats =
+        [
+            ("Toplam",       actions.Count,                                                          "var(--text-1)"),
+            ("Planlandı",    actions.Count(a => a.Status == "planned"),                              "#2563eb"),
+            ("Devam Ediyor", actions.Count(a => a.Status == "in_progress"),                         "#ca8a04"),
+            ("Tamamlandı",   actions.Count(a => a.Status == "completed"),                           "#16a34a"),
+            ("Gecikmiş",     _overdueActions,                                                        "#dc2626"),
+        ];
+
+        // ── Denetim Bulguları ────────────────────────────────────────────────
+        var findings = Db.AuditFindings.AsNoTracking().ToList();
+        _overdueFindings = findings.Count(f => f.DueDate.HasValue && f.DueDate.Value < today && f.Status != "closed");
+        _findingStats =
+        [
+            ("Toplam",               findings.Count,                                      "var(--text-1)"),
+            ("Açık",                 findings.Count(f => f.Status == "open"),             "#ca8a04"),
+            ("Kapanış Bekleyen",     findings.Count(f => f.Status == "closure_requested"),"#2563eb"),
+            ("Kapalı",               findings.Count(f => f.Status == "closed"),           "#16a34a"),
+            ("Vadesi Geçmiş",        _overdueFindings,                                    "#dc2626"),
+        ];
+
+        // ── Son 30 Gün ───────────────────────────────────────────────────────
+        var newRisks    = Db.Risks.Count(r => r.ProposedAt >= cutoff);
+        var newActions  = Db.ActionPlans.Count(a => a.CreatedAt >= cutoff);
+        var newFindings = Db.AuditFindings.Count(f => f.CreatedAt >= cutoff);
+        var closedRisks = Db.RiskAuditLogs.Count(l => l.Timestamp >= cutoff && l.Action.Contains("Tamamlandı"));
+        _recentActivity =
+        [
+            ("Yeni Risk",          newRisks,    "🔵"),
+            ("Yeni Aksiyon",       newActions,  "🟡"),
+            ("Yeni Bulgu",         newFindings, "🟠"),
+            ("Kapatılan Risk",     closedRisks, "🟢"),
+        ];
+
+        // ── En Aktif Kullanıcılar ─────────────────────────────────────────────
+        _topUsers = Db.RiskAuditLogs
+            .AsNoTracking()
+            .Where(l => l.Timestamp >= cutoff && l.UserId != null)
+            .GroupBy(l => l.UserId!.Value)
+            .Select(g => new { UserId = g.Key, Count = g.Count() })
+            .OrderByDescending(x => x.Count)
+            .Take(5)
+            .Join(Db.Users, x => x.UserId, u => u.Id, (x, u) => new { u.FullName, u.Role, x.Count })
+            .AsEnumerable()
+            .Select(x => (x.FullName, RoleLabel(x.Role), x.Count))
+            .ToList();
+    }
+
+    private static string RoleLabel(string r) => r switch
+    {
+        "admin"        => "Yönetici",
+        "committee"    => "Risk Komitesi",
+        "risk_manager" => "Risk Yöneticisi",
+        "risk_owner"   => "Risk Sahibi",
+        "auditor"      => "Denetçi",
+        "audit_manager"=> "Denetim Müdürü",
+        _ => r
+    };
+}

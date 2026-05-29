@@ -4,6 +4,7 @@
 @inject ConfigService CfgSvc
 @inject IRiskCalculator RiskCalc
 @inject AppDbContext Db
+@inject AuthService Auth
 @inject IHttpContextAccessor HttpCtx
 @inject NavigationManager Nav
 @using System.Security.Claims
@@ -38,6 +39,33 @@
             Risk Öner
         </a>
     </div>
+</div>
+
+@* ── Preset hızlı filtreler ── *@
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    @{
+        var criticalCount = _risks.Count(r =>
+            r.Evaluations.FirstOrDefault(e => e.EvalType == "initial")?.RiskLevel
+            is "Çok Yüksek Risk" or "Yüksek Risk");
+        var reviewCount   = _risks.Count(r => r.Status is "under_review" or "awaiting_approval");
+        var mineCount     = _risks.Count(r => r.OwnerId == UserId || r.ProposedById == UserId);
+        var actionCount   = _risks.Count(r => r.ActionPlans.Any(a => a.Status is "planned" or "in_progress"));
+    }
+    @foreach (var (label, preset, count, cls) in new[]{
+        ("Tümü",           "",          0,            ""),
+        ("Kritik & Yüksek","critical",  criticalCount,"preset-overdue"),
+        ("İncelemede",     "inreview",  reviewCount,  ""),
+        ("Aksiyon Gerekiyor","action",  actionCount,  ""),
+        ("Benim Risklerim","mine",      mineCount,    ""),
+    })
+    {
+        var p = preset; var isActive = _riskPreset == p;
+        <button class="preset-chip @(isActive ? "preset-chip-active" : "") @cls"
+                @onclick="() => ApplyRiskPreset(p)">
+            @label
+            @if (count > 0) { <span class="preset-chip-count">@count</span> }
+        </button>
+    }
 </div>
 
 @* ── Filtreler ── *@
@@ -96,8 +124,26 @@
 </div>
 
 @* ── Tablo ── *@
+@if (_loading)
+{
+    <div class="card" style="padding:0;overflow:hidden">
+        @for (int i = 0; i < 5; i++)
+        {
+            <div class="skeleton-row">
+                <div class="skeleton skeleton-circle"></div>
+                <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+                    <div class="skeleton skeleton-text" style="width:60%"></div>
+                    <div class="skeleton skeleton-text skeleton-sm" style="width:35%"></div>
+                </div>
+                <div class="skeleton skeleton-text" style="width:80px"></div>
+            </div>
+        }
+    </div>
+}
+else
+{
 <div class="risk-table-wrapper card" style="padding:0">
-    <table class="table">
+    <table class="table table-sticky">
         <thead>
             <tr>
                 <th style="width:100px">
@@ -139,7 +185,8 @@
             {
                 var initial  = r.Evaluations.FirstOrDefault(e => e.EvalType == "initial");
                 var residual = r.Evaluations.LastOrDefault(e => e.EvalType == "residual");
-                <tr style="cursor:pointer" @onclick="@(() => Nav.NavigateTo("/risk/" + r.Id))">
+                var isOverdue = r.ActionPlans.Any(a => a.DueDate.HasValue && a.DueDate.Value < DateOnly.FromDateTime(DateTime.Today));
+                <tr style="cursor:pointer" class="@(isOverdue ? "overdue-row" : "")" @onclick="@(() => Nav.NavigateTo("/risk/" + r.Id))">
                     <td>
                         <code style="font-size:11px;background:#f1f5f9;padding:2px 6px;border-radius:4px">
                             @r.Code
@@ -217,10 +264,10 @@
                 <tr>
                     <td colspan="8" style="text-align:center;padding:40px 20px">
                         <div style="font-size:14px;font-weight:600;color:var(--text-2);margin-bottom:6px">
-                            @(HasFilter ? "Filtreyle eşleşen risk bulunamadı" : "Henüz risk girilmemiş")
+                            @(HasFilter ? "Filtreyle eşleşen risk bulunamadı" : "Risk envanteri henüz boş")
                         </div>
                         <div style="font-size:13px;color:var(--text-3);margin-bottom:14px">
-                            @(HasFilter ? "Farklı filtre kriterleri deneyin." : "İlk riski önererek başlayın.")
+                            @(HasFilter ? "Farklı filtre kriterleri deneyin." : "Risk eklemek için '+ Risk Öner' butonunu kullanın — değerlendirme ekibi inceleyecektir.")
                         </div>
                         @if (HasFilter)
                         { <button class="btn btn-outline btn-sm" @onclick="ClearFilters">Filtreleri Temizle</button> }
@@ -262,6 +309,7 @@
         </div>
     </div>
 }
+} @* end else (_loading) *@
 
 
 @* ── Mobil kart listesi (≤768px) ── *@
@@ -310,14 +358,16 @@
     private string[] _categories = [];
     private List<Organization> _organizations = [];
     private bool _showImport;
+    private bool _loading = true;
 
     private string _filterCat = "", _filterStatus = "", _filterLevel = "", _search = "";
     private int _filterOrg;
     private string _sortCol = "date", _sortDir = "desc";
     private int _page = 1, _pageSize = 25;
+    private string _riskPreset = "";
 
-    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private User?  _user;
+    private int    UserId => _user?.Id ?? (int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0);
 
     private static readonly (string v, string l)[] _statusOptions =
     [
@@ -327,9 +377,12 @@
         ("risk_accepted","Risk Kabul Edildi"), ("rejected","Reddedildi")
     ];
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        _risks         = RiskSvc.GetForUser(UserId, Role);
+        await Task.Yield();
+
+        _user          = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
+        _risks         = _user is not null ? RiskSvc.GetForUser(_user) : [];
         _categories    = CfgSvc.GetList("risk_categories");
         _organizations = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
 
@@ -340,18 +393,41 @@
         if (query["cat"]    is { } c && c.Length > 0)  _filterCat    = c;
         if (query["level"]  is { } l && l.Length > 0)  _filterLevel  = l;
         if (query["search"] is { } q && q.Length > 0)  _search       = q;
+
+        _loading = false;
     }
 
     bool HasFilter => !string.IsNullOrEmpty(_filterCat) || !string.IsNullOrEmpty(_filterStatus) ||
-                      !string.IsNullOrEmpty(_filterLevel) || _filterOrg > 0 || !string.IsNullOrEmpty(_search);
+                      !string.IsNullOrEmpty(_filterLevel) || _filterOrg > 0 || !string.IsNullOrEmpty(_search) ||
+                      !string.IsNullOrEmpty(_riskPreset);
 
-    void ClearFilters() { _filterCat=""; _filterStatus=""; _filterLevel=""; _filterOrg=0; _search=""; _page=1; }
+    void ClearFilters() { _filterCat=""; _filterStatus=""; _filterLevel=""; _filterOrg=0; _search=""; _riskPreset=""; _page=1; }
+
+    private void ApplyRiskPreset(string preset)
+    {
+        _riskPreset = preset;
+        // Preset diğer filtreleri sıfırlar
+        _filterCat = ""; _filterStatus = ""; _filterLevel = ""; _filterOrg = 0; _search = "";
+        _page = 1;
+    }
 
     IEnumerable<RiskManagement.Models.Risk> Filtered
     {
         get
         {
             var q = _risks.AsEnumerable();
+
+            // Preset filter — önce uygula
+            q = _riskPreset switch {
+                "critical" => q.Where(r => r.Evaluations
+                    .FirstOrDefault(e => e.EvalType == "initial")?.RiskLevel
+                    is "Çok Yüksek Risk" or "Yüksek Risk"),
+                "inreview" => q.Where(r => r.Status is "under_review" or "awaiting_approval"),
+                "mine"     => q.Where(r => r.OwnerId == UserId || r.ProposedById == UserId),
+                "action"   => q.Where(r => r.ActionPlans.Any(a => a.Status is "planned" or "in_progress")),
+                _          => q
+            };
+
             if (!string.IsNullOrEmpty(_filterCat))    q = q.Where(r => r.Category == _filterCat);
             if (!string.IsNullOrEmpty(_filterStatus)) q = q.Where(r => r.Status == _filterStatus);
             if (_filterOrg > 0)                       q = q.Where(r => r.OrganizationId == _filterOrg);
@@ -439,7 +515,7 @@
         "Yüksek Risk"     => "▲",
         "Önemli Risk"     => "◆",
         "Orta Risk"       => "●",
-        _                 => "&#10003;"
+        _                 => "✓"
     };
 
     static int StatusOrder(string s) => s switch

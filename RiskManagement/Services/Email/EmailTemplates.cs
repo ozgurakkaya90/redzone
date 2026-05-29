@@ -2,7 +2,9 @@ namespace RiskManagement.Services.Email;
 
 public static class EmailTemplates
 {
-    // $$""" ile CSS süslü parantezleri escape gerektirmez; interpolasyon {{expr}} ile yapılır
+    // Değişken adları: {riskCode} {riskTitle} {proposerName} {oldStatus} {newStatus}
+    //                  {description} {dueDate} {daysLeft} {dateTime} {baseUrl}
+
     private static string Wrap(string title, string body, string baseUrl) => $$"""
         <!DOCTYPE html>
         <html lang="tr">
@@ -44,79 +46,288 @@ public static class EmailTemplates
         </body></html>
         """;
 
-    public static (string Subject, string Html) RiskProposed(
-        string riskCode, string riskTitle, string proposerName, string baseUrl)
+    private static string ApplyVars(string template, Dictionary<string, string> vars)
     {
-        var body = $"""
-            <p>Sisteme yeni bir risk önerisi iletildi. İncelemenizi bekliyor.</p>
-            <div class="meta">
-              <b>Kod:</b> {riskCode}<br>
-              <b>Başlık:</b> {riskTitle}<br>
-              <b>Öneren:</b> {proposerName}
-            </div>
-            <a class="btn" href="{baseUrl}/risk">Riskleri İncele &rarr;</a>
-            """;
-        return ($"[RedZone] Yeni Risk Önerisi: {riskCode}", Wrap("Yeni Risk Önerisi", body, baseUrl));
+        foreach (var (k, v) in vars)
+            template = template.Replace("{" + k + "}", v);
+        return template;
+    }
+
+    // ── Varsayılan şablon metinleri (raw, değişken yer tutucuları içerir) ────
+    public const string DefaultTpl_RiskProposed =
+        "<p>Sisteme yeni bir risk önerisi iletildi. İncelemenizi bekliyor.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Kod:</b> {riskCode}<br>" +
+        "<b>Başlık:</b> {riskTitle}<br>" +
+        "<b>Öneren:</b> {proposerName}" +
+        "</div>" +
+        "<a class=\"btn\" href=\"{baseUrl}/risk\">Riskleri İncele &rarr;</a>";
+
+    public const string DefaultTpl_StatusChanged =
+        "<p>Sorumlusu olduğunuz riskin durumu güncellendi.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Kod:</b> {riskCode}<br>" +
+        "<b>Risk:</b> {riskTitle}<br>" +
+        "<b>Eski Durum:</b> {oldStatus}<br>" +
+        "<b>Yeni Durum:</b> <span style=\"color:#1e3a5f;font-weight:700\">{newStatus}</span>" +
+        "</div>" +
+        "<a class=\"btn\" href=\"{baseUrl}/risk\">Detaya Git &rarr;</a>";
+
+    public const string DefaultTpl_OwnerAssigned =
+        "<p>Aşağıdaki riskin sahibi olarak atandınız. Risk yönetim sürecini takip etmeniz beklenmektedir.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Kod:</b> {riskCode}<br>" +
+        "<b>Risk:</b> {riskTitle}" +
+        "</div>" +
+        "<a class=\"btn\" href=\"{baseUrl}/risk\">Riske Git &rarr;</a>";
+
+    public const string DefaultTpl_ActionDueSoon =
+        "<p>Sorumluluğunuzdaki bir aksiyon planının vadesi yaklaşıyor.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Risk Kodu:</b> {riskCode}<br>" +
+        "<b>Aksiyon:</b> {description}<br>" +
+        "<b>Hedef Tarih:</b> {dueDate}<br>" +
+        "<b>Kalan Süre:</b> <span style=\"color:#dc2626;font-weight:700\">{daysLeft} gün</span>" +
+        "</div>" +
+        "<a class=\"btn\" href=\"{baseUrl}/risk/actions\">Aksiyonları Gör &rarr;</a>";
+
+    // ── Denetim şablonları ───────────────────────────────────────────────────
+    public const string DefaultTpl_FindingAssigned =
+        "<p>Aşağıdaki denetim bulgusunun sahibi olarak atandınız. Kapatma sürecini takip etmeniz beklenmektedir.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Kod:</b> {findingCode}<br>" +
+        "<b>Bulgu:</b> {findingTitle}" +
+        "</div>" +
+        "<a class=\"btn\" href=\"{baseUrl}/audit/findings\">Bulgulara Git &rarr;</a>";
+
+    public const string DefaultTpl_ClosureRequested =
+        "<p>Sorumlusu olduğunuz bir bulgu için kapatma başvurusu yapıldı. İncelemenizi bekliyor.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Kod:</b> {findingCode}<br>" +
+        "<b>Bulgu:</b> {findingTitle}" +
+        "</div>" +
+        "<a class=\"btn\" href=\"{baseUrl}/audit/findings\">Başvuruyu İncele &rarr;</a>";
+
+    public const string DefaultTpl_ClosureDecided =
+        "<p>Kapatma başvurusu sonuçlandı.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Kod:</b> {findingCode}<br>" +
+        "<b>Bulgu:</b> {findingTitle}<br>" +
+        "<b>Karar:</b> <span style=\"font-weight:700;color:{decisionColor}\">{decisionLabel}</span>" +
+        "</div>" +
+        "<a class=\"btn\" href=\"{baseUrl}/audit/findings\">Detaya Git &rarr;</a>";
+
+    public const string DefaultTpl_FindingDueSoon =
+        "<p>Sorumlusu olduğunuz bir denetim bulgusunun kapanma tarihi yaklaşıyor.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Kod:</b> {findingCode}<br>" +
+        "<b>Bulgu:</b> {findingTitle}<br>" +
+        "<b>Hedef Tarih:</b> {dueDate}<br>" +
+        "<b>Kalan Süre:</b> <span style=\"color:#dc2626;font-weight:700\">{daysLeft} gün</span>" +
+        "</div>" +
+        "<a class=\"btn\" href=\"{baseUrl}/audit/findings\">Bulgulara Git &rarr;</a>";
+
+    // ── Etik şablonları ──────────────────────────────────────────────────────
+    public const string DefaultTpl_EthicsSubmitted =
+        "<p>Sisteme yeni bir etik bildirim iletildi. İncelemenizi bekliyor.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Referans:</b> {ethicsCode}<br>" +
+        "<b>Konu:</b> {subject}" +
+        "</div>" +
+        "<a class=\"btn\" href=\"{baseUrl}/ethics\">Bildirimi İncele &rarr;</a>";
+
+    public const string DefaultTpl_EthicsReviewed =
+        "<p>Bir etik bildirim incelemesi tamamlandı.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Referans:</b> {ethicsCode}<br>" +
+        "<b>Konu:</b> {subject}<br>" +
+        "<b>Aşama:</b> {stage}" +
+        "</div>" +
+        "<a class=\"btn\" href=\"{baseUrl}/ethics\">Detaya Git &rarr;</a>";
+
+    // ── Denetim konu satırları ────────────────────────────────────────────────
+    public const string DefaultSubject_FindingAssigned  = "[RedZone] Denetim Bulgusuna Atandınız: {findingCode}";
+    public const string DefaultSubject_ClosureRequested = "[RedZone] Kapatma Başvurusu: {findingCode}";
+    public const string DefaultSubject_ClosureDecided   = "[RedZone] Kapatma Kararı: {findingCode}";
+    public const string DefaultSubject_FindingDueSoon   = "[RedZone] Bulgu Vadesi Yaklaşıyor: {findingCode}";
+
+    // ── Etik konu satırları ───────────────────────────────────────────────────
+    public const string DefaultSubject_EthicsSubmitted  = "[RedZone] Yeni Etik Bildirim: {ethicsCode}";
+    public const string DefaultSubject_EthicsReviewed   = "[RedZone] Etik Bildirim İncelendi: {ethicsCode}";
+
+    public const string DefaultTpl_Test =
+        "<p>RedZone e-posta yapılandırması başarıyla test edildi.</p>" +
+        "<div class=\"meta\">" +
+        "<b>Sunucu:</b> SMTP bağlantısı aktif<br>" +
+        "<b>Zaman:</b> {dateTime}" +
+        "</div>" +
+        "<p style=\"font-size:13px;color:#6b7280;margin-top:16px\">" +
+        "Bu e-posta, sistem yöneticisi tarafından tetiklenmiştir.</p>";
+
+    // ── Varsayılan konu satırları ────────────────────────────────────────────
+    public const string DefaultSubject_RiskProposed  = "[RedZone] Yeni Risk Önerisi: {riskCode}";
+    public const string DefaultSubject_StatusChanged = "[RedZone] Risk Durumu Güncellendi: {riskCode}";
+    public const string DefaultSubject_OwnerAssigned = "[RedZone] Risk Sahipliği Atandı: {riskCode}";
+    public const string DefaultSubject_ActionDueSoon = "[RedZone] Aksiyon Vadesi Yaklaşıyor: {riskCode}";
+    public const string DefaultSubject_Test          = "[RedZone] E-posta Bağlantı Testi";
+
+    // ── Public API (customSubject/customBody boşsa varsayılan kullanılır) ────
+    public static (string Subject, string Html) RiskProposed(
+        string riskCode, string riskTitle, string proposerName, string baseUrl,
+        string? customSubject = null, string? customBody = null)
+    {
+        var vars = new Dictionary<string, string>
+        {
+            ["riskCode"] = riskCode, ["riskTitle"] = riskTitle,
+            ["proposerName"] = proposerName, ["baseUrl"] = baseUrl,
+        };
+        var subject = ApplyVars(
+            string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_RiskProposed : customSubject, vars);
+        var body = ApplyVars(
+            string.IsNullOrWhiteSpace(customBody) ? DefaultTpl_RiskProposed : customBody, vars);
+        return (subject, Wrap("Yeni Risk Önerisi", body, baseUrl));
     }
 
     public static (string Subject, string Html) StatusChanged(
-        string riskCode, string riskTitle, string oldStatus, string newStatus, string baseUrl)
+        string riskCode, string riskTitle, string oldStatus, string newStatus, string baseUrl,
+        string? customSubject = null, string? customBody = null)
     {
-        var body = $"""
-            <p>Sorumlusu olduğunuz riskin durumu güncellendi.</p>
-            <div class="meta">
-              <b>Kod:</b> {riskCode}<br>
-              <b>Risk:</b> {riskTitle}<br>
-              <b>Eski Durum:</b> {oldStatus}<br>
-              <b>Yeni Durum:</b> <span style="color:#1e3a5f;font-weight:700">{newStatus}</span>
-            </div>
-            <a class="btn" href="{baseUrl}/risk">Detaya Git &rarr;</a>
-            """;
-        return ($"[RedZone] Risk Durumu Güncellendi: {riskCode}", Wrap("Risk Durumu Değişti", body, baseUrl));
+        var vars = new Dictionary<string, string>
+        {
+            ["riskCode"] = riskCode, ["riskTitle"] = riskTitle,
+            ["oldStatus"] = oldStatus, ["newStatus"] = newStatus, ["baseUrl"] = baseUrl,
+        };
+        var subject = ApplyVars(
+            string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_StatusChanged : customSubject, vars);
+        var body = ApplyVars(
+            string.IsNullOrWhiteSpace(customBody) ? DefaultTpl_StatusChanged : customBody, vars);
+        return (subject, Wrap("Risk Durumu Değişti", body, baseUrl));
     }
 
     public static (string Subject, string Html) OwnerAssigned(
-        string riskCode, string riskTitle, string baseUrl)
+        string riskCode, string riskTitle, string baseUrl,
+        string? customSubject = null, string? customBody = null)
     {
-        var body = $"""
-            <p>Aşağıdaki riskin sahibi olarak atandınız. Risk yönetim sürecini takip etmeniz beklenmektedir.</p>
-            <div class="meta">
-              <b>Kod:</b> {riskCode}<br>
-              <b>Risk:</b> {riskTitle}
-            </div>
-            <a class="btn" href="{baseUrl}/risk">Riske Git &rarr;</a>
-            """;
-        return ($"[RedZone] Risk Sahipliği Atandı: {riskCode}", Wrap("Size Bir Risk Atandı", body, baseUrl));
+        var vars = new Dictionary<string, string>
+        {
+            ["riskCode"] = riskCode, ["riskTitle"] = riskTitle, ["baseUrl"] = baseUrl,
+        };
+        var subject = ApplyVars(
+            string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_OwnerAssigned : customSubject, vars);
+        var body = ApplyVars(
+            string.IsNullOrWhiteSpace(customBody) ? DefaultTpl_OwnerAssigned : customBody, vars);
+        return (subject, Wrap("Size Bir Risk Atandı", body, baseUrl));
     }
 
     public static (string Subject, string Html) ActionDueSoon(
-        string riskCode, string description, string dueDate, int daysLeft, string baseUrl)
+        string riskCode, string description, string dueDate, int daysLeft, string baseUrl,
+        string? customSubject = null, string? customBody = null)
     {
-        var body = $"""
-            <p>Sorumluluğunuzdaki bir aksiyon planının vadesi yaklaşıyor.</p>
-            <div class="meta">
-              <b>Risk Kodu:</b> {riskCode}<br>
-              <b>Aksiyon:</b> {description}<br>
-              <b>Hedef Tarih:</b> {dueDate}<br>
-              <b>Kalan Süre:</b> <span style="color:#dc2626;font-weight:700">{daysLeft} gün</span>
-            </div>
-            <a class="btn" href="{baseUrl}/risk/actions">Aksiyonları Gör &rarr;</a>
-            """;
-        return ($"[RedZone] Aksiyon Vadesi Yaklaşıyor: {riskCode}", Wrap("Aksiyon Planı Hatırlatması", body, baseUrl));
+        var vars = new Dictionary<string, string>
+        {
+            ["riskCode"] = riskCode, ["description"] = description,
+            ["dueDate"] = dueDate, ["daysLeft"] = daysLeft.ToString(), ["baseUrl"] = baseUrl,
+        };
+        var subject = ApplyVars(
+            string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_ActionDueSoon : customSubject, vars);
+        var body = ApplyVars(
+            string.IsNullOrWhiteSpace(customBody) ? DefaultTpl_ActionDueSoon : customBody, vars);
+        return (subject, Wrap("Aksiyon Planı Hatırlatması", body, baseUrl));
     }
 
-    public static (string Subject, string Html) Test(string baseUrl)
+    public static (string Subject, string Html) FindingAssigned(
+        string findingCode, string findingTitle, string baseUrl,
+        string? customSubject = null, string? customBody = null)
     {
-        var body = $"""
-            <p>RedZone e-posta yapılandırması başarıyla test edildi.</p>
-            <div class="meta">
-              <b>Sunucu:</b> SMTP bağlantısı aktif<br>
-              <b>Zaman:</b> {DateTime.Now:dd.MM.yyyy HH:mm}
-            </div>
-            <p style="font-size:13px;color:#6b7280;margin-top:16px">
-              Bu e-posta, sistem yöneticisi tarafından tetiklenmiştir.
-            </p>
-            """;
-        return ("[RedZone] E-posta Bağlantı Testi", Wrap("Test E-postası", body, baseUrl));
+        var vars = new Dictionary<string, string>
+        {
+            ["findingCode"] = findingCode, ["findingTitle"] = findingTitle, ["baseUrl"] = baseUrl,
+        };
+        var subject = ApplyVars(string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_FindingAssigned : customSubject, vars);
+        var body    = ApplyVars(string.IsNullOrWhiteSpace(customBody)    ? DefaultTpl_FindingAssigned    : customBody,    vars);
+        return (subject, Wrap("Denetim Bulgusuna Atandınız", body, baseUrl));
+    }
+
+    public static (string Subject, string Html) ClosureRequested(
+        string findingCode, string findingTitle, string baseUrl,
+        string? customSubject = null, string? customBody = null)
+    {
+        var vars = new Dictionary<string, string>
+        {
+            ["findingCode"] = findingCode, ["findingTitle"] = findingTitle, ["baseUrl"] = baseUrl,
+        };
+        var subject = ApplyVars(string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_ClosureRequested : customSubject, vars);
+        var body    = ApplyVars(string.IsNullOrWhiteSpace(customBody)    ? DefaultTpl_ClosureRequested    : customBody,    vars);
+        return (subject, Wrap("Kapatma Başvurusu", body, baseUrl));
+    }
+
+    public static (string Subject, string Html) ClosureDecided(
+        string findingCode, string findingTitle, string decision, string baseUrl,
+        string? customSubject = null, string? customBody = null)
+    {
+        var isApproved = decision == "approved";
+        var vars = new Dictionary<string, string>
+        {
+            ["findingCode"]   = findingCode, ["findingTitle"] = findingTitle, ["baseUrl"] = baseUrl,
+            ["decisionLabel"] = isApproved ? "Onaylandı" : "Reddedildi",
+            ["decisionColor"] = isApproved ? "#166534"   : "#991b1b",
+        };
+        var subject = ApplyVars(string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_ClosureDecided : customSubject, vars);
+        var body    = ApplyVars(string.IsNullOrWhiteSpace(customBody)    ? DefaultTpl_ClosureDecided    : customBody,    vars);
+        return (subject, Wrap("Kapatma Kararı", body, baseUrl));
+    }
+
+    public static (string Subject, string Html) FindingDueSoon(
+        string findingCode, string findingTitle, string dueDate, int daysLeft, string baseUrl,
+        string? customSubject = null, string? customBody = null)
+    {
+        var vars = new Dictionary<string, string>
+        {
+            ["findingCode"] = findingCode, ["findingTitle"] = findingTitle,
+            ["dueDate"] = dueDate, ["daysLeft"] = daysLeft.ToString(), ["baseUrl"] = baseUrl,
+        };
+        var subject = ApplyVars(string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_FindingDueSoon : customSubject, vars);
+        var body    = ApplyVars(string.IsNullOrWhiteSpace(customBody)    ? DefaultTpl_FindingDueSoon    : customBody,    vars);
+        return (subject, Wrap("Bulgu Vadesi Hatırlatması", body, baseUrl));
+    }
+
+    public static (string Subject, string Html) EthicsSubmitted(
+        string ethicsCode, string subject, string baseUrl,
+        string? customSubject = null, string? customBody = null)
+    {
+        var vars = new Dictionary<string, string>
+        {
+            ["ethicsCode"] = ethicsCode, ["subject"] = subject, ["baseUrl"] = baseUrl,
+        };
+        var emailSubject = ApplyVars(string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_EthicsSubmitted : customSubject, vars);
+        var body         = ApplyVars(string.IsNullOrWhiteSpace(customBody)    ? DefaultTpl_EthicsSubmitted    : customBody,    vars);
+        return (emailSubject, Wrap("Yeni Etik Bildirim", body, baseUrl));
+    }
+
+    public static (string Subject, string Html) EthicsReviewed(
+        string ethicsCode, string subject, string stage, string baseUrl,
+        string? customSubject = null, string? customBody = null)
+    {
+        var vars = new Dictionary<string, string>
+        {
+            ["ethicsCode"] = ethicsCode, ["subject"] = subject, ["stage"] = stage, ["baseUrl"] = baseUrl,
+        };
+        var emailSubject = ApplyVars(string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_EthicsReviewed : customSubject, vars);
+        var body         = ApplyVars(string.IsNullOrWhiteSpace(customBody)    ? DefaultTpl_EthicsReviewed    : customBody,    vars);
+        return (emailSubject, Wrap("Etik Bildirim İncelendi", body, baseUrl));
+    }
+
+    public static (string Subject, string Html) Test(string baseUrl,
+        string? customSubject = null, string? customBody = null)
+    {
+        var vars = new Dictionary<string, string>
+        {
+            ["dateTime"] = DateTime.Now.ToString("dd.MM.yyyy HH:mm"),
+            ["baseUrl"]  = baseUrl,
+        };
+        var subject = string.IsNullOrWhiteSpace(customSubject) ? DefaultSubject_Test : customSubject;
+        var body = ApplyVars(
+            string.IsNullOrWhiteSpace(customBody) ? DefaultTpl_Test : customBody, vars);
+        return (subject, Wrap("Test E-postası", body, baseUrl));
     }
 }

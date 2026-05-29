@@ -2,8 +2,12 @@
 @attribute [Authorize]
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
+@inject AuthService Auth
+@inject AppDbContext Db
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
+@using Microsoft.EntityFrameworkCore
+@using RiskManagement.Models
 
 <PageTitle>Bulgular</PageTitle>
 
@@ -19,7 +23,7 @@
                 <a href="/export/findings/pdf" class="export-item"> PDF</a>
             </div>
         </div>
-        @if (HasRole("auditor","admin"))
+        @if (HasPerm("audit.write"))
         {
             <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
             <a href="/audit/findings/new" class="btn btn-primary">+ Bulgu Gir</a>
@@ -27,6 +31,32 @@
     </div>
 </div>
 
+
+@* Preset hızlı filtreler *@
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    @foreach (var (label, status, cls) in new[]{
+        ("Tümü",             "",                  ""),
+        ("Açık",             "open",              ""),
+        ("Kapanış Bekleyen", "closure_requested", ""),
+        ("Geciken",          "__overdue",         "preset-overdue"),
+    })
+    {
+        var isActive = (status == "" && string.IsNullOrEmpty(_filterStatus) && !_presetOverdue)
+                    || (status == "__overdue" && _presetOverdue)
+                    || (status != "" && status != "__overdue" && _filterStatus == status && !_presetOverdue);
+        <button class="preset-chip @(isActive ? "preset-chip-active" : "") @cls"
+                @onclick="() => ApplyFindingPreset(status)">
+            @label
+            @if (status == "__overdue" || (status == "open" && !_presetOverdue))
+            {
+                var cnt = status == "__overdue"
+                    ? _findings.Count(f => f.DueDate.HasValue && f.DueDate.Value < DateOnly.FromDateTime(DateTime.Today) && f.Status != "closed")
+                    : _findings.Count(f => f.Status == "open");
+                if (cnt > 0) { <span class="preset-chip-count">@cnt</span> }
+            }
+        </button>
+    }
+</div>
 
 <div class="card" style="margin-bottom:16px">
     <div style="display:flex;gap:12px;flex-wrap:wrap">
@@ -48,54 +78,122 @@
 </div>
 
 <div class="card" style="padding:0">
-    <table class="table">
+    <table class="table table-sticky">
         <thead>
             <tr>
                 <th>Kod</th><th>Başlık</th><th>Kategori</th>
-                <th>Şiddet</th><th>Durum</th><th></th>
+                <th>Şiddet</th><th>Durum</th><th>Termin</th><th></th>
             </tr>
         </thead>
         <tbody>
-            @foreach (var f in Filtered)
+            @foreach (var f in PagedFindings)
             {
+                var today    = DateOnly.FromDateTime(DateTime.Today);
+                var fDaysLeft = f.DueDate.HasValue ? (f.DueDate.Value.DayNumber - today.DayNumber) : (int?)null;
+                var fOverdue  = fDaysLeft.HasValue && fDaysLeft.Value < 0 && f.Status != "closed";
                 <tr>
                     <td><code>@f.Code</code></td>
                     <td>@f.Title</td>
                     <td><span class="tag">@f.Category</span></td>
                     <td><span class="badge @SevBadge(f.Severity)">@f.Severity</span></td>
                     <td><span class="badge @StatusBadge(f.Status)">@StatusLabel(f.Status)</span></td>
-                    <td><a href="/audit/findings/@f.Id" class="btn btn-outline btn-sm">Detay</a></td>
+                    <td>
+                        @if (f.DueDate.HasValue)
+                        {
+                            <span class="@(fOverdue ? "overdue-date" : "")">
+                                @f.DueDate.Value.ToString("dd.MM.yyyy")
+                            </span>
+                            @if (fDaysLeft.HasValue && f.Status != "closed")
+                            {
+                                @if (fDaysLeft.Value < -_critDays)
+                                { <span class="overdue-badge-crit">KRİTİK</span> }
+                                else if (fDaysLeft.Value < 0)
+                                { <span class="overdue-badge-late">GECİKTİ</span> }
+                                else if (fDaysLeft.Value <= _warnDays)
+                                { <span class="overdue-badge-warn">@fDaysLeft.Value GÜN</span> }
+                            }
+                        }
+                        else { <span style="color:var(--text-3)">—</span> }
+                    </td>
+                    <td><a href="/audit/findings/@f.Id" class="btn btn-outline btn-sm">Görüntüle</a></td>
                 </tr>
             }
             @if (!Filtered.Any())
             {
-                <EmptyState Colspan="6" Icon="" Title="Bulgu bulunamadı" Subtitle="Farklı filtre kriterleri deneyin veya yeni bulgu girin." ActionHref="/audit/findings/new" ActionLabel="+ Bulgu Gir" />
+                <EmptyState Colspan="7" Icon="" Title="Bulgu bulunamadı" Subtitle="Farklı filtre kriterleri deneyin veya yeni bulgu girin." ActionHref="/audit/findings/new" ActionLabel="+ Bulgu Gir" />
             }
         </tbody>
     </table>
 </div>
+
+@if (TotalFindingPages > 1)
+{
+    <div class="pagination-bar">
+        <div class="pagination-info">
+            @((_fPage-1)*_fPageSize+1)–@(Math.Min(_fPage*_fPageSize, Filtered.Count())) / @Filtered.Count() kayıt
+        </div>
+        <div class="pagination-controls">
+            <button class="btn btn-outline btn-sm" @onclick="() => _fPage=1"               disabled="@(_fPage==1)">«</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _fPage--"               disabled="@(_fPage==1)">‹</button>
+            @for (int p = Math.Max(1,_fPage-2); p <= Math.Min(TotalFindingPages,_fPage+2); p++)
+            { var pp = p; <button class="btn @(_fPage==pp?"btn-primary":"btn-outline") btn-sm" @onclick="() => _fPage=pp">@pp</button> }
+            <button class="btn btn-outline btn-sm" @onclick="() => _fPage++"               disabled="@(_fPage==TotalFindingPages)">›</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _fPage=TotalFindingPages" disabled="@(_fPage==TotalFindingPages)">»</button>
+        </div>
+        <div class="pagination-size">
+            Sayfa başı:
+            <select class="form-control" @bind="_fPageSize" @bind:after="() => _fPage=1">
+                <option value="25">25</option><option value="50">50</option><option value="100">100</option>
+            </select>
+        </div>
+    </div>
+}
 
 @code {
     private List<RiskManagement.Models.AuditFinding> _findings = [];
     private string[] _categories = [], _severities = [];
     private string _filterCat = "", _filterSev = "", _filterStatus = "";
     private bool _showImport;
+    private int _fPage = 1, _fPageSize = 25;
+    private bool _presetOverdue = false;
+    private int _warnDays, _critDays;
 
-    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
-    private int UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private bool HasRole(params string[] roles) => roles.Contains(Role);
+    private string Role   => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private int    UserId => int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private User?  _user;
+    private bool   HasPerm(string perm) => _user != null && Auth.HasPermission(_user, perm);
 
     protected override void OnInitialized()
     {
-        _findings = AuditSvc.GetFindingsForUser(UserId, Role);
+        _user     = Db.Users
+            .Include(u => u.UserRoles)
+            .Include(u => u.UserDepartments)
+            .FirstOrDefault(u => u.Id == UserId);
+        _warnDays = CfgSvc.GetWarnDays();
+        _critDays = CfgSvc.GetCritDays();
+        _findings = _user is not null ? AuditSvc.GetFindingsForUser(_user) : [];
         _categories = CfgSvc.GetList("audit_categories");
         _severities = CfgSvc.GetList("audit_severities");
     }
 
+    private void ApplyFindingPreset(string preset)
+    {
+        _presetOverdue = preset == "__overdue";
+        _filterStatus  = preset is "" or "__overdue" ? "" : preset;
+        _filterSev = ""; _filterCat = "";
+    }
+
     private IEnumerable<RiskManagement.Models.AuditFinding> Filtered => _findings
-        .Where(f => string.IsNullOrEmpty(_filterCat) || f.Category == _filterCat)
-        .Where(f => string.IsNullOrEmpty(_filterSev) || f.Severity == _filterSev)
+        .Where(f => !_presetOverdue || (f.DueDate.HasValue && f.DueDate.Value < DateOnly.FromDateTime(DateTime.Today) && f.Status != "closed"))
+        .Where(f => string.IsNullOrEmpty(_filterCat)    || f.Category == _filterCat)
+        .Where(f => string.IsNullOrEmpty(_filterSev)    || f.Severity == _filterSev)
         .Where(f => string.IsNullOrEmpty(_filterStatus) || f.Status == _filterStatus);
+
+    private IEnumerable<RiskManagement.Models.AuditFinding> PagedFindings
+        => Filtered.Skip((_fPage-1)*_fPageSize).Take(_fPageSize);
+
+    private int TotalFindingPages
+        => (int)Math.Ceiling(Filtered.Count() / (double)_fPageSize);
 
     private static string StatusLabel(string s) => s switch
     {

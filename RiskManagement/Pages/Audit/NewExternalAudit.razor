@@ -5,6 +5,7 @@
 @inject AppDbContext Db
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
+@inject ToastService ToastSvc
 @using System.Security.Claims
 @using RiskManagement.Models
 @using Microsoft.EntityFrameworkCore
@@ -90,8 +91,12 @@ else
 
         <div class="form-group">
             <label class="form-label">Denetim Konusu *</label>
-            <input class="form-control" @bind="_subject" maxlength="300"
-                   placeholder="örn. Gıda Güvenliği Yönetim Sistemi Tetkiki" />
+            <input class="form-control @(_errSubject ? "input-error" : _subject.Length > 0 ? "input-ok" : "")"
+                   @bind="_subject" @bind:event="oninput"
+                   @onblur="() => _errSubject = string.IsNullOrWhiteSpace(_subject)"
+                   maxlength="300" placeholder="örn. Gıda Güvenliği Yönetim Sistemi Tetkiki" />
+            @if (_errSubject)
+            { <div class="field-error-inline">Konu zorunludur.</div> }
         </div>
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
@@ -174,6 +179,7 @@ else
     private int? _companyId, _orgId, _deptId, _responsibleUserId;
     private bool _useFreeText, _isAdmin, _canCreate, _loading;
     private string _error = "";
+    private bool   _errSubject;
 
     private List<string> _editableBodies = [];
     private List<Company> _companies = [];
@@ -181,8 +187,7 @@ else
     private List<Department> _departments = [];
     private List<User> _users = [];
 
-    private int UserId => int.TryParse(
-        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private int _userId;
 
     private IEnumerable<Organization> FilteredOrgs =>
         _companyId.HasValue ? _organizations.Where(o => o.CompanyId == _companyId) : _organizations;
@@ -193,7 +198,8 @@ else
 
     protected override void OnInitialized()
     {
-        var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == UserId);
+        int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out _userId);
+        var user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == _userId);
         if (user is null) return;
 
         _isAdmin = ExtSvc.IsAdmin(user);
@@ -263,14 +269,15 @@ else
                 ResponsibleUserId = _responsibleUserId,
                 Notes = _notes.NullIfEmpty(),
                 Status = "planned",
-                CreatedById = UserId
+                CreatedById = _userId
             };
             audit = ExtSvc.Create(audit);
+            ToastSvc.Success("Dış denetim oluşturuldu.");
             Nav.NavigateTo($"/audit/external/{audit.Id}");
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _error = "Kaydedilemedi: " + ex.Message;
+            _error = "Kayıt sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
             _loading = false;
         }
     }

@@ -4,10 +4,12 @@
 @inject ConfigService CfgSvc
 @inject IRiskCalculator RiskCalc
 @inject AppDbContext Db
+@inject AuthService Auth
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
 @inject IJSRuntime JS
 @inject ToastService Toast
+@inject ILogger<RiskDetail> Logger
 @using System.Security.Claims
 @using RiskManagement.Models
 @using Microsoft.EntityFrameworkCore
@@ -21,6 +23,15 @@
 else
 {
     <div style="max-width:900px">
+
+        <div class="breadcrumb-bar">
+            <a href="/risk" class="breadcrumb-back">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                Risk Envanteri
+            </a>
+            <span class="breadcrumb-sep">›</span>
+            <span class="breadcrumb-current">@_risk.Code</span>
+        </div>
 
         @* ── Premium Başlık Şeridi ── *@
         <div class="detail-header-strip">
@@ -125,7 +136,7 @@ else
             {
                 <div style="margin-bottom:14px;background:#f0fdf4;border:1px solid #86efac;border-radius:8px;padding:10px 16px;font-size:13px;color:#166534">
                     <strong>Kalıntı Risk Kabul Edildi.</strong>
-                    @if (!string.IsNullOrEmpty(_risk.RejectionReason)) { <span> Gerekçe: @_risk.RejectionReason</span> }
+                    @if (!string.IsNullOrEmpty(_risk.AcceptanceReason)) { <span> Gerekçe: @_risk.AcceptanceReason</span> }
                 </div>
             }
         }
@@ -329,7 +340,7 @@ else
                     @if (_fieldVisible["affected_persons"]) {
                     <div style="grid-column:span 2">
                         <div class="fl">Etkilenecek Kişiler</div>
-                        @{ var persons = string.IsNullOrEmpty(_risk.AffectedPersons) ? [] : (System.Text.Json.JsonSerializer.Deserialize<List<string>>(_risk.AffectedPersons) ?? []); }
+                        @{ var persons = _risk.GetAffectedPersonsList(); }
                         @if (persons.Any())
                         { <div style="display:flex;gap:6px;flex-wrap:wrap">@foreach (var p in persons) { <span class="badge badge-blue">@p</span> }</div> }
                         else { <span class="empty-val">—</span> }
@@ -374,8 +385,8 @@ else
             <div class="card-hdr" @onclick="() => ToggleCard(3)">
                 <div class="card-title">@CardDot(3)<span class="section-title" style="margin-bottom:0">4. Sorumluluk & Strateji</span></div>
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
-                    @if (IsRiskManager && HasMeta)
-                    { <button class="btn btn-outline btn-sm" @onclick="ToggleMeta">Güncelle</button> }
+                    @if (IsRiskManager)
+                    { <button class="btn btn-outline btn-sm" @onclick="ToggleMeta">@(_showMeta ? "İptal" : "Güncelle")</button> }
                     </div><span class="card-chevron" style="transform:rotate(@(_expanded[3]?"180deg":"0deg"))">▼</span>
             </div>
             @if (_expanded[3]) { <div style="margin-top:14px">
@@ -617,7 +628,7 @@ else
                 <div class="card-title">@CardDot(6)<span class="section-title" style="margin-bottom:0">7. Aksiyon Planları</span></div>
                 <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
                     @if ((IsOwner || IsRiskManager) && _risk?.Status != "risk_accepted")
-                    { <button class="btn btn-outline btn-sm" @onclick="() => _showAction = !_showAction">@(_showAction ? "İptal" : "+ Aksiyon Ekle")</button> }
+                    { <button class="btn btn-outline btn-sm" @onclick="OpenActionForm">@(_showAction ? "İptal" : "+ Aksiyon Ekle")</button> }
                     </div><span class="card-chevron" style="transform:rotate(@(_expanded[6]?"180deg":"0deg"))">▼</span>
             </div>
             @if (_expanded[6]) { <div style="margin-top:14px">
@@ -674,6 +685,10 @@ else
                                         <input type="date" class="form-control" @bind="_editActDue" />
                                     </div>
                                 </div>
+                                <div class="form-group">
+                                    <label class="form-label">Kapanış Notu <span style="font-size:11px;color:var(--text-3)">(opsiyonel)</span></label>
+                                    <textarea class="form-control" rows="2" @bind="_fClosureNote" placeholder="Aksiyon tamamlandığında ne yapıldı?"></textarea>
+                                </div>
                                 <div style="display:flex;gap:6px">
                                     <button class="btn btn-success btn-sm" @onclick="() => SaveEditAction(aid)">Kaydet</button>
                                     <button class="btn btn-outline btn-sm" @onclick="() => _editActionId = 0">İptal</button>
@@ -682,15 +697,66 @@ else
                         }
                         else
                         {
+                            var isOverdue = a.DueDate.HasValue && a.DueDate.Value < DateOnly.FromDateTime(DateTime.Today) && a.Status is not "completed" and not "cancelled";
                             <div style="display:flex;gap:12px;align-items:flex-start">
                                 <div style="flex:1">
                                     <div style="font-size:13px;margin-bottom:4px">@a.Description</div>
                                     <div style="font-size:12px;color:var(--text-3);display:flex;gap:8px;flex-wrap:wrap">
                                         @if (a.OwnerDept != null) { <span>@a.OwnerDept.Name</span> }
-                                        @if (a.DueDate.HasValue) { <span>Hedef: @a.DueDate</span> }
+                                        @if (a.DueDate.HasValue)
+                                        {
+                                            <span style="@(isOverdue ? "color:#dc2626;font-weight:600" : "")">
+                                                Hedef: @a.DueDate
+                                            </span>
+                                            @if (isOverdue) { <span class="overdue-badge-late">GECİKTİ</span> }
+                                        }
                                         <span>· @a.CreatedBy?.FullName</span>
                                         @if (a.CompletedAt.HasValue) { <span style="color:#16a34a">@a.CompletedAt.Value.ToLocalTime().ToString("dd.MM.yyyy")</span> }
                                     </div>
+                                    @if (!string.IsNullOrEmpty(a.ClosureNote))
+                                    {
+                                        <div style="margin-top:4px;font-size:12px;color:#16a34a;background:#f0fdf4;padding:4px 8px;border-radius:4px;border:1px solid #bbf7d0">
+                                            <strong>Kapanış:</strong> @a.ClosureNote
+                                        </div>
+                                    }
+                                    @if (isOverdue)
+                                    {
+                                        @if (!string.IsNullOrEmpty(a.DelayReason))
+                                        {
+                                            <div style="margin-top:4px;font-size:12px;color:#92400e;background:#fffbeb;padding:4px 8px;border-radius:4px;border:1px solid #fcd34d">
+                                                <strong>Gecikme nedeni:</strong> @a.DelayReason
+                                                @if (IsOwner || IsRiskManager)
+                                                {
+                                                    <button class="btn btn-ghost btn-sm" style="font-size:11px;padding:0 6px;margin-left:6px"
+                                                            @onclick="() => OpenDelayEdit(a, a.DelayReason)">Düzenle</button>
+                                                }
+                                            </div>
+                                        }
+                                        else if (IsOwner || IsRiskManager)
+                                        {
+                                            <div style="margin-top:4px">
+                                                <button class="btn btn-ghost btn-sm" style="font-size:11px;color:#dc2626;padding:0;text-decoration:underline"
+                                                        @onclick="() => OpenDelayEdit(a, string.Empty)">
+                                                    Gecikme nedeni gir
+                                                </button>
+                                            </div>
+                                        }
+                                        @if (_editDelayActionId == aid)
+                                        {
+                                            <div style="margin-top:6px;background:#fffbeb;padding:10px;border-radius:6px;border:1px solid #fcd34d">
+                                                <div class="form-group" style="margin-bottom:6px">
+                                                    <label class="form-label" style="font-size:12px">Gecikme Nedeni</label>
+                                                    <textarea class="form-control" rows="2" style="font-size:12px"
+                                                              @bind="_delayReasonDraft"
+                                                              placeholder="Aksiyonun neden geciktiğini açıklayın…"></textarea>
+                                                </div>
+                                                <div style="display:flex;gap:6px">
+                                                    <button class="btn btn-warning btn-sm" style="font-size:12px" @onclick="() => SaveDelayReason(a)">Kaydet</button>
+                                                    <button class="btn btn-outline btn-sm" style="font-size:12px" @onclick="() => _editDelayActionId = 0">İptal</button>
+                                                </div>
+                                            </div>
+                                        }
+                                    }
                                 </div>
                                 <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
                                     <span class="badge @ActionBadge(a.Status)">@ActionLabel(a.Status)</span>
@@ -714,8 +780,8 @@ else
                 {
                     <div style="display:flex;align-items:center;gap:8px;background:#f0fdf4;padding:10px 14px;border-radius:8px;border:1px solid #86efac">
                         <span style="font-size:13px;font-weight:600;color:#166534">Kalıntı Risk Kabul Edildi</span>
-                        @if (!string.IsNullOrEmpty(_risk.RejectionReason))
-                        { <span style="font-size:12px;color:#166534;opacity:.8">— @_risk.RejectionReason</span> }
+                        @if (!string.IsNullOrEmpty(_risk.AcceptanceReason))
+                        { <span style="font-size:12px;color:#166534;opacity:.8">— @_risk.AcceptanceReason</span> }
                     </div>
                 }
                 else if (IsCommittee || IsRiskManager)
@@ -818,60 +884,105 @@ else
         </div>
 
         @* ════════════════════════════════════════════════════════
-           KART 9 — Tarihçe
+           KART 9 — İlgili Denetim Bulguları
         ════════════════════════════════════════════════════════ *@
         <div class="card card-section" style="padding-bottom:@(_expanded[8]?"18px":"2px")">
             <div class="card-hdr" @onclick="() => ToggleCard(8)">
                 <div class="card-title">
                     <div>
-                        <div class="section-title" style="margin-bottom:1px">9. Tarihçe</div>
-                        <div style="font-size:11px;color:var(--text-3)">Tüm değişiklikler — gün, saat, işlemi yapan</div>
+                        <div class="section-title" style="margin-bottom:1px">9. İlgili Denetim Bulguları</div>
+                        <div style="font-size:11px;color:var(--text-3)">Bu riskle ilişkilendirilmiş denetim bulguları</div>
                     </div>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center" @onclick:stopPropagation="true">
+                    @if (IsRiskManager || IsOwner)
+                    { <button class="btn btn-outline btn-sm" @onclick="() => _showLinkFinding = !_showLinkFinding">@(_showLinkFinding?"İptal":"+ Bulgu Bağla")</button> }
                 </div>
                 <span class="card-chevron" style="transform:rotate(@(_expanded[8]?"180deg":"0deg"))">▼</span>
             </div>
             @if (_expanded[8]) { <div style="margin-top:14px">
-            @if (!_risk!.AuditLogs.Any())
-            { <div class="empty-state"><p>Henüz kayıt yok.</p></div> }
+            @if (_showLinkFinding)
+            {
+                <div class="form-panel" style="margin-bottom:12px">
+                    <div class="form-group">
+                        <label class="form-label">Bulgu Ara</label>
+                        <input class="form-control" placeholder="Bulgu kodu veya başlık…"
+                               @bind="_findingSearch" @bind:event="oninput" />
+                    </div>
+                    @{
+                        var matchedFindings = _allFindings
+                            .Where(f => !_risk!.FindingLinks.Any(l => l.FindingId == f.Id))
+                            .Where(f => string.IsNullOrEmpty(_findingSearch) ||
+                                        f.Code.Contains(_findingSearch, StringComparison.OrdinalIgnoreCase) ||
+                                        f.Title.Contains(_findingSearch, StringComparison.OrdinalIgnoreCase))
+                            .Take(8).ToList();
+                    }
+                    @if (matchedFindings.Any())
+                    {
+                        <div style="display:flex;flex-direction:column;gap:6px;margin-top:8px">
+                            @foreach (var f in matchedFindings)
+                            {
+                                var fid = f.Id;
+                                <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+                                    <span><code style="color:#1e40af;font-size:12px">@f.Code</code> — @f.Title</span>
+                                    <button class="btn btn-outline btn-sm" style="padding:2px 10px;font-size:11px"
+                                            @onclick="() => LinkFinding(fid)">Bağla</button>
+                                </div>
+                            }
+                        </div>
+                    }
+                    else if (!string.IsNullOrEmpty(_findingSearch))
+                    { <div style="font-size:12px;color:var(--text-3);margin-top:8px">Sonuç bulunamadı</div> }
+                </div>
+            }
+            @if (!_risk!.FindingLinks.Any())
+            { <div class="empty-state"><p>Bu riskle ilişkilendirilmiş denetim bulgusu yok.</p></div> }
             else
             {
-                <div>
-                    @foreach (var log in _risk.AuditLogs.OrderByDescending(l => l.Timestamp))
+                <div style="display:flex;flex-direction:column;gap:6px">
+                    @foreach (var link in _risk.FindingLinks)
                     {
-                        <div class="audit-row">
-                            <div>
-                                <div class="audit-row-ts">@log.Timestamp.ToLocalTime().ToString("dd.MM.yyyy HH:mm")</div>
-                                <div class="audit-row-by">@(log.User?.FullName ?? "Sistem")</div>
-                            </div>
-                            <div>
-                                <div class="audit-row-action">@log.Action</div>
-                                @if (!string.IsNullOrEmpty(log.FieldName))
-                                {
-                                    <div class="audit-row-detail">
-                                        @log.FieldName:
-                                        @if (!string.IsNullOrEmpty(log.OldValue) && !string.IsNullOrEmpty(log.NewValue))
-                                        {
-                                            <span style="text-decoration:line-through;color:#dc2626">@log.OldValue</span>
-                                            <span style="margin:0 4px">→</span>
-                                            <span style="color:#16a34a;font-weight:600">@log.NewValue</span>
-                                        }
-                                        else if (!string.IsNullOrEmpty(log.NewValue))
-                                        { <span style="color:#16a34a;font-weight:600">@log.NewValue</span> }
-                                        else if (!string.IsNullOrEmpty(log.OldValue))
-                                        { <span style="text-decoration:line-through;color:#dc2626">@log.OldValue</span> }
-                                    </div>
-                                }
-                            </div>
+                        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);border-radius:10px">
+                            <a href="/audit/findings/@link.FindingId" style="display:flex;align-items:center;gap:8px;text-decoration:none;color:inherit">
+                                <code style="color:#1e40af;font-size:12px;font-weight:600">@link.Finding.Code</code>
+                                <span style="font-size:13px">@link.Finding.Title</span>
+                                <span class="badge badge-gray" style="font-size:10px">@(link.Finding.Status switch { "open" => "Açık", "closure_requested" => "Kapanış Bekleyen", "closed" => "Kapalı", _ => link.Finding.Status })</span>
+                            </a>
+                            @if (IsRiskManager || IsOwner)
+                            {
+                                var lid = link.Id;
+                                <button class="btn btn-outline btn-sm" style="padding:2px 8px;font-size:11px;color:#dc2626"
+                                        @onclick="() => UnlinkFinding(lid)">Kaldır</button>
+                            }
                         </div>
                     }
                 </div>
             }
-            </div> } @* end expanded[9] *@
+            </div> } @* end expanded[8] *@
         </div>
+
+        @* KART 10 — Tarihçe (RiskHistoryCard componenti) *@
+        <RiskHistoryCard Logs="_risk!.AuditLogs"
+                         Expanded="_expanded[9]"
+                         Number="10"
+                         OnToggle="@(() => ToggleCard(9))" />
 
         <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:flex-start">
             <a href="/risk" class="btn btn-outline">← Risk Envanterine Dön</a>
         </div>
+
+        @if (_lastLog != null)
+        {
+            <div class="last-modified-bar">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+                Son değişiklik:
+                <strong>@(_lastLog.User?.FullName ?? "Sistem")</strong>
+                —
+                @_lastLog.Timestamp.ToLocalTime().ToString("dd.MM.yyyy HH:mm")
+                @if (!string.IsNullOrEmpty(_lastLog.Action))
+                { <span style="color:var(--text-3)">· @_lastLog.Action</span> }
+            </div>
+        }
     </div>
 }
 
@@ -893,52 +1004,45 @@ else
               OnCancel="@(() => _confirmVisible = false)" />
 
 @code {
+    // Kontrol ve aksiyon state/metodları → RiskDetail.Controls.cs / RiskDetail.Actions.cs partial sınıflarında
+
     [Parameter] public int Id { get; set; }
 
     private RiskManagement.Models.Risk? _risk;
     private Evaluation? _initial, _residual;
     private int? _prevId, _nextId;
 
-    private bool _showEval, _showResidual, _showReject, _showMeta, _showControl,
-                 _showAction, _showAccept, _showFields, _showReview;
+    // Kontrol state → RiskDetail.Controls.cs partial class
+    // Aksiyon state  → RiskDetail.Actions.cs  partial class
+
+    private bool _showEval, _showResidual, _showReject, _showMeta, _showFields, _showReview;
     private bool _loading;
 
-    private string _error = "", _success = "";
+    private string _error = "";
+
+    // Risk–Denetim Çapraz Link
+    private List<RiskManagement.Models.AuditFinding> _allFindings = [];
+    private bool   _showLinkFinding;
+    private string _findingSearch = "";
 
     // Silme onay modal
     private bool   _confirmVisible;
     private string _confirmTitle = "", _confirmMessage = "";
-    private Action? _confirmedAction;
-    private string _rejectReason = "", _acceptReason = "";
+    private Func<Task>? _confirmedAction;
+    private string _rejectReason = "";
     private int _metaOrgId;
     private int _metaDeptId;
     private int _metaOwnerId;
     private string _metaStrategy = "";
     private List<Department> _metaFilteredDepts = [];
-    private string _ctrlDesc = "", _ctrlType = "Önleyici", _ctrlEff = "", _ctrlFreq = "";
-    private int _ctrlOwnerId;
-    private string _actDesc = "";
-    private int _actOwnerId;
-    private DateTime? _actDue;
-
-    // Kontrol düzenleme
-    private int _editControlId;
-    private string _editCtrlDesc = "", _editCtrlType = "Önleyici", _editCtrlEff = "", _editCtrlFreq = "";
-    private int _editCtrlOwnerId;
-
-    // Aksiyon düzenleme
-    private int _editActionId;
-    private string _editActDesc = "";
-    private int _editActOwnerId;
-    private DateTime? _editActDue;
 
     // Detay alanları
     private static readonly string[] _allAffected = ["Hasta","Çalışanlar","Üst Yönetim","Sermayedarlar","Tedarikçiler","Paydaşlar"];
     private HashSet<string> _selectedAffected = [];
     private string _fCategory = "", _fSourceType = "internal", _fSource = "", _fHazard = "", _fPossibleImpact = "", _fLegislation = "";
 
-    // Accordion
-    private bool[] _expanded = new bool[9]; // Clone pattern ile güncelleniyor — Blazor değişimi algılasın
+    // Accordion (index 0-9: kartlar 1-8 → 0-7, kart 9 → 8, kart 10 → 9)
+    private bool[] _expanded = new bool[10]; // Clone pattern ile güncelleniyor — Blazor değişimi algılasın
 
     // Gözden geçirme
     private DateTime? _reviewMeetingDate;
@@ -951,18 +1055,19 @@ else
     private Dictionary<string, bool> _fieldVisible = [];
 
     private List<User> _allUsers = []; // tarihçede kullanılmıyor ama namespace için
+    private RiskAuditLog? _lastLog;
 
     private static readonly string[] _steps =
         ["Öneri","Detaylar","İlk Değerlendirme","Strateji","Kontroller","Kalan Risk","Aksiyon","Gözden Geçirme"];
 
     private void InitExpanded()
     {
-        _expanded = new bool[9];
+        _expanded = new bool[10];
         var active = _risk?.Status switch
         {
             "proposed" or "under_review"
                 or "awaiting_approval"   => 0,  // Risk Önerisi
-            "approved"                   => 2,  // İlk Değerlendirme
+            "approved"                   => _initial != null ? 3 : 2,  // Değerlendirme yapıldıysa → Strateji, yoksa → İlk Değerlendirme
             "strategy_set"               => 3,  // Strateji & Sorumluluk
             "controlled"                 => 4,  // Kontroller
             "residual_evaluated"         => 5,  // Kalan Risk
@@ -994,7 +1099,7 @@ else
                 if (IsRiskManager && _initial == null) _showEval = true;
                 break;
             case 3:
-                if (IsRiskManager && !HasMeta)
+                if (IsRiskManager && !HasMeta && !_showMeta)
                 { _showMeta = true; _metaOrgId = _risk?.OrganizationId ?? 0; _metaDeptId = _risk?.DepartmentId ?? 0; _metaStrategy = _risk?.RiskStrategy ?? ""; RefreshMetaDepts(); }
                 break;
             case 4:
@@ -1067,8 +1172,11 @@ else
     private bool IsOwner       => UserRoles.Any(r => r == Roles.RiskOwner   || r == Roles.Admin) || IsThisRiskOwner;
     private bool HasMeta     => (_risk?.OrganizationId != null || _risk?.DepartmentId != null) && !string.IsNullOrEmpty(_risk?.RiskStrategy);
 
+    private User? _user;
+
     protected override async Task OnInitializedAsync()
     {
+        _user = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
         await LoadAsync();
         _departments         = await Db.Departments.OrderBy(d => d.Name).ToListAsync();
         _organizations       = await Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name).ToListAsync();
@@ -1090,6 +1198,8 @@ else
     private void Load()
     {
         _risk = RiskSvc.GetByIdForUser(Id, UserId, Role);
+        if (_allFindings.Count == 0)
+            _allFindings = [.. Db.AuditFindings.Select(f => new RiskManagement.Models.AuditFinding { Id = f.Id, Code = f.Code, Title = f.Title, Status = f.Status })];
         ApplyLoadedRisk();
     }
 
@@ -1106,39 +1216,55 @@ else
         _fPossibleImpact = _risk.PossibleImpact ?? "";
         _fLegislation    = _risk.RelevantLegislation ?? "";
         InitExpanded();
-        _selectedAffected = string.IsNullOrEmpty(_risk.AffectedPersons) ? []
-            : [.. (System.Text.Json.JsonSerializer.Deserialize<List<string>>(_risk.AffectedPersons) ?? [])];
+        _selectedAffected = [.. _risk.GetAffectedPersonsList()];
+        _lastLog = _risk.AuditLogs.OrderByDescending(l => l.Timestamp).FirstOrDefault();
+    }
+
+    private async Task LinkFinding(int findingId)
+    {
+        if (Db.RiskFindingLinks.Any(l => l.RiskId == Id && l.FindingId == findingId)) return;
+        Db.RiskFindingLinks.Add(new RiskManagement.Models.RiskFindingLink { RiskId = Id, FindingId = findingId, CreatedById = UserId });
+        await Db.SaveChangesAsync();
+        _findingSearch = ""; Load();
+    }
+
+    private async Task UnlinkFinding(int linkId)
+    {
+        var link = Db.RiskFindingLinks.Find(linkId);
+        if (link == null) return;
+        Db.RiskFindingLinks.Remove(link);
+        await Db.SaveChangesAsync();
+        Load();
     }
 
     private void Notify(string msg, bool error = false)
     {
-        if (error) { Toast.Error(msg); _error = msg; _success = ""; }
-        else       { Toast.Success(msg); _success = ""; _error = ""; }
+        if (error) { Toast.Error(msg); _error = msg; }
+        else       { Toast.Success(msg); _error = ""; }
     }
 
     private void ToggleAffected(string p, bool add) { if (add) _selectedAffected.Add(p); else _selectedAffected.Remove(p); }
 
-    private void SaveFields()
+    private async Task SaveFields()
     {
-        RiskSvc.UpdateRiskFields(Id, _fSourceType,
+        await RiskSvc.UpdateRiskFieldsAsync(Id, _fSourceType,
             NullIfBlank(_fSource), NullIfBlank(_fHazard), NullIfBlank(_fPossibleImpact),
-            _selectedAffected.Any() ? System.Text.Json.JsonSerializer.Serialize(_selectedAffected.ToList()) : null,
+            Risk.SerializePersonsList(_selectedAffected),
             NullIfBlank(_fLegislation), null, null, null, _risk?.CurrentStatus, UserId,
             category: NullIfBlank(_fCategory));
         _showFields = false; Notify("Risk detayları güncellendi."); Load();
     }
 
-    private void DoStatus(string newStatus, string? reason = null)
+    private async Task DoStatus(string newStatus, string? reason = null)
     {
         _loading = true;
-        var user = AuthService.UserFromPrincipal(HttpCtx.HttpContext?.User)
-                   ?? new User { Id = UserId, Role = Role };
-        if (RiskSvc.UpdateStatus(Id, newStatus, reason, user))
+        var user = _user ?? new User { Id = UserId, Role = Role };
+        if (await RiskSvc.UpdateStatusAsync(Id, newStatus, reason, user))
         {
             Notify("Durum güncellendi.");
             Load();
             _showReject = false;
-            if (newStatus == "drafting" || newStatus == "under_review")
+            if (newStatus == "under_review")
             {
                 _expanded[0] = false;
                 _expanded[1] = true;
@@ -1149,27 +1275,26 @@ else
         _loading = false;
     }
 
-    private void SaveMeta()
+    private async Task SaveMeta()
     {
         _loading = true;
-        RiskSvc.UpdateMetadata(Id,
+        await RiskSvc.UpdateMetadataAsync(Id,
             _metaOrgId  > 0 ? _metaOrgId  : null,
             _metaDeptId > 0 ? _metaDeptId : null,
             _metaStrategy, UserId);
         if (_metaOwnerId > 0)
         {
-            var user = AuthService.UserFromPrincipal(HttpCtx.HttpContext?.User)
-                       ?? new User { Id = UserId, Role = Role };
-            RiskSvc.AssignOwner(Id, _metaOwnerId, user);
+            var user = _user ?? new User { Id = UserId, Role = Role };
+            await RiskSvc.AssignOwnerAsync(Id, _metaOwnerId, user);
         }
         Notify("Sorumluluk ve strateji güncellendi."); _showMeta = false;
         Load(); _loading = false;
     }
 
-    private void HandleEval(EvalResult r)
+    private async Task HandleEval(EvalResult r)
     {
         _loading = true;
-        RiskSvc.AddEvaluation(Id, r.EvalType, r.Probability, r.Exposure, r.Consequence, r.Notes, UserId);
+        await RiskSvc.AddEvaluationAsync(Id, r.EvalType, r.Probability, r.Exposure, r.Consequence, r.Notes, UserId);
         Notify("Değerlendirme kaydedildi.");
         _showEval = false; _showResidual = false;
         Load();
@@ -1182,132 +1307,46 @@ else
         }
     }
 
-    private void SaveControl()
-    {
-        if (string.IsNullOrWhiteSpace(_ctrlDesc)) { Notify("Açıklama zorunludur.", true); return; }
-        _loading = true;
-        RiskSvc.AddControl(Id, _ctrlDesc, _ctrlType, _ctrlEff, _ctrlFreq, UserId, _ctrlOwnerId);
-        Notify("Kontrol eklendi."); _ctrlDesc=""; _ctrlEff=""; _ctrlFreq=""; _ctrlOwnerId=0; _showControl=false;
-        Load(); _loading = false;
-    }
-
-    private void StartEditControl(Control c)
-    {
-        _editControlId = c.Id; _editCtrlDesc = c.Description; _editCtrlType = c.ControlType;
-        _editCtrlEff = c.Effectiveness ?? ""; _editCtrlFreq = c.Frequency ?? "";
-        _editCtrlOwnerId = c.OwnerDeptId ?? 0;
-    }
-
-    private void SaveEditControl(int cid)
-    {
-        RiskSvc.EditControl(Id, cid, _editCtrlDesc, _editCtrlType, NullIfBlank(_editCtrlEff),
-            NullIfBlank(_editCtrlFreq), _editCtrlOwnerId > 0 ? _editCtrlOwnerId : null, UserId);
-        _editControlId = 0; Notify("Kontrol güncellendi."); Load();
-    }
-
-
-    private void AskDeleteControl(int cid)
-    {
-        _confirmTitle   = "Kontrolü sil";
-        _confirmMessage = "Bu kontrol kalıcı olarak silinecek. Devam etmek istiyor musunuz?";
-        _confirmedAction = () => DeleteControl(cid);
-        _confirmVisible = true;
-    }
-
-    private void AskDeleteAction(int aid)
-    {
-        _confirmTitle   = "Aksiyonu sil";
-        _confirmMessage = "Bu aksiyon kalıcı olarak silinecek. Devam etmek istiyor musunuz?";
-        _confirmedAction = () => DeleteAction(aid);
-        _confirmVisible = true;
-    }
+    // Controls ve Actions metodları → RiskDetail.Controls.cs / RiskDetail.Actions.cs partial sınıflarına taşındı
 
     private void AskDeleteReview(int rid)
     {
-        _confirmTitle   = "Gözden geçirmeyi sil";
-        _confirmMessage = "Bu kayıt kalıcı olarak silinecek.";
-        _confirmedAction = () => DeleteReview(rid);
-        _confirmVisible = true;
+        _confirmTitle    = "Gözden geçirmeyi sil";
+        _confirmMessage  = "Bu kayıt kalıcı olarak silinecek.";
+        _confirmedAction = () => DeleteReview(rid)!;
+        _confirmVisible  = true;
     }
 
-    private void ExecuteConfirmedDelete()
+    private async Task ExecuteConfirmedDelete()
     {
         _confirmVisible = false;
-        _confirmedAction?.Invoke();
+        if (_confirmedAction != null)
+            await _confirmedAction();
         _confirmedAction = null;
     }
 
-    private void DeleteControl(int cid) { RiskSvc.DeleteControl(Id, cid, UserId); Notify("Kontrol silindi."); Load(); }
-
-    private void SaveAction()
+    private async Task AcceptRisk()
     {
-        if (string.IsNullOrWhiteSpace(_actDesc) || _actOwnerId <= 0)
-        { Notify("Açıklama ve sorumlu departman zorunludur.", true); return; }
         _loading = true;
-        var dept = _departments.FirstOrDefault(d => d.Id == _actOwnerId);
-        RiskSvc.AddAction(Id, _actDesc, dept?.Name ?? "", _actDue.HasValue ? DateOnly.FromDateTime(_actDue.Value) : null, UserId, _actOwnerId);
-        Notify("Aksiyon eklendi."); _actDesc=""; _actOwnerId=0; _actDue=null; _showAction=false;
-        Load(); _loading = false;
-    }
-
-    private void StartEditAction(ActionPlan a)
-    {
-        _editActionId = a.Id; _editActDesc = a.Description;
-        _editActOwnerId = a.OwnerDeptId ?? 0;
-        _editActDue = a.DueDate.HasValue ? a.DueDate.Value.ToDateTime(TimeOnly.MinValue) : null;
-    }
-
-    private void SaveEditAction(int aid)
-    {
-        RiskSvc.EditAction(Id, aid, _editActDesc, _editActOwnerId > 0 ? _editActOwnerId : null,
-            _editActDue.HasValue ? DateOnly.FromDateTime(_editActDue.Value) : null, UserId);
-        _editActionId = 0; Notify("Aksiyon güncellendi."); Load();
-    }
-
-    private void UpdateAction(int aid, string status)
-    {
-        RiskSvc.UpdateActionStatus(Id, aid, status, UserId);
-        // Tüm aksiyonlar tamamlandıysa uyarı göster
-        Load();
-        if (_risk?.Status == "residual_evaluated")
-            Notify("Tüm aksiyonlar tamamlandı. Kalan riski yeniden değerlendirin.");
-        else
-            Notify("Aksiyon güncellendi.");
-    }
-
-    private void DeleteAction(int aid) { RiskSvc.DeleteAction(Id, aid, UserId); Notify("Aksiyon silindi."); Load(); }
-
-    private void AcceptRisk()
-    {
         try
         {
-            // Önceki Query() yüklemelerinden kalan tracked entity'leri temizle
-            Db.ChangeTracker.Clear();
-
-            var risk = Db.Risks.Find(Id);
-            if (risk == null) { Notify("Risk bulunamadı.", true); return; }
-
-            risk.Status = "risk_accepted";
-            risk.RejectionReason = NullIfBlank(_acceptReason);
-
-            Db.RiskAuditLogs.Add(new RiskAuditLog
+            var (ok, error) = await RiskSvc.AcceptRiskAsync(Id, _acceptReason, UserId);
+            if (ok)
             {
-                RiskId    = Id,
-                UserId    = UserId > 0 ? UserId : null,
-                Action    = "Kalıntı Risk Kabul Edildi",
-                NewValue  = _acceptReason,
-                Timestamp = DateTime.UtcNow
-            });
-
-            Db.SaveChanges();
-            Notify("Kalıntı risk kabul edildi.");
-            _showAccept = false;
-            Load();
+                Notify("Kalıntı risk kabul edildi.");
+                _showAccept = false;
+                Load();
+            }
+            else
+            {
+                Notify(error ?? "İşlem gerçekleştirilemedi.", true);
+            }
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            Notify($"Kaydetme hatası: {ex.InnerException?.Message ?? ex.Message}", true);
+            Notify("Kayıt sırasında bir sorun oluştu. Lütfen tekrar deneyin.", true);
         }
+        finally { _loading = false; }
     }
 
     private void ToggleEvalForm()    => _showEval      = !_showEval;
@@ -1332,7 +1371,7 @@ else
         _metaFilteredDepts = _metaOrgId > 0
             ? [.. _departments.Where(d => d.OrganizationId == _metaOrgId)]
             : [.. _departments];
-    private void ToggleControlForm() => _showControl = !_showControl;
+
 
     private async Task SaveReviewAsync()
     {
@@ -1348,24 +1387,30 @@ else
                 Notify("Oturum bilgisi alınamadı, lütfen sayfayı yenileyin.", true);
                 return;
             }
-            RiskSvc.AddReview(Id, _reviewMeetingDate.Value, _reviewDecision, null, uid);
+            await RiskSvc.AddReviewAsync(Id, _reviewMeetingDate.Value, _reviewDecision, null, uid);
             _showReview = false;
             _reviewMeetingDate = null;
             _reviewDecision = "";
             Notify("Gözden geçirme kaydedildi.");
-            Load();
+        }
+        catch (Microsoft.AspNetCore.Components.NavigationException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
-            Notify($"Kaydetme hatası: {ex.Message}", true);
+            Logger.LogWarning(ex, "Komite kararı kaydedilemedi: RiskId={Id}", Id);
+            Notify("Kayıt sırasında bir sorun oluştu. Lütfen tekrar deneyin.", true);
+            return;
         }
         finally
         {
             _savingReview = false;
         }
+        Load();
     }
 
-    private void DeleteReview(int rid) { RiskSvc.DeleteReview(rid, UserId); Notify("Gözden geçirme silindi."); Load(); }
+    private async Task DeleteReview(int rid) { await RiskSvc.DeleteReviewAsync(rid, UserId); Notify("Gözden geçirme silindi."); Load(); }
 
     private static string? NullIfBlank(string s) => string.IsNullOrWhiteSpace(s) ? null : s;
 

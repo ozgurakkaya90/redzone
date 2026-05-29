@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using RiskManagement.Models;
 using RiskManagement.Services;
@@ -16,7 +17,7 @@ public class RiskAuthorizationTests
         db.SaveChanges();
 
         var cfg = new ConfigService(db, NullLogger<ConfigService>.Instance);
-        var service = new RiskService(db, new RiskCalculator(cfg));
+        var service = new RiskService(db, new RiskCalculator(cfg), new AuthService(db, new MemoryCache(new MemoryCacheOptions())));
         var risk = new Risk
         {
             Id = 100,
@@ -53,7 +54,7 @@ public class RiskAuthorizationTests
         db.SaveChanges();
 
         var cfg = new ConfigService(db, NullLogger<ConfigService>.Instance);
-        var service = new RiskService(db, new RiskCalculator(cfg));
+        var service = new RiskService(db, new RiskCalculator(cfg), new AuthService(db, new MemoryCache(new MemoryCacheOptions())));
 
         Assert.NotNull(service.GetByIdForUser(100, 2, "user"));
         Assert.Null(service.GetByIdForUser(100, 5, "user"));

@@ -1,5 +1,4 @@
 using System.ComponentModel.DataAnnotations;
-using System.ComponentModel.DataAnnotations.Schema;
 
 namespace RiskManagement.Models;
 
@@ -86,17 +85,15 @@ public class InternalAudit
     [Required, MaxLength(20)]
     public string Status { get; set; } = "planned"; // planned|in_progress|completed
 
-    // [NotMapped]: Bu kolonlar MySQL'de henüz yoksa EF Core SELECT'e eklemez.
-    // Migration uygulandıktan sonra bu attribute'lar kaldırılacak.
-    [NotMapped] public int? DepartmentId { get; set; }
-    [NotMapped] public int? AuditPlanItemId { get; set; }
+    public int? DepartmentId { get; set; }
+    public int? AuditPlanItemId { get; set; }
 
     public int LeadAuditorId { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public User LeadAuditor { get; set; } = null!;
-    [NotMapped] public Department? Department { get; set; }
-    [NotMapped] public AuditPlanItem? AuditPlanItem { get; set; }
+    public Department? Department { get; set; }
+    public AuditPlanItem? AuditPlanItem { get; set; }
     public ICollection<AuditFinding> Findings { get; set; } = [];
 }
 
@@ -134,8 +131,6 @@ public class AuditFinding
 
     public int? ExternalAuditId { get; set; }
 
-    // Nav property [NotMapped] — FK konfigürasyonu yok, manuel yüklenir
-    [NotMapped]
     public ExternalAudit? ExternalAudit { get; set; }
 
     [Required, MaxLength(20)]
@@ -155,6 +150,8 @@ public class AuditFinding
     public ICollection<ClosureRequest> ClosureRequests { get; set; } = [];
     public ICollection<AuditFindingAction> Actions { get; set; } = [];
     public ICollection<FindingAttachment> Attachments { get; set; } = [];
+    public ICollection<FindingActivityLog> ActivityLogs { get; set; } = [];
+    public ICollection<RiskManagement.Models.RiskFindingLink> RiskLinks { get; set; } = [];
 }
 
 public class AuditFindingAction
@@ -177,8 +174,32 @@ public class AuditFindingAction
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime? CompletedAt { get; set; }
 
+    [MaxLength(500)]
+    public string? DelayReason { get; set; }
+
+    [MaxLength(1000)]
+    public string? ClosureNote { get; set; }
+
     public AuditFinding Finding { get; set; } = null!;
     public User CreatedBy { get; set; } = null!;
+}
+
+public class FindingActivityLog
+{
+    public int Id { get; set; }
+    public int FindingId { get; set; }
+    public int? UserId { get; set; }
+
+    [MaxLength(200)]
+    public string Action { get; set; } = "";
+
+    [MaxLength(500)]
+    public string? Detail { get; set; }
+
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+
+    public AuditFinding Finding { get; set; } = null!;
+    public User? User { get; set; }
 }
 
 public class FindingAttachment
@@ -239,8 +260,6 @@ public class ExternalAudit
     public User? ResponsibleUser { get; set; }
     public User CreatedBy { get; set; } = null!;
 
-    // [NotMapped]: AuditFinding.ExternalAuditId migration uygulanana kadar NotMapped.
-    [NotMapped]
     public ICollection<AuditFinding> Findings { get; set; } = [];
 }
 

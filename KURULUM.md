@@ -91,7 +91,23 @@ En basit yol: IIS veya Nginx'i **ters proxy** olarak önüne koymak.
 1. IIS Manager → Sites → Add Website
 2. Physical Path: `C:\Program Files\RedZone`
 3. Binding: HTTPS, port 443, sertifikanızı seçin
-4. `web.config` dosyası RedZone ile birlikte gelir
+4. Aşağıdaki `web.config` dosyasını `C:\Program Files\RedZone\` içine oluşturun:
+
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <system.webServer>
+    <handlers>
+      <add name="aspNetCore" path="*" verb="*" modules="AspNetCoreModuleV2" resourceType="Unspecified" />
+    </handlers>
+    <aspNetCore processPath="dotnet" arguments=".\RiskManagement.dll" stdoutLogEnabled="false" hostingModel="inprocess">
+      <environmentVariables>
+        <environmentVariable name="ASPNETCORE_ENVIRONMENT" value="Production" />
+      </environmentVariables>
+    </aspNetCore>
+  </system.webServer>
+</configuration>
+```
 
 **Nginx ile HTTPS:**
 ```nginx
@@ -139,21 +155,23 @@ Uygulama `http://sunucu-adresi:8080` adresinde çalışır.
 ## Yol C — Linux Servis (systemd)
 
 ```bash
-# 1. .NET 8 Runtime kur
+# 1. .NET 8 SDK kur (derleme için SDK, çalıştırma için Runtime yeterlidir)
 # Ubuntu/Debian:
 wget https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb
 sudo dpkg -i packages-microsoft-prod.deb
-sudo apt update && sudo apt install -y aspnetcore-runtime-8.0
+sudo apt update && sudo apt install -y dotnet-sdk-8.0
 
 # 2. Uygulama klasörü oluştur
 sudo mkdir -p /opt/redzone /var/lib/redzone
 
-# 3. Dosyaları kopyala ve derle
-cd /opt/redzone
+# 3. Kaynak kodu kopyala ve derle
+# (Bu rehberi indirdiğiniz dizinde olduğunuzu varsayıyoruz)
+sudo cp -r . /opt/redzone/src
+cd /opt/redzone/src
 dotnet publish RiskManagement/RiskManagement.csproj -c Release -o /opt/redzone/app
 
 # 4. Yapılandırma
-sudo cp RiskManagement/appsettings.Intranet.json /opt/redzone/app/appsettings.Production.json
+sudo cp RiskManagement/appsettings.Intranet.example.json /opt/redzone/app/appsettings.Production.json
 # /opt/redzone/app/appsettings.Production.json dosyasını düzenleyin:
 # - Jwt.Key: rastgele uzun bir anahtar girin
 # - AppSettings.SqlitePath: "/var/lib/redzone/redzone.db"
@@ -194,9 +212,11 @@ sudo systemctl status redzone
 
 Sunucuya kurmadan önce masaüstünüzde denemek için:
 
+> **Ön koşul:** [.NET 8 **SDK**](https://dotnet.microsoft.com/download/dotnet/8) kurulu olmalıdır (Runtime değil, SDK).
+
 ```powershell
 # Windows PowerShell
-cd RedZone\RiskManagement
+cd risk-management-dotnet\RiskManagement
 dotnet run --environment Development
 # Tarayıcıda: http://localhost:5000
 # Kullanıcı: admin / Admin123!
@@ -223,6 +243,8 @@ AD kullanıcıları ilk girişte otomatik oluşturulur, rol ataması admin taraf
 
 ## Yedekleme
 
+### Windows Kurulumu (SQLite)
+
 Tüm veriler tek bir dosyada: `C:\ProgramData\RedZone\redzone.db`
 
 **Otomatik yedekleme (Windows Görev Zamanlayıcısı):**
@@ -235,6 +257,23 @@ $trigger = New-ScheduledTaskTrigger -Daily -At 2am
 Register-ScheduledTask -TaskName "RedZone Yedek" -Action $action -Trigger $trigger -RunLevel Highest
 ```
 
+### Docker / Linux Kurulumu (MySQL)
+
+```bash
+# MySQL veritabanı yedeği
+docker exec red-db mysqldump -u riskapp -p"$DB_PASSWORD" \
+  --single-transaction RiskManagement | gzip > backup_$(date +%Y%m%d).sql.gz
+
+# Uploads klasörü yedeği
+docker cp red-app:/app/uploads ./backup_uploads_$(date +%Y%m%d)
+
+# Geri yükleme
+gunzip -c backup_20260101.sql.gz | docker exec -i red-db \
+  mysql -u riskapp -p"$DB_PASSWORD" RiskManagement
+```
+
+Kapsamlı yedekleme kılavuzu için: [docs/BACKUP_RESTORE.md](docs/BACKUP_RESTORE.md)
+
 ---
 
 ## Sorun Giderme
@@ -245,7 +284,24 @@ Register-ScheduledTask -TaskName "RedZone Yedek" -Action $action -Trigger $trigg
 | "Bağlantı reddedildi" | Güvenlik duvarını kontrol edin: `netsh advfirewall firewall show rule name="RedZone*"` |
 | Servis hemen kapanıyor | Olay Görüntüleyici → Windows Günlükleri → Uygulama |
 | Veritabanı hatası | `C:\ProgramData\RedZone` klasörünün yazma izni var mı? |
-| Şifremi unuttum | `admin` hesabı için: `.\reset-admin.ps1` |
+| Şifremi unuttum | Veritabanından sıfırlayın (aşağıya bakın) |
+
+**Admin şifresini unuttuysanız** (başka admin yoksa):
+
+```sql
+-- MySQL için: yeni şifre hash'ini oluşturup güncelleyin
+-- Hash'i aşağıdaki komutla üretebilirsiniz:
+--   dotnet run -- hash-password YeniSifre123!
+UPDATE Users SET PasswordHash = '<hash>', FailedLoginCount = 0, LockoutUntil = NULL
+WHERE Username = 'admin';
+```
+
+SQLite için aynı SQL'i şu araçla çalıştırabilirsiniz:
+```powershell
+# SQLite CLI ile (winget install SQLite.SQLite)
+sqlite3 "C:\ProgramData\RedZone\redzone.db" "UPDATE Users SET FailedLoginCount=0, LockoutUntil=NULL WHERE Username='admin';"
+```
+Ardından uygulamayı yeniden `DemoMode=true` ile başlatıp admin şifresini uygulama içinden değiştirin.
 
 **Günlüklere bakmak için:**
 ```powershell

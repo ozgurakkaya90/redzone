@@ -1,12 +1,12 @@
 using Microsoft.EntityFrameworkCore;
-using System.Threading;
 using RiskManagement.Data;
 using RiskManagement.Models;
 
 namespace RiskManagement.Services;
 
-public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
-    IHttpContextAccessor? http = null, INotificationService? notifications = null)
+public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthService authSvc,
+    IHttpContextAccessor? http = null, INotificationService? notifications = null,
+    ILogger<RiskService>? logger = null, ConfigService? config = null)
 {
     // ── Kod üretimi ─────────────────────────────────────────────────────────
     public string GenerateCode()
@@ -33,7 +33,11 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
             cmd.Parameters.Add(p);
             return cmd.ExecuteScalar()?.ToString();
         }
-        catch { return null; }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "SQL Server sequence sorgusu başarısız (year={Year}), CounterHelper'a düşülüyor", year);
+            return null;
+        }
     }
 
     // ── Audit log helper ────────────────────────────────────────────────────
@@ -54,7 +58,13 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
     }
 
     // ── Query ───────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Tam sorgu — detay sayfası için tüm navigasyon property'leri yükler.
+    /// Liste/export sayfaları QueryList() kullanmalıdır.
+    /// </summary>
     public IQueryable<Risk> Query() => db.Risks
+        .AsNoTracking()
         .Include(r => r.ProposedBy)
         .Include(r => r.Owner)
         .Include(r => r.Organization).ThenInclude(o => o!.Company)
@@ -65,7 +75,20 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
         .Include(r => r.ActionPlans).ThenInclude(a => a.CreatedBy)
         .Include(r => r.ActionPlans).ThenInclude(a => a.OwnerDept)
         .Include(r => r.Reviews).ThenInclude(rv => rv.CreatedBy)
-        .Include(r => r.AuditLogs).ThenInclude(l => l.User);
+        .Include(r => r.AuditLogs).ThenInclude(l => l.User)
+        .Include(r => r.FindingLinks).ThenInclude(l => l.Finding);
+
+    /// <summary>
+    /// Hafif liste sorgusu — kart/tablo görünümü ve export için yeterli (4 Include).
+    /// Controls/ActionPlans/Reviews/AuditLogs/FindingLinks gerektiğinde Query() kullanın.
+    /// </summary>
+    public IQueryable<Risk> QueryList() => db.Risks
+        .AsNoTracking()
+        .Include(r => r.ProposedBy)
+        .Include(r => r.Owner)
+        .Include(r => r.Organization).ThenInclude(o => o!.Company)
+        .Include(r => r.Department)
+        .Include(r => r.Evaluations);
 
     public Risk? GetById(int id) => Query().FirstOrDefault(r => r.Id == id);
     public async Task<Risk?> GetByIdAsync(int id) => await Query().FirstOrDefaultAsync(r => r.Id == id);
@@ -76,22 +99,50 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
         return risk != null && CanAccessRisk(risk, userId, role) ? risk : null;
     }
 
+    public Risk? GetByIdForUser(int id, User user)
+    {
+        var risk = GetById(id);
+        return risk != null && CanAccessRiskForUser(risk, user) ? risk : null;
+    }
+
     public async Task<Risk?> GetByIdForUserAsync(int id, int userId, string role)
     {
         var risk = await GetByIdAsync(id);
         return risk != null && CanAccessRisk(risk, userId, role) ? risk : null;
     }
 
+    public async Task<Risk?> GetByIdForUserAsync(int id, User user)
+    {
+        var risk = await GetByIdAsync(id);
+        return risk != null && CanAccessRiskForUser(risk, user) ? risk : null;
+    }
+
+    // risk.manage = tüm risklere erişim (Admin, Committee, RiskManager, AuditManager)
+    private bool IsRiskManager(int userId, string role)
+    {
+        var user = db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == userId);
+        if (user != null) return authSvc.HasPermission(user, "risk.manage");
+        // Kullanıcı DB'de yoksa primary rol üzerinden DefaultPermissions'a düş
+        return AuthService.DefaultPermissions.TryGetValue(role, out var perms)
+               && perms.Contains("risk.manage");
+    }
+
     public bool CanAccessRisk(Risk risk, int userId, string role)
     {
-        if (Roles.RiskManagers.Contains(role)) return true;
-        if (db.UserRoles.Any(ur => ur.UserId == userId && Roles.RiskManagers.Contains(ur.RoleName)))
-            return true;
+        if (IsRiskManager(userId, role)) return true;
         if (risk.ProposedById == userId || risk.OwnerId == userId) return true;
 
         var userDeptIds = GetUserDepartmentIds(userId);
         if (!risk.DepartmentId.HasValue) return false;
         return userDeptIds.Contains(risk.DepartmentId.Value);
+    }
+
+    public bool CanAccessRiskForUser(Risk risk, User user)
+    {
+        if (authSvc.HasPermission(user, "risk.manage")) return true;
+        if (risk.ProposedById == user.Id || risk.OwnerId == user.Id) return true;
+        if (!risk.DepartmentId.HasValue) return false;
+        return user.AllDepartmentIds.Contains(risk.DepartmentId.Value);
     }
 
     private HashSet<int> GetUserDepartmentIds(int userId)
@@ -118,11 +169,12 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
         return fromDepts;
     }
 
+    // Liste metotları — hafif QueryList() kullanır (Controls/Reviews/Logs yüklenmez).
     public List<Risk> GetAll(string? category = null, string? status = null, string? search = null)
-        => [.. BuildFilteredQuery(Query(), category, status, search).OrderByDescending(r => r.ProposedAt)];
+        => [.. BuildFilteredQuery(QueryList(), category, status, search).OrderByDescending(r => r.ProposedAt)];
 
     public async Task<List<Risk>> GetAllAsync(string? category = null, string? status = null, string? search = null)
-        => await BuildFilteredQuery(Query(), category, status, search).OrderByDescending(r => r.ProposedAt).ToListAsync();
+        => await BuildFilteredQuery(QueryList(), category, status, search).OrderByDescending(r => r.ProposedAt).ToListAsync();
 
     public List<Risk> GetForUser(int userId, string role,
         string? category = null, string? status = null, string? search = null)
@@ -131,6 +183,15 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
     public async Task<List<Risk>> GetForUserAsync(int userId, string role,
         string? category = null, string? status = null, string? search = null)
         => await BuildUserQuery(userId, role, category, status, search).OrderByDescending(r => r.ProposedAt).ToListAsync();
+
+    // Tüm rol ve departman atamalarını kullanan overload (DB'den tam yüklü User için)
+    public List<Risk> GetForUser(User user,
+        string? category = null, string? status = null, string? search = null)
+        => [.. BuildUserQueryForUser(user, category, status, search).OrderByDescending(r => r.ProposedAt)];
+
+    public async Task<List<Risk>> GetForUserAsync(User user,
+        string? category = null, string? status = null, string? search = null)
+        => await BuildUserQueryForUser(user, category, status, search).OrderByDescending(r => r.ProposedAt).ToListAsync();
 
     private IQueryable<Risk> BuildFilteredQuery(IQueryable<Risk> q,
         string? category, string? status, string? search)
@@ -145,9 +206,8 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
     private IQueryable<Risk> BuildUserQuery(int userId, string role,
         string? category, string? status, string? search)
     {
-        var q = BuildFilteredQuery(Query(), category, status, search);
-        if (!Roles.RiskManagers.Contains(role) &&
-            !db.UserRoles.Any(ur => ur.UserId == userId && Roles.RiskManagers.Contains(ur.RoleName)))
+        var q = BuildFilteredQuery(QueryList(), category, status, search);
+        if (!IsRiskManager(userId, role))
         {
             var userDeptIds = GetUserDepartmentIds(userId);
             q = q.Where(r =>
@@ -157,8 +217,26 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
         return q;
     }
 
+    private IQueryable<Risk> BuildUserQueryForUser(User user,
+        string? category, string? status, string? search)
+    {
+        var q = BuildFilteredQuery(QueryList(), category, status, search);
+        // risk.manage = tüm risklere erişim (admin, committee, risk_manager, audit_manager).
+        // Önceden audit.read da eklenmişti; bu denetçiye tüm riskleri açıyor ama
+        // CanAccessRisk/CanAccessRiskForUser bunu onaylamıyor ve detay sayfası erişimi
+        // reddediyordu — liste ≠ detay tutarsızlığı. Yalnızca risk.manage kalıyor.
+        if (!authSvc.HasPermission(user, "risk.manage"))
+        {
+            var deptIds = user.AllDepartmentIds.ToHashSet();
+            q = q.Where(r =>
+                r.ProposedById == user.Id || r.OwnerId == user.Id ||
+                (r.DepartmentId != null && deptIds.Contains(r.DepartmentId.Value)));
+        }
+        return q;
+    }
+
     // ── CRUD ────────────────────────────────────────────────────────────────
-    public Risk Create(string title, string? description, string? category,
+    public async Task<Risk> CreateAsync(string title, string? description, string? category,
         int? organizationId, string? riskStrategy, int? proposedById, string? proposerName)
     {
         const int maxAttempts = 5;
@@ -173,110 +251,176 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
             db.Risks.Add(risk);
             try
             {
-                db.SaveChanges();
+                await using var tx = await db.Database.BeginTransactionAsync();
+                await db.SaveChangesAsync();
+
                 Log(risk.Id, proposedById, "Risk Önerildi", newVal: title);
 
                 if (organizationId.HasValue)
                 {
-                    var managers = db.Departments
+                    var managers = await db.Departments
                         .Where(d => d.OrganizationId == organizationId && d.ManagerUserId != null)
-                        .Select(d => d.ManagerUserId).Distinct().ToList();
+                        .Select(d => d.ManagerUserId).Distinct().ToListAsync();
                     foreach (var mId in managers)
                         if (mId != proposedById)
                             Log(risk.Id, mId, "Bildirim", newVal: "Yeni risk önerisi birim müdürüne iletildi.");
                 }
 
-                db.SaveChanges();
-                _ = notifications?.NotifyRiskProposedAsync(risk.Id, risk.Code, title);
+                await db.SaveChangesAsync();
+                await tx.CommitAsync();
+
+                try
+                {
+                    if (notifications != null)
+                        await notifications.NotifyRiskProposedAsync(risk.Id, risk.Code, title);
+                }
+                catch (Exception ex)
+                {
+                    logger?.LogWarning(ex, "Risk önerisi bildirimi gönderilemedi: {Code}", risk.Code);
+                }
+
                 return risk;
             }
-            catch (DbUpdateException)
+            catch (DbUpdateException ex)
             {
-                try { db.Entry(risk).State = EntityState.Detached; } catch { }
-                Thread.Sleep(50 + attempt * 20);
+                logger?.LogWarning(ex, "Risk kodu çakışması (deneme {Attempt}/{Max}), yeniden deneniyor", attempt + 1, maxAttempts);
+                // Başarısız entity'lerin bir sonraki denemeye sızmaması için ChangeTracker temizlenir.
+                // Sadece risk'i detach etmek yetmez; transaction rollback'i sonrası log entry'leri
+                // de ChangeTracker'da kalabilir ve FK ihlali yaratır.
+                db.ChangeTracker.Clear();
             }
         }
         throw new InvalidOperationException("Benzersiz risk kodu oluşturulamadı.");
     }
 
-    public bool UpdateStatus(int id, string newStatus, string? rejectionReason, User currentUser)
+    /// <summary>Geriye dönük uyumluluk — yeni kodu CreateAsync ile yazın.</summary>
+    [Obsolete("Blazor Server'da deadlock riski. CreateAsync kullanın.", error: false)]
+    public Risk Create(string title, string? description, string? category,
+        int? organizationId, string? riskStrategy, int? proposedById, string? proposerName)
+        => CreateAsync(title, description, category, organizationId, riskStrategy, proposedById, proposerName)
+            .GetAwaiter().GetResult();
+
+    public async Task<bool> UpdateStatusAsync(int id, string newStatus, string? rejectionReason, User currentUser)
     {
-        var risk = db.Risks.Find(id);
+        var risk = await db.Risks.FindAsync(id);
         if (risk == null) return false;
 
-        // İş Akışı (Workflow) Geçiş Kuralları
-        // "under_review" ve "drafting" eş anlamlı kullanılır — UI "under_review", eski veriler "drafting"
-        var allowedTransitions = new Dictionary<string, string[]>
-        {
-            { "proposed",          new[] { "under_review", "drafting", "rejected" } },
-            { "under_review",      new[] { "awaiting_approval", "rejected" } },
-            { "drafting",          new[] { "awaiting_approval", "under_review", "rejected" } },
-            { "awaiting_approval", new[] { "approved", "under_review", "drafting", "rejected" } },
-            { "approved",          new[] { "strategy_set", "controlled", "action_planned" } },
-            { "strategy_set",      new[] { "controlled" } },
-            { "controlled",        new[] { "residual_evaluated", "action_planned" } },
-            { "residual_evaluated",new[] { "action_planned", "risk_accepted" } },
-            { "action_planned",    new[] { "controlled", "residual_evaluated" } },
-            { "rejected",          new[] { "under_review", "drafting" } }
-        };
-
-        if (!allowedTransitions.TryGetValue(risk.Status, out var allowed) || !allowed.Contains(newStatus))
+        // İş akışı geçiş kontrolü — tek yetkili kaynak RiskWorkflow
+        if (!RiskWorkflow.CanTransition(risk.Status, newStatus))
             return false;
 
-        // Rol Bazlı Geçiş Yetkilendirmesi
-        if (!currentUser.HasRole(Roles.Admin))
+        // İzin Bazlı Geçiş Yetkilendirmesi — reddler güvenlik denetimi için yapısal loglanır.
+        if (newStatus == RiskStatus.Approved && !authSvc.HasPermission(currentUser, "risk.approve"))
         {
-            if (newStatus == RiskStatus.Approved && !currentUser.HasRole(Roles.Committee))
-                return false;
+            logger?.LogWarning("Risk durum geçişi reddi — RiskId: {RiskId}, Hedef: {Status}, Kullanıcı: {User} (yetki: risk.approve yok)",
+                id, newStatus, currentUser?.Username);
+            return false;
+        }
 
-            if (newStatus == RiskStatus.AwaitingApproval &&
-                !currentUser.HasAnyRole(Roles.RiskOwner, Roles.RiskManager, Roles.AuditManager))
-                return false;
+        if (newStatus == RiskStatus.AwaitingApproval && !authSvc.HasPermission(currentUser, "risk.modify"))
+        {
+            logger?.LogWarning("Risk durum geçişi reddi — RiskId: {RiskId}, Hedef: {Status}, Kullanıcı: {User} (yetki: risk.modify yok)",
+                id, newStatus, currentUser?.Username);
+            return false;
+        }
 
-            if (risk.Status == RiskStatus.Proposed && newStatus is RiskStatus.UnderReview or RiskStatus.Drafting &&
-                !currentUser.HasAnyRole(Roles.RiskManager, Roles.AuditManager) &&
-                risk.OwnerId != currentUser.Id)
-                return false;
+        if (risk.Status == RiskStatus.Proposed && newStatus == RiskStatus.UnderReview &&
+            !authSvc.HasPermission(currentUser, "risk.initiate_review") && risk.OwnerId != currentUser.Id)
+        {
+            logger?.LogWarning("Risk durum geçişi reddi — RiskId: {RiskId}, Hedef: {Status}, Kullanıcı: {User} (yetki: risk.initiate_review yok ve sahip değil)",
+                id, newStatus, currentUser?.Username);
+            return false;
         }
 
         var oldStatus = risk.Status;
         risk.Status = newStatus;
         if (newStatus == RiskStatus.Rejected) risk.RejectionReason = rejectionReason;
         Log(id, currentUser?.Id, "Durum Değişikliği", "Durum", StatusLabel(oldStatus), StatusLabel(newStatus));
-        db.SaveChanges();
-        _ = notifications?.NotifyStatusChangedAsync(id, risk.Code, oldStatus, newStatus, risk.OwnerId);
+        await db.SaveChangesAsync();
+        try
+        {
+            if (notifications != null)
+                await notifications.NotifyStatusChangedAsync(id, risk.Code, oldStatus, newStatus, risk.OwnerId);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Durum değişikliği bildirimi gönderilemedi: {Code}", risk.Code);
+        }
         return true;
     }
 
-    public bool UpdateMetadata(int id, int? organizationId, int? departmentId, string? riskStrategy, int? userId = null)
+    [Obsolete("Blazor Server'da deadlock riski. UpdateStatusAsync kullanın.", error: false)]
+    public bool UpdateStatus(int id, string newStatus, string? rejectionReason, User currentUser)
+        => UpdateStatusAsync(id, newStatus, rejectionReason, currentUser).GetAwaiter().GetResult();
+
+    /// <summary>Kalıntı riski kabul eder; iş akışı geçişini ve loglama dahil tüm mantığı içerir.</summary>
+    public async Task<(bool Ok, string? Error)> AcceptRiskAsync(int riskId, string? reason, int userId)
     {
-        var risk = db.Risks.Find(id);
+        var risk = await db.Risks.FindAsync(riskId);
+        if (risk == null) return (false, "Risk bulunamadı.");
+
+        if (!RiskWorkflow.CanTransition(risk.Status, RiskStatus.RiskAccepted))
+            return (false, "Mevcut risk durumunda kalıntı risk kabul edilemez.");
+
+        var oldStatus = risk.Status;           // geçiş öncesi durum — bildirimde kullanılacak
+        risk.Status = RiskStatus.RiskAccepted;
+        // Gerekçe; semantik olarak AcceptanceReason — depolama alanı RejectionReason'ı paylaşır.
+        risk.RejectionReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+
+        Log(riskId, userId > 0 ? userId : null, "Kalıntı Risk Kabul Edildi",
+            newVal: risk.RejectionReason);
+
+        await db.SaveChangesAsync();
+
+        try
+        {
+            if (notifications != null)
+                await notifications.NotifyStatusChangedAsync(
+                    riskId, risk.Code, oldStatus, RiskStatus.RiskAccepted, risk.OwnerId);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Kalıntı risk kabul bildirimi gönderilemedi: {Code}", risk.Code);
+        }
+
+        return (true, null);
+    }
+
+    public async Task<bool> UpdateMetadataAsync(int id, int? organizationId, int? departmentId, string? riskStrategy, int? userId = null)
+    {
+        var risk = await db.Risks.FindAsync(id);
         if (risk == null) return false;
-        var orgName  = organizationId.HasValue  ? db.Organizations.Find(organizationId.Value)?.Name  : null;
-        var deptName = departmentId.HasValue    ? db.Departments.Find(departmentId.Value)?.Name      : null;
-        var oldOrg   = risk.OrganizationId.HasValue ? db.Organizations.Find(risk.OrganizationId.Value)?.Name : null;
+        var orgName     = organizationId.HasValue  ? (await db.Organizations.FindAsync(organizationId.Value))?.Name  : null;
+        var deptName    = departmentId.HasValue    ? (await db.Departments.FindAsync(departmentId.Value))?.Name      : null;
+        var oldOrg      = risk.OrganizationId.HasValue ? (await db.Organizations.FindAsync(risk.OrganizationId.Value))?.Name : null;
+        var oldStrategy = risk.RiskStrategy; // Güncellenmeden önce eski değeri yakala
 
         risk.OrganizationId = organizationId;
         risk.DepartmentId   = departmentId;
         if (riskStrategy != null) risk.RiskStrategy = string.IsNullOrEmpty(riskStrategy) ? null : riskStrategy;
-        if (risk.Status == "approved" && risk.OrganizationId != null && risk.RiskStrategy != null)
+        // Status geçişi yalnızca bu çağrıda strateji aktif olarak atanıyorsa tetiklenmeli
+        if (!string.IsNullOrEmpty(riskStrategy) && risk.Status == "approved")
             risk.Status = "strategy_set";
 
         Log(id, userId, "Sorumluluk & Strateji Güncellendi", "Organizasyon", oldOrg, orgName);
         if (deptName != null)
             Log(id, userId, "Sorumluluk & Strateji Güncellendi", "Departman", null, deptName);
         if (!string.IsNullOrEmpty(riskStrategy))
-            Log(id, userId, "Sorumluluk & Strateji Güncellendi", "Strateji", risk.RiskStrategy, riskStrategy);
-        db.SaveChanges();
+            Log(id, userId, "Sorumluluk & Strateji Güncellendi", "Strateji", oldStrategy, riskStrategy);
+        await db.SaveChangesAsync();
         return true;
     }
 
-    public bool UpdateRiskFields(int id, string sourceType, string? source, string? hazard,
+    [Obsolete("Blazor Server'da deadlock riski. UpdateMetadataAsync kullanın.", error: false)]
+    public bool UpdateMetadata(int id, int? organizationId, int? departmentId, string? riskStrategy, int? userId = null)
+        => UpdateMetadataAsync(id, organizationId, departmentId, riskStrategy, userId).GetAwaiter().GetResult();
+
+    public async Task<bool> UpdateRiskFieldsAsync(int id, string sourceType, string? source, string? hazard,
         string? possibleImpact, string? affectedPersons, string? relevantLegislation,
         DateTime? lastReviewedAt, string? lastReviewerName, string? lastReviewerTitle,
         string? currentStatus = null, int? userId = null, string? category = null)
     {
-        var risk = db.Risks.Find(id);
+        var risk = await db.Risks.FindAsync(id);
         if (risk == null) return false;
 
         var changes = new List<(string field, string? oldV, string? newV)>();
@@ -303,27 +447,48 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
         if (changes.Count == 0)
             Log(id, userId, "Risk Detayları Güncellendi");
 
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return true;
     }
 
-    public bool AssignOwner(int id, int ownerId, User currentUser)
+    [Obsolete("Blazor Server'da deadlock riski. UpdateRiskFieldsAsync kullanın.", error: false)]
+    public bool UpdateRiskFields(int id, string sourceType, string? source, string? hazard,
+        string? possibleImpact, string? affectedPersons, string? relevantLegislation,
+        DateTime? lastReviewedAt, string? lastReviewerName, string? lastReviewerTitle,
+        string? currentStatus = null, int? userId = null, string? category = null)
+        => UpdateRiskFieldsAsync(id, sourceType, source, hazard, possibleImpact, affectedPersons,
+            relevantLegislation, lastReviewedAt, lastReviewerName, lastReviewerTitle,
+            currentStatus, userId, category).GetAwaiter().GetResult();
+
+    public async Task<bool> AssignOwnerAsync(int id, int ownerId, User currentUser)
     {
-        if (!currentUser.HasAnyRole(Roles.Admin, Roles.RiskManager, Roles.Committee)) return false;
-        var risk = db.Risks.Find(id); if (risk == null) return false;
+        if (!authSvc.HasPermission(currentUser, "risk.manage")) return false;
+        var risk = await db.Risks.FindAsync(id); if (risk == null) return false;
         Log(id, currentUser.Id, "Risk Sahibi Atandı", "OwnerId",
             risk.OwnerId?.ToString(), ownerId.ToString());
         risk.OwnerId = ownerId;
-        db.SaveChanges();
-        _ = notifications?.NotifyOwnerAssignedAsync(id, risk.Code, risk.Title, ownerId);
+        await db.SaveChangesAsync();
+        try
+        {
+            if (notifications != null)
+                await notifications.NotifyOwnerAssignedAsync(id, risk.Code, risk.Title, ownerId);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogWarning(ex, "Sahip atama bildirimi gönderilemedi: {Code}", risk.Code);
+        }
         return true;
     }
 
+    [Obsolete("Blazor Server'da deadlock riski. AssignOwnerAsync kullanın.", error: false)]
+    public bool AssignOwner(int id, int ownerId, User currentUser)
+        => AssignOwnerAsync(id, ownerId, currentUser).GetAwaiter().GetResult();
+
     // ── Değerlendirme ────────────────────────────────────────────────────────
-    public Evaluation AddEvaluation(int riskId, string evalType,
+    public async Task<Evaluation> AddEvaluationAsync(int riskId, string evalType,
         double probability, double exposure, double consequence, string? notes, int evaluatedById)
     {
-        var existing = db.Evaluations.Where(e => e.RiskId == riskId && e.EvalType == evalType).ToList();
+        var existing = await db.Evaluations.Where(e => e.RiskId == riskId && e.EvalType == evalType).ToListAsync();
         db.Evaluations.RemoveRange(existing);
 
         var score = Math.Round(probability * exposure * consequence, 2);
@@ -336,13 +501,21 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
         };
         db.Evaluations.Add(eval);
 
-        var risk = db.Risks.Find(riskId);
+        var risk = await db.Risks.FindAsync(riskId);
         if (risk != null && evalType == EvalType.Initial)
         {
-            if (risk.Status is RiskStatus.Proposed or RiskStatus.Drafting or RiskStatus.UnderReview)
+            if (risk.Status == RiskStatus.Proposed)
             {
-                // Düşük riskler (<70) otomatik onaylanır; yüksek riskler (>=70) incelemeye alınır.
-                risk.Status = score < 70 ? RiskStatus.Approved : RiskStatus.UnderReview;
+                // Henüz incelemeye alınmamış — skordan bağımsız olarak önce under_review'a al.
+                risk.Status = RiskStatus.UnderReview;
+            }
+            else if (risk.Status == RiskStatus.UnderReview)
+            {
+                // İnceleme aşamasında: düşük riskler (skor < eşik) komite onayı atlanarak onaylanır.
+                // Yüksek riskler manuel olarak awaiting_approval'a taşınır.
+                var threshold = config?.GetAutoApproveScoreThreshold() ?? 70;
+                if (score < threshold)
+                    risk.Status = RiskStatus.Approved;
             }
         }
 
@@ -350,14 +523,20 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
             risk.Status = RiskStatus.ResidualEvaluated;
 
         Log(riskId, evaluatedById,
-            evalType == "initial" ? "İlk Değerlendirme Yapıldı" : "Kalan Risk Değerlendirmesi Yapıldı",
+            evalType == EvalType.Initial ? "İlk Değerlendirme Yapıldı" : "Kalan Risk Değerlendirmesi Yapıldı",
             "Skor", existing.FirstOrDefault()?.Score.ToString(), score.ToString());
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return eval;
     }
 
+    [Obsolete("Blazor Server'da deadlock riski. AddEvaluationAsync kullanın.", error: false)]
+    public Evaluation AddEvaluation(int riskId, string evalType,
+        double probability, double exposure, double consequence, string? notes, int evaluatedById)
+        => AddEvaluationAsync(riskId, evalType, probability, exposure, consequence, notes, evaluatedById)
+            .GetAwaiter().GetResult();
+
     // ── Kontroller ───────────────────────────────────────────────────────────
-    public Control AddControl(int riskId, string description, string controlType,
+    public async Task<Control> AddControlAsync(int riskId, string description, string controlType,
         string? effectiveness, string? frequency, int enteredById, int? ownerDeptId = null)
     {
         var ctrl = new Control
@@ -368,18 +547,24 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
         };
         db.Controls.Add(ctrl);
 
-        var risk = db.Risks.Find(riskId);
+        var risk = await db.Risks.FindAsync(riskId);
         if (risk != null && risk.Status == RiskStatus.StrategySet) risk.Status = RiskStatus.Controlled;
 
         Log(riskId, enteredById, "Kontrol Eklendi", "Açıklama", null, description);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return ctrl;
     }
 
-    public bool EditControl(int riskId, int controlId, string description,
+    [Obsolete("Blazor Server'da deadlock riski. AddControlAsync kullanın.", error: false)]
+    public Control AddControl(int riskId, string description, string controlType,
+        string? effectiveness, string? frequency, int enteredById, int? ownerDeptId = null)
+        => AddControlAsync(riskId, description, controlType, effectiveness, frequency, enteredById, ownerDeptId)
+            .GetAwaiter().GetResult();
+
+    public async Task<bool> EditControlAsync(int riskId, int controlId, string description,
         string controlType, string? effectiveness, string? frequency, int? ownerDeptId, int? userId = null)
     {
-        var ctrl = db.Controls.FirstOrDefault(c => c.Id == controlId && c.RiskId == riskId);
+        var ctrl = await db.Controls.FirstOrDefaultAsync(c => c.Id == controlId && c.RiskId == riskId);
         if (ctrl == null) return false;
 
         var changes = new List<string>();
@@ -392,22 +577,32 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
 
         Log(riskId, userId, "Kontrol Düzenlendi", "Kontrol", null,
             changes.Any() ? string.Join("; ", changes) : "Güncellendi");
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return true;
     }
 
-    public bool DeleteControl(int riskId, int controlId, int? userId = null)
+    [Obsolete("Blazor Server'da deadlock riski. EditControlAsync kullanın.", error: false)]
+    public bool EditControl(int riskId, int controlId, string description,
+        string controlType, string? effectiveness, string? frequency, int? ownerDeptId, int? userId = null)
+        => EditControlAsync(riskId, controlId, description, controlType, effectiveness, frequency, ownerDeptId, userId)
+            .GetAwaiter().GetResult();
+
+    public async Task<bool> DeleteControlAsync(int riskId, int controlId, int? userId = null)
     {
-        var ctrl = db.Controls.FirstOrDefault(c => c.Id == controlId && c.RiskId == riskId);
+        var ctrl = await db.Controls.FirstOrDefaultAsync(c => c.Id == controlId && c.RiskId == riskId);
         if (ctrl == null) return false;
         Log(riskId, userId, "Kontrol Silindi", "Açıklama", ctrl.Description, null);
         db.Controls.Remove(ctrl);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return true;
     }
 
+    [Obsolete("Blazor Server'da deadlock riski. DeleteControlAsync kullanın.", error: false)]
+    public bool DeleteControl(int riskId, int controlId, int? userId = null)
+        => DeleteControlAsync(riskId, controlId, userId).GetAwaiter().GetResult();
+
     // ── Aksiyon Planları ─────────────────────────────────────────────────────
-    public ActionPlan AddAction(int riskId, string description, string responsible,
+    public async Task<ActionPlan> AddActionAsync(int riskId, string description, string responsible,
         DateOnly? dueDate, int createdById, int? ownerDeptId = null)
     {
         var action = new ActionPlan
@@ -418,18 +613,24 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
         };
         db.ActionPlans.Add(action);
 
-        var risk = db.Risks.Find(riskId);
+        var risk = await db.Risks.FindAsync(riskId);
         if (risk != null && risk.Status == RiskStatus.ResidualEvaluated) risk.Status = RiskStatus.ActionPlanned;
 
         Log(riskId, createdById, "Aksiyon Eklendi", "Açıklama", null, description);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return action;
     }
 
-    public bool EditAction(int riskId, int actionId, string description,
+    [Obsolete("Blazor Server'da deadlock riski. AddActionAsync kullanın.", error: false)]
+    public ActionPlan AddAction(int riskId, string description, string responsible,
+        DateOnly? dueDate, int createdById, int? ownerDeptId = null)
+        => AddActionAsync(riskId, description, responsible, dueDate, createdById, ownerDeptId)
+            .GetAwaiter().GetResult();
+
+    public async Task<bool> EditActionAsync(int riskId, int actionId, string description,
         int? ownerDeptId, DateOnly? dueDate, int? userId = null)
     {
-        var action = db.ActionPlans.FirstOrDefault(a => a.Id == actionId && a.RiskId == riskId);
+        var action = await db.ActionPlans.FirstOrDefaultAsync(a => a.Id == actionId && a.RiskId == riskId);
         if (action == null) return false;
 
         var changes = new List<string>();
@@ -442,53 +643,67 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
 
         Log(riskId, userId, "Aksiyon Düzenlendi", "Aksiyon", null,
             changes.Any() ? string.Join("; ", changes) : "Güncellendi");
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return true;
     }
 
-    public bool UpdateActionStatus(int riskId, int actionId, string newStatus, int? userId = null)
+    [Obsolete("Blazor Server'da deadlock riski. EditActionAsync kullanın.", error: false)]
+    public bool EditAction(int riskId, int actionId, string description,
+        int? ownerDeptId, DateOnly? dueDate, int? userId = null)
+        => EditActionAsync(riskId, actionId, description, ownerDeptId, dueDate, userId)
+            .GetAwaiter().GetResult();
+
+    public async Task<bool> UpdateActionStatusAsync(int riskId, int actionId, string newStatus, int? userId = null)
     {
-        var action = db.ActionPlans.FirstOrDefault(a => a.Id == actionId && a.RiskId == riskId);
+        var action = await db.ActionPlans.FirstOrDefaultAsync(a => a.Id == actionId && a.RiskId == riskId);
         if (action == null) return false;
 
         var oldStatus = action.Status;
         action.Status = newStatus;
-        if (newStatus == "completed") action.CompletedAt = DateTime.UtcNow;
+        if (newStatus == ActionStatus.Completed) action.CompletedAt = DateTime.UtcNow;
 
         Log(riskId, userId, "Aksiyon Durumu Güncellendi", "Durum",
             ActionStatusLabel(oldStatus), ActionStatusLabel(newStatus));
 
         // Tüm aksiyonlar tamamlandıysa kalan riski yeniden değerlendirmeye gerek var
-        db.SaveChanges();
+        await db.SaveChangesAsync();
 
-        var allDone = !db.ActionPlans.Any(a => a.RiskId == riskId
+        var allDone = !await db.ActionPlans.AnyAsync(a => a.RiskId == riskId
             && a.Status != ActionStatus.Completed && a.Status != ActionStatus.Cancelled);
         if (allDone && newStatus == ActionStatus.Completed)
         {
-            var risk = db.Risks.Find(riskId);
+            var risk = await db.Risks.FindAsync(riskId);
             if (risk?.Status == RiskStatus.ActionPlanned)
             {
                 risk.Status = RiskStatus.ResidualEvaluated;
                 Log(riskId, userId, "Tüm Aksiyonlar Tamamlandı — Kalan Risk Yeniden Değerlendirilmeli",
                     "Durum", "Aksiyon Planlandı", "Kalan Risk");
-                db.SaveChanges();
+                await db.SaveChangesAsync();
             }
         }
         return true;
     }
 
-    public bool DeleteAction(int riskId, int actionId, int? userId = null)
+    [Obsolete("Blazor Server'da deadlock riski. UpdateActionStatusAsync kullanın.", error: false)]
+    public bool UpdateActionStatus(int riskId, int actionId, string newStatus, int? userId = null)
+        => UpdateActionStatusAsync(riskId, actionId, newStatus, userId).GetAwaiter().GetResult();
+
+    public async Task<bool> DeleteActionAsync(int riskId, int actionId, int? userId = null)
     {
-        var action = db.ActionPlans.FirstOrDefault(a => a.Id == actionId && a.RiskId == riskId);
+        var action = await db.ActionPlans.FirstOrDefaultAsync(a => a.Id == actionId && a.RiskId == riskId);
         if (action == null) return false;
         Log(riskId, userId, "Aksiyon Silindi", "Açıklama", action.Description, null);
         db.ActionPlans.Remove(action);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return true;
     }
 
+    [Obsolete("Blazor Server'da deadlock riski. DeleteActionAsync kullanın.", error: false)]
+    public bool DeleteAction(int riskId, int actionId, int? userId = null)
+        => DeleteActionAsync(riskId, actionId, userId).GetAwaiter().GetResult();
+
     // ── Gözden Geçirmeler ────────────────────────────────────────────────────
-    public RiskReview AddReview(int riskId, DateTime meetingDate, string? decision,
+    public async Task<RiskReview> AddReviewAsync(int riskId, DateTime meetingDate, string? decision,
         string? notes, int createdById)
     {
         var review = new RiskReview
@@ -501,24 +716,48 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
             "Toplantı Tarihi", null, meetingDate.ToString("dd.MM.yyyy"));
         if (!string.IsNullOrEmpty(decision))
             Log(riskId, createdById, "Gözden Geçirme Kaydedildi", "Karar", null, decision);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return review;
     }
 
-    public void DeleteReview(int reviewId, int? userId = null)
+    [Obsolete("Blazor Server'da deadlock riski. AddReviewAsync kullanın.", error: false)]
+    public RiskReview AddReview(int riskId, DateTime meetingDate, string? decision,
+        string? notes, int createdById)
+        => AddReviewAsync(riskId, meetingDate, decision, notes, createdById).GetAwaiter().GetResult();
+
+    public async Task DeleteReviewAsync(int reviewId, int? userId = null)
     {
-        var r = db.RiskReviews.Find(reviewId);
+        var r = await db.RiskReviews.FindAsync(reviewId);
         if (r == null) return;
         Log(r.RiskId, userId, "Gözden Geçirme Silindi",
             "Toplantı Tarihi", r.MeetingDate.ToString("dd.MM.yyyy"), null);
         db.RiskReviews.Remove(r);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
+    [Obsolete("Blazor Server'da deadlock riski. DeleteReviewAsync kullanın.", error: false)]
+    public void DeleteReview(int reviewId, int? userId = null)
+        => DeleteReviewAsync(reviewId, userId).GetAwaiter().GetResult();
+
     // ── Önceki / Sonraki navigasyon ──────────────────────────────────────────
+
+    // Include'suz hafif sorgu — sadece navigasyon ID listesi için kullanılır
+    private IQueryable<Risk> BuildUserQueryIds(int userId, string role)
+    {
+        var q = db.Risks.AsQueryable();
+        if (!IsRiskManager(userId, role))
+        {
+            var userDeptIds = GetUserDepartmentIds(userId);
+            q = q.Where(r =>
+                r.ProposedById == userId || r.OwnerId == userId ||
+                (r.DepartmentId != null && userDeptIds.Contains(r.DepartmentId.Value)));
+        }
+        return q;
+    }
+
     public (int? PrevId, int? NextId) GetAdjacentIds(int riskId, int userId, string role)
     {
-        var ids = GetForUser(userId, role)
+        var ids = BuildUserQueryIds(userId, role)
             .OrderByDescending(r => r.ProposedAt)
             .Select(r => r.Id)
             .ToList();
@@ -526,29 +765,49 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
         var idx = ids.IndexOf(riskId);
         if (idx < 0) return (null, null);
 
-        var prevId = idx > 0            ? ids[idx - 1] : (int?)null;
-        var nextId = idx < ids.Count - 1 ? ids[idx + 1] : (int?)null;
-        return (prevId, nextId);
+        return (
+            idx > 0             ? ids[idx - 1] : (int?)null,
+            idx < ids.Count - 1 ? ids[idx + 1] : (int?)null
+        );
     }
 
     // ── Dashboard / Radar ────────────────────────────────────────────────────
     public List<CategoryRadarData> GetRadarData()
     {
-        var risks = Query().ToList();
-        return risks.Where(r => r.Category != null).GroupBy(r => r.Category!)
+        // Sadece gerekli alanlar — 10+ Include zinciri yok
+        var riskCats = db.Risks
+            .Where(r => r.Category != null)
+            .Select(r => new { r.Id, r.Category })
+            .ToList();
+
+        if (riskCats.Count == 0) return [];
+
+        var riskIds = riskCats.Select(r => r.Id).ToHashSet();
+        var evals = db.Evaluations
+            .Where(e => riskIds.Contains(e.RiskId))
+            .Select(e => new { e.RiskId, e.EvalType, e.Score })
+            .ToList();
+
+        var catMap = riskCats.ToDictionary(r => r.Id, r => r.Category!);
+
+        return riskCats
+            .GroupBy(r => r.Category!)
             .Select(g =>
             {
-                var inits  = g.SelectMany(r => r.Evaluations.Where(e => e.EvalType == "initial")).ToList();
-                var resids = g.SelectMany(r => r.Evaluations.Where(e => e.EvalType == "residual")).ToList();
+                var ids    = g.Select(r => r.Id).ToHashSet();
+                var inits  = evals.Where(e => ids.Contains(e.RiskId) && e.EvalType == "initial").ToList();
+                var resids = evals.Where(e => ids.Contains(e.RiskId) && e.EvalType == "residual").ToList();
                 return new CategoryRadarData
                 {
-                    Category = g.Key, Count = g.Count(),
-                    AvgInitial = inits.Count > 0 ? Math.Round(inits.Average(e => e.Score), 1) : 0,
-                    MaxInitial = inits.Count > 0 ? inits.Max(e => e.Score) : 0,
+                    Category    = g.Key,
+                    Count       = g.Count(),
+                    AvgInitial  = inits.Count  > 0 ? Math.Round(inits.Average(e => e.Score),  1) : 0,
+                    MaxInitial  = inits.Count  > 0 ? inits.Max(e => e.Score)  : 0,
                     AvgResidual = resids.Count > 0 ? Math.Round(resids.Average(e => e.Score), 1) : 0,
                     MaxResidual = resids.Count > 0 ? resids.Max(e => e.Score) : 0,
                     AvgReduction = inits.Count > 0 && resids.Count > 0
-                        ? (int?)Math.Round((1 - resids.Average(e => e.Score) / inits.Average(e => e.Score)) * 100) : null
+                        ? (int?)Math.Round((1 - resids.Average(e => e.Score) / inits.Average(e => e.Score)) * 100)
+                        : null
                 };
             })
             .OrderByDescending(d => d.AvgInitial).ToList();
@@ -566,8 +825,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
                      && a.Status != ActionStatus.Completed
                      && a.Status != ActionStatus.Cancelled);
 
-        if (!Roles.RiskManagers.Contains(role) &&
-            !db.UserRoles.Any(ur => ur.UserId == userId && Roles.RiskManagers.Contains(ur.RoleName)))
+        if (!IsRiskManager(userId, role))
         {
             var deptIds = GetUserDepartmentIds(userId);
             q = q.Where(a => a.Risk != null && (
@@ -579,20 +837,55 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator,
         return [.. q.OrderBy(a => a.DueDate)];
     }
 
+    public List<ActionPlan> GetOverdueActions(User user)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        var q = db.ActionPlans
+            .Include(a => a.Risk)
+            .Include(a => a.CreatedBy)
+            .Include(a => a.OwnerDept)
+            .Where(a => a.DueDate.HasValue
+                     && a.DueDate < today
+                     && a.Status != ActionStatus.Completed
+                     && a.Status != ActionStatus.Cancelled);
+
+        if (!authSvc.HasPermission(user, "risk.manage"))
+        {
+            var deptIds = user.AllDepartmentIds.ToHashSet();
+            var userId  = user.Id;
+            q = q.Where(a => a.Risk != null && (
+                a.Risk.ProposedById == userId ||
+                a.Risk.OwnerId == userId ||
+                (a.Risk.DepartmentId != null && deptIds.Contains(a.Risk.DepartmentId.Value))));
+        }
+
+        return [.. q.OrderBy(a => a.DueDate)];
+    }
+
     public DashboardStats GetDashboardStats()
     {
-        var risks = db.Risks.ToList();
+        var counts = db.Risks
+            .GroupBy(r => r.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToDictionary(x => x.Status, x => x.Count);
+
+        int Get(string key) => counts.GetValueOrDefault(key, 0);
+
+        // Dashboard grupları kasıtlı olarak birleştirilmiş — bkz. tasarım notları:
+        // Approved  = "approved" + "strategy_set"          (strateji atanmış ama henüz kontrolsüz)
+        // ActionPlanned = "action_planned" + "risk_accepted" (aksiyon döngüsünün son halkası)
+        // "controlled", "residual_evaluated", "closed" bilinçli olarak ayrı bucket'a konulmadı;
+        // Total bu durumları kapsadığından gösterge kartları toplamına ≠ Total'dır.
         return new DashboardStats
         {
-            Total = risks.Count,
-            Proposed = risks.Count(r => r.Status == "proposed"),
-            Drafting = risks.Count(r => r.Status is "drafting" or "under_review"),
-            UnderReview = risks.Count(r => r.Status == "under_review"),
-            AwaitingApproval = risks.Count(r => r.Status == "awaiting_approval"),
-            Approved = risks.Count(r => r.Status is "approved" or "strategy_set"),
-            Rejected = risks.Count(r => r.Status == "rejected"),
-            Controlled = risks.Count(r => r.Status == "controlled"),
-            ActionPlanned = risks.Count(r => r.Status is "action_planned" or "risk_accepted"),
+            Total            = counts.Values.Sum(),
+            Proposed         = Get("proposed"),
+            UnderReview      = Get("under_review"),
+            AwaitingApproval = Get("awaiting_approval"),
+            Approved         = Get("approved") + Get("strategy_set"),
+            Rejected         = Get("rejected"),
+            Controlled       = Get("controlled"),
+            ActionPlanned    = Get("action_planned") + Get("risk_accepted"),
         };
     }
 
@@ -613,5 +906,5 @@ public record CategoryRadarData
 
 public record DashboardStats
 {
-    public int Total, Proposed, Drafting, AwaitingApproval, Approved, Rejected, Controlled, ActionPlanned, UnderReview;
+    public int Total, Proposed, UnderReview, AwaitingApproval, Approved, Rejected, Controlled, ActionPlanned;
 }

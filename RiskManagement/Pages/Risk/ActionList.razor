@@ -1,6 +1,7 @@
 @page "/risk/actions"
 @attribute [Authorize]
 @inject AppDbContext Db
+@inject ConfigService CfgSvc
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims
 @using RiskManagement.Models
@@ -34,6 +35,30 @@
     </div>
 </div>
 
+@* Preset hızlı filtreler *@
+<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+    @{
+        var overdueCount = _all.Count(a => a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress");
+        var weekCount    = _all.Count(a => a.DueDate.HasValue && a.DueDate.Value >= _today && a.DueDate.Value <= _today.AddDays(_weekDays) && a.Status is "planned" or "in_progress");
+        var mineCount    = _all.Count(a => IsMine(a));
+    }
+    @foreach (var (label, preset, count) in new[]{
+        ("Tümü",        "",         0),
+        ("Geciken",     "overdue",  overdueCount),
+        ("Bu Hafta",    "week",     weekCount),
+        ("Bana Atanan", "mine",     mineCount),
+    })
+    {
+        var p = preset;
+        var isActive = _actionPreset == p;
+        <button class="preset-chip @(isActive ? "preset-chip-active" : "") @(p == "overdue" && overdueCount > 0 ? "preset-overdue" : "")"
+                @onclick="() => ApplyActionPreset(p)">
+            @label
+            @if (count > 0) { <span class="preset-chip-count">@count</span> }
+        </button>
+    }
+</div>
+
 <div class="card" style="margin-bottom:16px">
     <div class="filter-bar">
         <div class="filter-group">
@@ -58,7 +83,7 @@
             <select class="form-control" style="width:160px" @bind="_filterOverdue">
                 <option value="">Tümü</option>
                 <option value="overdue">Vadesi Geçmiş</option>
-                <option value="upcoming">Yaklaşan (7 gün)</option>
+                <option value="upcoming">Yaklaşan (@_warnDays gün)</option>
             </select>
         </div>
         <div class="filter-group" style="flex:1;min-width:180px">
@@ -70,7 +95,7 @@
 </div>
 
 <div class="card" style="padding:0;overflow-x:auto">
-    <table class="table">
+    <table class="table table-sticky">
         <thead>
             <tr>
                 <th>Risk</th>
@@ -83,10 +108,12 @@
             </tr>
         </thead>
         <tbody>
-            @foreach (var a in Filtered)
+            @foreach (var a in PagedActions)
             {
-                var overdue = a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress";
-                <tr style="@(overdue ? "background:#fff5f5" : "")">
+                var daysLeft = a.DueDate.HasValue ? (a.DueDate.Value.DayNumber - _today.DayNumber) : (int?)null;
+                var overdue  = daysLeft.HasValue && daysLeft.Value < 0 && a.Status is "planned" or "in_progress";
+                var rowCls   = daysLeft.HasValue && daysLeft.Value < -_critDays ? "overdue-row-crit" : overdue ? "overdue-row" : "";
+                <tr class="@rowCls">
                     <td style="white-space:nowrap">
                         <a href="/risk/@a.RiskId" style="color:#1e40af;font-weight:600;font-size:12px;text-decoration:none">
                             @a.Risk.Code
@@ -106,26 +133,61 @@
                     <td style="white-space:nowrap">
                         @if (a.DueDate.HasValue)
                         {
-                            <span style="font-size:12px;color:@(overdue ? "#dc2626" : "#374151");font-weight:@(overdue ? "700" : "400")">
+                            <span class="@(overdue ? "overdue-date" : "")">
                                 @a.DueDate.Value.ToString("dd.MM.yyyy")
                             </span>
+                            @if (daysLeft.HasValue)
+                            {
+                                @if (daysLeft.Value < -_critDays)
+                                { <span class="overdue-badge-crit">KRİTİK</span> }
+                                else if (daysLeft.Value < 0)
+                                { <span class="overdue-badge-late">GECİKTİ</span> }
+                                else if (daysLeft.Value <= _warnDays && a.Status is "planned" or "in_progress")
+                                { <span class="overdue-badge-warn">@daysLeft.Value GÜN</span> }
+                            }
                         }
                         else { <span style="color:#9ca3af">—</span> }
                     </td>
                     <td><span class="badge @StatusBadge(a.Status)">@StatusLabel(a.Status)</span></td>
                     <td style="font-size:12px;color:#6b7280">@a.CreatedBy?.FullName</td>
                     <td>
-                        <a href="/risk/@a.RiskId" class="btn btn-outline btn-sm">Risk →</a>
+                        <a href="/risk/@a.RiskId" class="btn btn-outline btn-sm">Risk Detayı</a>
                     </td>
                 </tr>
             }
             @if (!Filtered.Any())
             {
-                <EmptyState Colspan="7" Icon="" Title="Aksiyon bulunamadı" Subtitle="Filtreyi temizleyin veya risk detayından yeni aksiyon ekleyin." />
+                <EmptyState Colspan="7" Icon="" Title="Aksiyon planı bulunamadı"
+                            Subtitle="Riskler ve bulgular için aksiyon planları risk/bulgu detay sayfalarından oluşturulur."
+                            ActionHref="/risk"
+                            ActionLabel="Risk Envanterine Git" />
             }
         </tbody>
     </table>
 </div>
+
+@if (TotalActionPages > 1)
+{
+    <div class="pagination-bar">
+        <div class="pagination-info">
+            @((_aPage-1)*_aPageSize+1)–@(Math.Min(_aPage*_aPageSize, Filtered.Count())) / @Filtered.Count() kayıt
+        </div>
+        <div class="pagination-controls">
+            <button class="btn btn-outline btn-sm" @onclick="() => _aPage=1"               disabled="@(_aPage==1)">«</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _aPage--"               disabled="@(_aPage==1)">‹</button>
+            @for (int p = Math.Max(1,_aPage-2); p <= Math.Min(TotalActionPages,_aPage+2); p++)
+            { var pp = p; <button class="btn @(_aPage==pp?"btn-primary":"btn-outline") btn-sm" @onclick="() => _aPage=pp">@pp</button> }
+            <button class="btn btn-outline btn-sm" @onclick="() => _aPage++"               disabled="@(_aPage==TotalActionPages)">›</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _aPage=TotalActionPages" disabled="@(_aPage==TotalActionPages)">»</button>
+        </div>
+        <div class="pagination-size">
+            Sayfa başı:
+            <select class="form-control" @bind="_aPageSize" @bind:after="() => _aPage=1">
+                <option value="25">25</option><option value="50">50</option><option value="100">100</option>
+            </select>
+        </div>
+    </div>
+}
 
 <div class="list-stat-grid">
     <div class="card list-stat-card">
@@ -160,10 +222,31 @@
     private List<Department> _departments = [];
     private string _filterStatus = "", _filterDept = "", _filterOverdue = "", _search = "";
     private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+    private int _weekDays, _warnDays, _critDays;
     private bool _showImport;
+    private string _actionPreset = "";
+    private int _aPage = 1, _aPageSize = 25;
+    private string _myFullName => HttpCtx.HttpContext?.User.FindFirst("full_name")?.Value ?? "";
+    // Arama döngüsünde tekrarlayan DB sorgusunu önlemek için OnInitialized'da bir kez çekilir.
+    private int _myDeptId;
+
+    private bool IsMine(ActionPlan a) =>
+        (!string.IsNullOrEmpty(_myFullName) && a.Responsible?.Contains(_myFullName, StringComparison.OrdinalIgnoreCase) == true)
+        || (a.OwnerDeptId.HasValue && a.OwnerDeptId == _myDeptId);
+
+    private void ApplyActionPreset(string preset)
+    {
+        _actionPreset = preset;
+        _filterStatus = ""; _filterDept = ""; _filterOverdue = ""; _search = "";
+    }
 
     protected override void OnInitialized()
     {
+        _weekDays = CfgSvc.GetWeekDays();
+        _warnDays = CfgSvc.GetWarnDays();
+        _critDays = CfgSvc.GetCritDays();
+        _myDeptId = Db.Users.Where(u => u.Id == UserId).Select(u => u.DepartmentId ?? 0).FirstOrDefault();
+
         var managedOrgIds = Role is "admin" or "committee"
             ? null
             : Db.Departments.Where(d => d.ManagerUserId == UserId && d.OrganizationId != null)
@@ -185,12 +268,23 @@
         _departments = [.. Db.Departments.OrderBy(d => d.Name)];
     }
 
+    private IEnumerable<ActionPlan> PagedActions
+        => Filtered.Skip((_aPage-1)*_aPageSize).Take(_aPageSize);
+    private int TotalActionPages
+        => (int)Math.Ceiling(Filtered.Count() / (double)_aPageSize);
+
     private IEnumerable<ActionPlan> Filtered => _all
+        .Where(a => _actionPreset switch {
+            "overdue" => a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress",
+            "week"    => a.DueDate.HasValue && a.DueDate.Value >= _today && a.DueDate.Value <= _today.AddDays(_weekDays) && a.Status is "planned" or "in_progress",
+            "mine"    => IsMine(a),
+            _         => true
+        })
         .Where(a => string.IsNullOrEmpty(_filterStatus) || a.Status == _filterStatus)
         .Where(a => string.IsNullOrEmpty(_filterDept)   || a.OwnerDeptId?.ToString() == _filterDept)
         .Where(a => _filterOverdue switch {
             "overdue"   => a.DueDate.HasValue && a.DueDate.Value < _today && a.Status is "planned" or "in_progress",
-            "upcoming"  => a.DueDate.HasValue && a.DueDate.Value >= _today && a.DueDate.Value <= _today.AddDays(7) && a.Status is "planned" or "in_progress",
+            "upcoming"  => a.DueDate.HasValue && a.DueDate.Value >= _today && a.DueDate.Value <= _today.AddDays(_warnDays) && a.Status is "planned" or "in_progress",
             _           => true
         })
         .Where(a => string.IsNullOrEmpty(_search) ||

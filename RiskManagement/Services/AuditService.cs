@@ -1,11 +1,13 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using RiskManagement.Data;
 using RiskManagement.Models;
 
 namespace RiskManagement.Services;
 
-public class AuditService(AppDbContext db)
+public class AuditService(AppDbContext db, INotificationService? notifications = null, AuthService? auth = null,
+    ILogger<AuditService>? logger = null)
 {
     // ─── Audit Plan ───────────────────────────────────────────────────────────
 
@@ -114,10 +116,40 @@ public class AuditService(AppDbContext db)
         return [.. q.OrderByDescending(a => a.CreatedAt)];
     }
 
+    public List<InternalAudit> GetAuditsForUser(User user, string? statusFilter = null)
+    {
+        var q = AuditQuery();
+        if (!string.IsNullOrEmpty(statusFilter)) q = q.Where(a => a.Status == statusFilter);
+        q = ScopeAuditsForUser(q, user);
+        return [.. q.OrderByDescending(a => a.CreatedAt)];
+    }
+
+    private IQueryable<InternalAudit> ScopeAuditsForUser(IQueryable<InternalAudit> q, User user)
+    {
+        if (user.HasAnyRole("admin", "audit_manager")) return q;
+        var allRoles = user.AllRoleNames.ToHashSet();
+        var userId   = user.Id;
+        var deptIds  = user.AllDepartmentIds.ToHashSet();
+        return q.Where(a =>
+            (allRoles.Contains("auditor") && (
+                a.LeadAuditorId == userId ||
+                a.Findings.Any(f => f.AuditorId == userId) ||
+                (a.DepartmentId != null && deptIds.Contains(a.DepartmentId.Value)))) ||
+            (allRoles.Contains("finding_owner") && a.Findings.Any(f => f.OwnerId == userId))
+        );
+    }
+
     public InternalAudit? GetAudit(int id)
     {
-        try   { return AuditQueryFull().FirstOrDefault(a => a.Id == id); }
-        catch { return AuditQuery().FirstOrDefault(a => a.Id == id); }
+        try
+        {
+            return AuditQueryFull().FirstOrDefault(a => a.Id == id);
+        }
+        catch (System.Data.Common.DbException)
+        {
+            // Yeni kolonlar henüz migration edilmemişse temel sorguya düş
+            return AuditQuery().FirstOrDefault(a => a.Id == id);
+        }
     }
 
     public InternalAudit? GetAuditForUser(int id, int userId, string role)
@@ -131,14 +163,19 @@ public class AuditService(AppDbContext db)
         if (role is "admin" or "audit_manager") return q;
         if (role == "auditor")
             return q.Where(a => a.LeadAuditorId == userId || a.Findings.Any(f => f.AuditorId == userId));
+        if (role == "finding_owner")
+            return q.Where(a => a.Findings.Any(f => f.OwnerId == userId));
         return q.Where(_ => false);
     }
 
     public bool CanAccessAudit(InternalAudit audit, int userId, string role)
     {
         if (role is "admin" or "audit_manager") return true;
-        return role == "auditor" &&
-            (audit.LeadAuditorId == userId || audit.Findings.Any(f => f.AuditorId == userId));
+        if (role == "auditor" && (audit.LeadAuditorId == userId || audit.Findings.Any(f => f.AuditorId == userId)))
+            return true;
+        if (role == "finding_owner" && audit.Findings.Any(f => f.OwnerId == userId))
+            return true;
+        return false;
     }
 
     public InternalAudit CreateAudit(string title, string? auditType, string? auditedUnit,
@@ -231,10 +268,10 @@ public class AuditService(AppDbContext db)
 
         var today = DateOnly.FromDateTime(DateTime.Today);
 
-        if (audit.Status == "in_progress" && item.ActualStartDate == null)
+        if (audit.Status == AuditStatus.InProgress && item.ActualStartDate == null)
             item.ActualStartDate = audit.StartDate ?? today;
 
-        if (audit.Status == "completed" && item.ActualEndDate == null)
+        if (audit.Status == AuditStatus.Completed && item.ActualEndDate == null)
         {
             if (item.ActualStartDate == null)
                 item.ActualStartDate = audit.StartDate ?? today;
@@ -245,11 +282,8 @@ public class AuditService(AppDbContext db)
     }
 
     /// <summary>Plan maddesine bağlı InternalAudit'i döner (yoksa null).</summary>
-    public InternalAudit? GetAuditByPlanItem(int planItemId)
-    {
-        try   { return AuditQuery().FirstOrDefault(a => a.AuditPlanItemId == planItemId); }
-        catch { return null; }
-    }
+    public InternalAudit? GetAuditByPlanItem(int planItemId) =>
+        AuditQuery().FirstOrDefault(a => a.AuditPlanItemId == planItemId);
 
     // ─── Findings ─────────────────────────────────────────────────────────────
 
@@ -259,7 +293,22 @@ public class AuditService(AppDbContext db)
         return $"B-{year}-{CounterHelper.GetNext(db, $"finding-{year}"):D3}";
     }
 
+    private void LogFinding(int findingId, int? userId, string action, string? detail = null)
+    {
+        db.FindingActivityLogs.Add(new RiskManagement.Models.FindingActivityLog
+        {
+            FindingId = findingId, UserId = userId,
+            Action = action, Detail = detail,
+            Timestamp = DateTime.UtcNow
+        });
+    }
+
+    /// <summary>
+    /// Tam sorgu — detay sayfası için tüm navigasyon property'leri yükler.
+    /// Liste/export kullanım alanları için FindingListQuery() tercih edin.
+    /// </summary>
     public IQueryable<AuditFinding> FindingQuery() => db.AuditFindings
+        .AsNoTracking()
         .Include(f => f.Auditor)
         .Include(f => f.Owner)
         .Include(f => f.Department)
@@ -267,12 +316,26 @@ public class AuditService(AppDbContext db)
         .Include(f => f.ClosureRequests).ThenInclude(c => c.RequestedBy)
         .Include(f => f.ClosureRequests).ThenInclude(c => c.ReviewedBy)
         .Include(f => f.Actions).ThenInclude(a => a.CreatedBy)
-        .Include(f => f.Attachments).ThenInclude(a => a.UploadedBy);
+        .Include(f => f.Attachments).ThenInclude(a => a.UploadedBy)
+        .Include(f => f.ActivityLogs).ThenInclude(l => l.User)
+        .Include(f => f.RiskLinks).ThenInclude(l => l.Risk);
+
+    /// <summary>
+    /// Hafif liste sorgusu — kart/tablo görünümü için yeterli, 7 Include yerine 4.
+    /// Closure/attachment/log/riskLink verisi gerektiğinde FindingQuery() kullanın.
+    /// </summary>
+    public IQueryable<AuditFinding> FindingListQuery() => db.AuditFindings
+        .AsNoTracking()
+        .Include(f => f.Auditor)
+        .Include(f => f.Owner)
+        .Include(f => f.Department)
+        .Include(f => f.InternalAudit);
 
     public List<AuditFinding> GetFindings(string? category = null, string? severity = null,
         string? status = null, int? auditId = null)
     {
-        var q = FindingQuery().Where(f => f.AuditSource == "internal");
+        // Liste görünümü — tam FindingQuery() yerine hafif sorgu kullanılır.
+        var q = FindingListQuery().Where(f => f.AuditSource == "internal");
         if (!string.IsNullOrEmpty(category)) q = q.Where(f => f.Category == category);
         if (!string.IsNullOrEmpty(severity)) q = q.Where(f => f.Severity == severity);
         if (!string.IsNullOrEmpty(status))   q = q.Where(f => f.Status == status);
@@ -283,12 +346,27 @@ public class AuditService(AppDbContext db)
     public List<AuditFinding> GetFindingsForUser(int userId, string role, string? category = null,
         string? severity = null, string? status = null, int? auditId = null)
     {
-        var q = FindingQuery().Where(f => f.AuditSource == "internal");
+        // Liste/export — hafif sorgu; ClosureRequest/Attachment/Log/RiskLink yüklenmez.
+        var q = FindingListQuery().Where(f => f.AuditSource == "internal");
         if (!string.IsNullOrEmpty(category)) q = q.Where(f => f.Category == category);
         if (!string.IsNullOrEmpty(severity)) q = q.Where(f => f.Severity == severity);
         if (!string.IsNullOrEmpty(status))   q = q.Where(f => f.Status == status);
         if (auditId.HasValue)                q = q.Where(f => f.InternalAuditId == auditId);
         q = ScopeFindings(q, userId, role);
+        return [.. q.OrderByDescending(f => f.CreatedAt)];
+    }
+
+    // Tüm rolleri ve departman atamalarını kullanan overload (DB'den tam yüklü User için)
+    public List<AuditFinding> GetFindingsForUser(User user, string? category = null,
+        string? severity = null, string? status = null, int? auditId = null)
+    {
+        // Liste/export — hafif sorgu.
+        var q = FindingListQuery().Where(f => f.AuditSource == "internal");
+        if (!string.IsNullOrEmpty(category)) q = q.Where(f => f.Category == category);
+        if (!string.IsNullOrEmpty(severity)) q = q.Where(f => f.Severity == severity);
+        if (!string.IsNullOrEmpty(status))   q = q.Where(f => f.Status == status);
+        if (auditId.HasValue)                q = q.Where(f => f.InternalAuditId == auditId);
+        q = ScopeFindingsForUser(q, user);
         return [.. q.OrderByDescending(f => f.CreatedAt)];
     }
 
@@ -323,6 +401,33 @@ public class AuditService(AppDbContext db)
         return q.Where(_ => false);
     }
 
+    // Tüm rolleri birleştiren versiyon — çok rollü kullanıcılarda eksik erişimi önler
+    private IQueryable<AuditFinding> ScopeFindingsForUser(IQueryable<AuditFinding> q, User user)
+    {
+        if (user.HasAnyRole("admin", "audit_manager")) return q;
+
+        var deptIds  = user.AllDepartmentIds.ToHashSet();
+        var allRoles = user.AllRoleNames.ToHashSet();
+        var userId   = user.Id;
+
+        return q.Where(f =>
+            (allRoles.Contains("auditor") && (
+                f.AuditorId == userId ||
+                (f.InternalAudit != null && f.InternalAudit.LeadAuditorId == userId) ||
+                (f.DepartmentId != null && deptIds.Contains(f.DepartmentId.Value)))) ||
+            (allRoles.Contains("finding_owner") && (
+                f.OwnerId == userId ||
+                (f.DepartmentId != null && deptIds.Contains(f.DepartmentId.Value)))) ||
+            (deptIds.Count > 0 && f.DepartmentId != null && deptIds.Contains(f.DepartmentId.Value))
+        );
+    }
+
+    /// <summary>
+    /// Bulgu <b>görüntüleme</b> yetkisi (detay sayfası, liste). Departman üyelerine ve
+    /// rolden bağımsız atanan sahibe görünürlük verir. Dikkat: ek <b>indirme</b> yetkisi
+    /// bilinçli olarak daha dardır — bkz. <see cref="CanDownloadFindingFile"/>. Bir bulguyu
+    /// görebilen herkes eklerini indiremeyebilir (kanıt dosyaları daha hassas kabul edilir).
+    /// </summary>
     public bool CanAccessFinding(AuditFinding finding, int userId, string role)
     {
         if (role is "admin" or "audit_manager") return true;
@@ -364,31 +469,58 @@ public class AuditService(AppDbContext db)
             InternalAuditId = internalAuditId,
             DueDate = dueDate,
         };
+
+        using var tx = db.Database.BeginTransaction();
         db.AuditFindings.Add(finding);
         db.SaveChanges();
+        LogFinding(finding.Id, auditorId, "Bulgu Oluşturuldu", title);
+        db.SaveChanges();
+        tx.Commit();
+
+        if (ownerId.HasValue)
+            _ = notifications?.NotifyFindingAssignedAsync(finding.Code, title, ownerId.Value);
         return finding;
     }
 
     public bool UpdateFinding(int id, string title, string? description,
         string? category, string? severity, string? auditPeriod,
+        int? ownerId, DateOnly? dueDate, User caller)
+    {
+        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return false;
+        return InternalUpdateFinding(id, title, description, category, severity, auditPeriod, ownerId, dueDate);
+    }
+
+    public bool InternalUpdateFinding(int id, string title, string? description,
+        string? category, string? severity, string? auditPeriod,
         int? ownerId, DateOnly? dueDate)
     {
         var f = db.AuditFindings.Find(id);
-        if (f == null || f.Status == "closed") return false;
+        if (f == null || f.Status == FindingStatus.Closed) return false;
         f.Title = title;
         f.Description = description;
         f.Category = category;
         f.Severity = severity;
         f.AuditPeriod = auditPeriod;
+        var ownerChanged = f.OwnerId != ownerId;
         f.OwnerId = ownerId;
         f.DueDate = dueDate;
+        LogFinding(id, ownerId, "Bulgu Güncellendi", title);
         db.SaveChanges();
+        if (ownerChanged && ownerId.HasValue)
+            notifications?.NotifyFindingAssignedAsync(f.Code, title, ownerId.Value);
         return true;
     }
 
     // ─── Closure Requests ─────────────────────────────────────────────────────
 
-    public ClosureRequest SubmitClosureRequest(int findingId, string description,
+    public ClosureRequest? SubmitClosureRequest(int findingId, string description,
+        string? evidence, int requestedById, User caller)
+    {
+        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return null;
+        return InternalSubmitClosureRequest(findingId, description, evidence, requestedById);
+    }
+
+    public ClosureRequest? InternalSubmitClosureRequest(int findingId, string description,
         string? evidence, int requestedById)
     {
         var req = new ClosureRequest
@@ -400,14 +532,32 @@ public class AuditService(AppDbContext db)
         };
         db.ClosureRequests.Add(req);
         var finding = db.AuditFindings.Find(findingId);
-        if (finding != null) finding.Status = "closure_requested";
+        if (finding != null) finding.Status = FindingStatus.ClosureRequested;
+        LogFinding(findingId, requestedById, "Kapanış Başvurusu Yapıldı");
         db.SaveChanges();
+        if (finding != null)
+            _ = notifications?.NotifyClosureRequestedAsync(finding.Code, finding.Title, finding.AuditorId);
         return req;
     }
 
     public bool ReviewClosureRequest(int findingId, int requestId,
+        string decision, string? notes, int reviewedById, User caller)
+    {
+        if (auth != null && !auth.HasPermission(caller, "audit.close_approve")) return false;
+        return InternalReviewClosureRequest(findingId, requestId, decision, notes, reviewedById);
+    }
+
+    public bool InternalReviewClosureRequest(int findingId, int requestId,
         string decision, string? notes, int reviewedById)
     {
+        // Bilinmeyen karar değerini reddet — geçersiz string, bulguyu istemeden Open'a düşürür.
+        if (decision is not ("approved" or "rejected"))
+        {
+            logger?.LogWarning("Kapanış değerlendirme reddi — geçersiz karar: {Decision}, FindingId: {FindingId}, Kullanıcı: {UserId}",
+                decision, findingId, reviewedById);
+            return false;
+        }
+
         var req = db.ClosureRequests
             .FirstOrDefault(r => r.Id == requestId && r.FindingId == findingId);
         if (req == null) return false;
@@ -420,16 +570,27 @@ public class AuditService(AppDbContext db)
         var finding = db.AuditFindings.Find(findingId);
         if (finding != null)
         {
-            finding.Status = decision == "approved" ? "closed" : "open";
+            finding.Status = decision == "approved" ? FindingStatus.Closed : FindingStatus.Open;
             if (decision == "approved") finding.ClosedAt = DateTime.UtcNow;
         }
+        var actionLabel = decision == "approved" ? "Bulgu Kapatıldı" : "Kapanış Başvurusu Reddedildi";
+        LogFinding(findingId, reviewedById, actionLabel, notes);
         db.SaveChanges();
+        if (finding?.OwnerId.HasValue == true)
+            _ = notifications?.NotifyClosureDecidedAsync(finding.Code, finding.Title, decision, finding.OwnerId.Value);
         return true;
     }
 
     // ─── Finding Actions ──────────────────────────────────────────────────────
 
-    public AuditFindingAction AddFindingAction(int findingId, string description,
+    public AuditFindingAction? AddFindingAction(int findingId, string description,
+        string? responsible, DateOnly? dueDate, int createdById, User caller)
+    {
+        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return null;
+        return InternalAddFindingAction(findingId, description, responsible, dueDate, createdById);
+    }
+
+    public AuditFindingAction InternalAddFindingAction(int findingId, string description,
         string? responsible, DateOnly? dueDate, int createdById)
     {
         var action = new AuditFindingAction
@@ -443,21 +604,64 @@ public class AuditService(AppDbContext db)
         db.AuditFindingActions.Add(action);
         var finding = db.AuditFindings.Find(findingId);
         if (finding != null) finding.ActionDecision = "action_planned";
+        LogFinding(findingId, createdById, "Aksiyon Planı Eklendi", description.Length > 80 ? description[..80] + "…" : description);
         db.SaveChanges();
         return action;
     }
 
-    public bool UpdateFindingActionStatus(int findingId, int actionId, string newStatus)
+    public bool UpdateFindingAction(int findingId, int actionId,
+        string description, string? responsible, DateOnly? dueDate, User caller)
     {
-        var action = db.AuditFindingActions.FirstOrDefault(a => a.Id == actionId && a.FindingId == findingId);
+        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return false;
+        return InternalUpdateFindingAction(findingId, actionId, description, responsible, dueDate);
+    }
+
+    public bool InternalUpdateFindingAction(int findingId, int actionId,
+        string description, string? responsible, DateOnly? dueDate)
+    {
+        var action = db.AuditFindingActions
+            .FirstOrDefault(a => a.Id == actionId && a.FindingId == findingId);
         if (action == null) return false;
-        action.Status = newStatus;
-        if (newStatus == "completed") action.CompletedAt = DateTime.UtcNow;
+        action.Description = description;
+        action.Responsible  = responsible;
+        action.DueDate      = dueDate;
+        LogFinding(findingId, action.CreatedById, "Aksiyon Güncellendi",
+            description.Length > 80 ? description[..80] + "…" : description);
         db.SaveChanges();
         return true;
     }
 
-    public bool DeleteFindingAction(int findingId, int actionId)
+    public bool UpdateFindingActionStatus(int findingId, int actionId, string newStatus, User caller)
+    {
+        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return false;
+        return InternalUpdateFindingActionStatus(findingId, actionId, newStatus);
+    }
+
+    public bool InternalUpdateFindingActionStatus(int findingId, int actionId, string newStatus)
+    {
+        var action = db.AuditFindingActions.FirstOrDefault(a => a.Id == actionId && a.FindingId == findingId);
+        if (action == null) return false;
+        var oldStatus = action.Status;
+        action.Status = newStatus;
+        if (newStatus == "completed") action.CompletedAt = DateTime.UtcNow;
+        LogFinding(findingId, action.CreatedById, "Aksiyon Durumu Güncellendi", $"{ActionStatusLabel(oldStatus)} → {ActionStatusLabel(newStatus)}");
+        db.SaveChanges();
+        return true;
+    }
+
+    private static string ActionStatusLabel(string s) => s switch
+    {
+        "planned" => "Planlandı", "in_progress" => "Devam Ediyor",
+        "completed" => "Tamamlandı", "cancelled" => "İptal", _ => s
+    };
+
+    public bool DeleteFindingAction(int findingId, int actionId, User caller)
+    {
+        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return false;
+        return InternalDeleteFindingAction(findingId, actionId);
+    }
+
+    public bool InternalDeleteFindingAction(int findingId, int actionId)
     {
         var action = db.AuditFindingActions.FirstOrDefault(a => a.Id == actionId && a.FindingId == findingId);
         if (action == null) return false;
@@ -466,7 +670,13 @@ public class AuditService(AppDbContext db)
         return true;
     }
 
-    public bool SetActionDecision(int findingId, string? decision)
+    public bool SetActionDecision(int findingId, string? decision, User caller)
+    {
+        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return false;
+        return InternalSetActionDecision(findingId, decision);
+    }
+
+    public bool InternalSetActionDecision(int findingId, string? decision)
     {
         var finding = db.AuditFindings.Find(findingId);
         if (finding == null) return false;
@@ -505,6 +715,33 @@ public class AuditService(AppDbContext db)
         return [.. q.OrderBy(a => a.DueDate == null).ThenBy(a => a.DueDate).ThenBy(a => a.Status)];
     }
 
+    public List<AuditFindingAction> GetFindingActionsForUser(User user)
+    {
+        var q = db.AuditFindingActions
+            .Include(a => a.Finding).ThenInclude(f => f.InternalAudit)
+            .Include(a => a.CreatedBy)
+            .Where(a => a.Finding.AuditSource == "internal")
+            .AsQueryable();
+
+        if (!user.HasAnyRole("admin", "audit_manager"))
+        {
+            var allRoles = user.AllRoleNames.ToHashSet();
+            var userId   = user.Id;
+            var deptIds  = user.AllDepartmentIds.ToHashSet();
+            q = q.Where(a =>
+                (allRoles.Contains("auditor") && (
+                    a.Finding.AuditorId == userId ||
+                    (a.Finding.InternalAudit != null && a.Finding.InternalAudit.LeadAuditorId == userId) ||
+                    (a.Finding.DepartmentId != null && deptIds.Contains(a.Finding.DepartmentId.Value)))) ||
+                (allRoles.Contains("finding_owner") && (
+                    a.Finding.OwnerId == userId ||
+                    (a.Finding.DepartmentId != null && deptIds.Contains(a.Finding.DepartmentId.Value))))
+            );
+        }
+
+        return [.. q.OrderBy(a => a.DueDate == null).ThenBy(a => a.DueDate).ThenBy(a => a.Status)];
+    }
+
     // ─── Attachments ──────────────────────────────────────────────────────────
 
     public FindingAttachment SaveAttachment(int findingId, string fileName, string storedPath, long fileSize, int uploadedById)
@@ -536,65 +773,88 @@ public class AuditService(AppDbContext db)
 
     public AuditDashboardStats GetDashboard(string[] severities)
     {
-        var findings = db.AuditFindings.Where(f => f.AuditSource == "internal").ToList();
-        return BuildDashboardStats(findings, severities, db);
+        // Dashboard yalnızca sayım/gruplandırma yapar — navigasyon property gereksiz, AsNoTracking yeterli.
+        var baseQ = db.AuditFindings.AsNoTracking().Where(f => f.AuditSource == "internal");
+        return ComputeDashboardStats(baseQ, severities);
     }
 
     public AuditDashboardStats GetDashboardForUser(int userId, string role, string[] severities)
     {
-        var findings = ScopeFindings(
-            db.AuditFindings.Include(f => f.InternalAudit).Where(f => f.AuditSource == "internal"),
-            userId, role).ToList();
-        return BuildDashboardStats(findings, severities, db);
+        var baseQ = ScopeFindings(
+            db.AuditFindings.AsNoTracking().Where(f => f.AuditSource == "internal"),
+            userId, role);
+        IQueryable<InternalAudit>? auditScope = (role is "admin" or "audit_manager") ? null
+            : db.InternalAudits.Where(a =>
+                a.LeadAuditorId == userId ||
+                a.Findings.Any(f => f.AuditorId == userId || f.OwnerId == userId));
+        return ComputeDashboardStats(baseQ, severities, auditScope);
     }
 
-    private static AuditDashboardStats BuildDashboardStats(List<AuditFinding> findings, string[] severities, AppDbContext db)
+    public AuditDashboardStats GetDashboardForUser(User user, string[] severities)
+    {
+        var baseQ = ScopeFindingsForUser(
+            db.AuditFindings.AsNoTracking().Where(f => f.AuditSource == "internal"),
+            user);
+        IQueryable<InternalAudit>? auditScope = user.HasAnyRole("admin", "audit_manager") ? null
+            : db.InternalAudits.Where(a =>
+                a.LeadAuditorId == user.Id ||
+                a.Findings.Any(f => f.AuditorId == user.Id || f.OwnerId == user.Id));
+        return ComputeDashboardStats(baseQ, severities, auditScope);
+    }
+
+    private AuditDashboardStats ComputeDashboardStats(IQueryable<AuditFinding> baseQ, string[] severities,
+        IQueryable<InternalAudit>? auditScope = null)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
 
+        // Status sayımları — server-side GroupBy
+        var statusCounts = baseQ
+            .GroupBy(f => f.Status)
+            .Select(g => new { Status = g.Key, Count = g.Count() })
+            .ToDictionary(x => x.Status, x => x.Count);
+
+        int GetStatus(string key) => statusCounts.GetValueOrDefault(key, 0);
+
+        // Gecikmiş — server-side
+        var overdue = baseQ.Count(f => f.Status != FindingStatus.Closed && f.DueDate.HasValue && f.DueDate < today);
+
+        // Şiddet dağılımı — server-side GroupBy
         var bySeverity = severities.ToDictionary(s => s, _ => 0);
-        var byCategory = new Dictionary<string, int>();
+        baseQ.Where(f => f.Severity != null)
+             .GroupBy(f => f.Severity!)
+             .Select(g => new { Sev = g.Key, Count = g.Count() })
+             .ToList()
+             .ForEach(x => { if (bySeverity.ContainsKey(x.Sev)) bySeverity[x.Sev] = x.Count; });
 
-        foreach (var f in findings)
-        {
-            if (f.Severity != null)
-                bySeverity[f.Severity] = bySeverity.GetValueOrDefault(f.Severity) + 1;
-            if (f.Category != null)
-                byCategory[f.Category] = byCategory.GetValueOrDefault(f.Category) + 1;
-        }
+        // Kategori dağılımı — server-side GroupBy
+        var byCategory = baseQ.Where(f => f.Category != null)
+            .GroupBy(f => f.Category!)
+            .Select(g => new { Cat = g.Key, Count = g.Count() })
+            .ToDictionary(x => x.Cat, x => x.Count);
 
-        // Plan istatistikleri — tablolar henüz yoksa sıfır döner
+        // Plan istatistikleri — GetItemStatus() client-side hesaplama gerektiriyor
         var currentYear = DateTime.Today.Year;
-        List<AuditPlanItem> planItems;
-        HashSet<int> linkedAuditIds;
-        try
-        {
-            planItems = db.AuditPlanItems.Where(i => i.Plan.Year == currentYear).ToList();
-            linkedAuditIds = db.InternalAudits
-                .Where(a => a.AuditPlanItemId != null)
-                .Select(a => a.AuditPlanItemId!.Value)
-                .ToHashSet();
-        }
-        catch
-        {
-            planItems      = [];
-            linkedAuditIds = [];
-        }
+        var planItems = db.AuditPlanItems
+            .Include(i => i.Plan)
+            .Where(i => i.Plan.Year == currentYear)
+            .ToList();
+        var linkedAuditIds = db.InternalAudits
+            .Where(a => a.AuditPlanItemId != null)
+            .Select(a => a.AuditPlanItemId!.Value)
+            .ToHashSet();
 
         return new AuditDashboardStats
         {
-            Total            = findings.Count,
-            Open             = findings.Count(f => f.Status == "open"),
-            ClosureRequested = findings.Count(f => f.Status == "closure_requested"),
-            Closed           = findings.Count(f => f.Status == "closed"),
-            Overdue          = findings.Count(f => f.Status != "closed" && f.DueDate.HasValue && f.DueDate < today),
+            Total            = statusCounts.Values.Sum(),
+            Open             = GetStatus("open"),
+            ClosureRequested = GetStatus("closure_requested"),
+            Closed           = GetStatus("closed"),
+            Overdue          = overdue,
             BySeverity       = bySeverity,
             ByCategory       = byCategory,
-            // Aktif denetimler
-            ActiveAudits     = db.InternalAudits.Count(a => a.Status == "in_progress"),
-            PlannedAudits    = db.InternalAudits.Count(a => a.Status == "planned"),
-            CompletedAudits  = db.InternalAudits.Count(a => a.Status == "completed"),
-            // Plan tamamlanma
+            ActiveAudits     = (auditScope ?? db.InternalAudits).Count(a => a.Status == AuditStatus.InProgress),
+            PlannedAudits    = (auditScope ?? db.InternalAudits).Count(a => a.Status == AuditStatus.Planned),
+            CompletedAudits  = (auditScope ?? db.InternalAudits).Count(a => a.Status == AuditStatus.Completed),
             PlanYear         = currentYear,
             PlanTotal        = planItems.Count,
             PlanConverted    = planItems.Count(i => linkedAuditIds.Contains(i.Id)),
@@ -636,6 +896,14 @@ public class AuditService(AppDbContext db)
     }
 
     // ─── Dosya erişim yetkisi — Program.cs'ten buraya taşındı ────────────────
+    /// <summary>
+    /// Bulgu eki <b>indirme</b> yetkisi. <see cref="CanAccessFinding"/>'ten <b>kasıtlı olarak daha katı</b>:
+    /// departman üyeliği veya rolsüz sahiplik yeterli değildir. Yalnızca admin/audit_manager,
+    /// bulgunun denetçisi (veya iç denetimin baş denetçisi) ve <c>finding_owner</c> rolündeki
+    /// atanan sahip dosyayı indirebilir. Gerekçe: ek/kapanış dosyaları hassas denetim kanıtıdır;
+    /// metadata görünürlüğü, kanıt erişiminden daha geniş tutulur. Bu fark kaldırılacaksa
+    /// <see cref="CanAccessFinding"/> ile hizalanmalı ve ilgili pinleme testi güncellenmelidir.
+    /// </summary>
     public static bool CanDownloadFindingFile(ClaimsPrincipal user, AuditFinding finding)
     {
         // Tüm rol claim'lerini kontrol et (multi-role kullanıcı desteği)

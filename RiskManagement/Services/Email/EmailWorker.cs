@@ -3,10 +3,6 @@ using System.Net.Mail;
 
 namespace RiskManagement.Services.Email;
 
-/// <summary>
-/// Arka planda çalışan e-posta gönderici.
-/// EmailQueue'dan mesaj okur, ayarları her gönderimde DB'den alır (yeniden başlatma gerekmez).
-/// </summary>
 public sealed class EmailWorker(
     EmailQueue queue,
     IServiceScopeFactory scopeFactory,
@@ -25,6 +21,8 @@ public sealed class EmailWorker(
             if (!settings.Enabled)
             {
                 logger.LogDebug("E-posta devre dışı — atlandı: {To}", msg.To);
+                queue.Log(new EmailLogEntry(DateTime.Now, msg.To, msg.Subject, EmailLogStatus.Skipped,
+                    "E-posta bildirimleri devre dışı"));
                 continue;
             }
 
@@ -41,16 +39,20 @@ public sealed class EmailWorker(
 
     private async Task SendWithRetryAsync(EmailMessage msg, EmailSettings cfg, CancellationToken ct)
     {
+        Exception? lastEx = null;
+
         for (int attempt = 1; attempt <= MaxRetries; attempt++)
         {
             try
             {
                 await SendAsync(msg, cfg, ct);
                 logger.LogInformation("E-posta gönderildi: {To} — {Subject}", msg.To, msg.Subject);
+                queue.Log(new EmailLogEntry(DateTime.Now, msg.To, msg.Subject, EmailLogStatus.Sent, Attempt: attempt));
                 return;
             }
             catch (Exception ex) when (attempt < MaxRetries)
             {
+                lastEx = ex;
                 var delay = TimeSpan.FromSeconds(Math.Pow(2, attempt) * 5);
                 logger.LogWarning("E-posta başarısız (deneme {A}/{M}), {D}s sonra tekrar: {Err}",
                     attempt, MaxRetries, delay.TotalSeconds, ex.Message);
@@ -58,17 +60,26 @@ public sealed class EmailWorker(
             }
             catch (Exception ex)
             {
+                lastEx = ex;
                 logger.LogError("E-posta kalıcı hata: {To} — {Subject} — {Err}",
                     msg.To, msg.Subject, ex.Message);
             }
         }
+
+        queue.Log(new EmailLogEntry(DateTime.Now, msg.To, msg.Subject, EmailLogStatus.Failed,
+            lastEx?.Message ?? "Bilinmeyen hata", Attempt: MaxRetries));
     }
 
-    private static async Task SendAsync(EmailMessage msg, EmailSettings cfg, CancellationToken ct)
+    internal static async Task SendAsync(EmailMessage msg, EmailSettings cfg, CancellationToken ct = default)
     {
+        // Port 587 STARTTLS kullanır: .NET SmtpClient EnableSsl=false iken
+        // STARTTLS'i otomatik müzakere eder. EnableSsl=true yalnızca
+        // port 465 (implicit SSL) için doğrudur.
+        var useSsl = cfg.UseSsl || cfg.Port == 465;
+
         using var client = new SmtpClient(cfg.Host, cfg.Port)
         {
-            EnableSsl      = cfg.UseSsl,
+            EnableSsl      = useSsl,
             Credentials    = new NetworkCredential(cfg.Username, cfg.Password),
             DeliveryMethod = SmtpDeliveryMethod.Network,
             Timeout        = 15_000,

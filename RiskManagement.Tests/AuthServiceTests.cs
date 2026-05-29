@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using Microsoft.Extensions.Caching.Memory;
 using RiskManagement.Data;
 using RiskManagement.Models;
 using RiskManagement.Services;
@@ -9,7 +10,7 @@ namespace RiskManagement.Tests;
 public class AuthServicePrincipalTests
 {
     private static AuthService BuildSvc(AppDbContext db)
-        => new(db);
+        => new(db, new MemoryCache(new MemoryCacheOptions()));
 
     // ── BuildPrincipal → UserFromPrincipal roundtrip ──────────────────────────
 

@@ -1,6 +1,7 @@
 @page "/audit/findings/new"
-@attribute [Authorize(Roles = "auditor,admin")]
+@attribute [Authorize]
 @inject AuditService AuditSvc
+@inject AuthService Auth
 @inject ConfigService CfgSvc
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
@@ -85,15 +86,19 @@
     private bool _loading;
     private string _error = "";
 
-    private int UserId => int.TryParse(
-        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
-    private string Role => HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.Role)?.Value ?? "";
+    private User? _user;
 
     protected override void OnInitialized()
     {
+        _user = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
+        if (_user is null || !Auth.HasPermission(_user, "audit.write"))
+        {
+            Nav.NavigateTo("/403", replace: true);
+            return;
+        }
         _categories = CfgSvc.GetList("audit_categories");
         _severities = CfgSvc.GetList("audit_severities");
-        _audits = AuditSvc.GetAuditsForUser(UserId, Role);
+        _audits = AuditSvc.GetAuditsForUser(_user);
     }
 
     private void HandleFiles(InputFileChangeEventArgs e)
@@ -106,7 +111,7 @@
         if (string.IsNullOrWhiteSpace(_title)) { _error = "Başlık zorunludur."; return; }
         _loading = true;
         var f = AuditSvc.CreateFinding(_title, _description, _category, _severity, null,
-            UserId, null, _auditId > 0 ? _auditId : null, null);
+            _user!.Id, null, _auditId > 0 ? _auditId : null, null);
 
         if (_pendingFiles.Any())
         {
@@ -126,7 +131,7 @@
                 await using var fs  = File.Create(dest);
                 await using var src = file.OpenReadStream(maxAllowedSize: AuditService.MaxAttachmentSize);
                 await src.CopyToAsync(fs);
-                AuditSvc.SaveAttachment(f.Id, originalName, dest, file.Size, UserId);
+                AuditSvc.SaveAttachment(f.Id, originalName, dest, file.Size, _user!.Id);
             }
         }
 

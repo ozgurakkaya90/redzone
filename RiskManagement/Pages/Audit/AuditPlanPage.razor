@@ -5,6 +5,7 @@
 @inject AppDbContext Db
 @inject IHttpContextAccessor HttpCtx
 @inject NavigationManager Nav
+@inject ToastService ToastSvc
 @using System.Security.Claims
 @using RiskManagement.Models
 @using Microsoft.EntityFrameworkCore
@@ -520,8 +521,7 @@
 
 
 @code {
-    private int UserId => int.TryParse(
-        HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+    private int _userId;
 
     // ── Sayfa durumu ──────────────────────────────────────────────────────────
     private int          _year         = DateTime.Today.Year;
@@ -588,6 +588,8 @@
     // ── Lifecycle ────────────────────────────────────────────────────────────
     protected override void OnInitialized()
     {
+        int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out _userId);
+
         // audit_types artık birleşik kaynak; audit_plan_types legacy alias
         _auditPlanTypes = [.. CfgSvc.GetList("audit_types")];
         if (_auditPlanTypes.Count == 0)
@@ -614,7 +616,7 @@
         {
             _auditorUsers = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
         }
-        _convertLeadId = UserId;
+        _convertLeadId = _userId;
         Load();
     }
 
@@ -627,10 +629,10 @@
         {
             _plan = AuditSvc.GetPlan(_year);
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             _plan      = null;
-            _pageError = $"Denetim planı yüklenemedi: {ex.Message}";
+            _pageError = "Denetim planı yüklenirken bir sorun oluştu. Lütfen sayfayı yenileyin.";
             return;
         }
 
@@ -669,15 +671,16 @@
         if (string.IsNullOrWhiteSpace(_planTitle)) { _formError = "Plan adı zorunludur."; return; }
         try
         {
-            var plan = AuditSvc.EnsurePlan(_year, _planTitle.Trim(), UserId);
+            var plan = AuditSvc.EnsurePlan(_year, _planTitle.Trim(), _userId);
             if (!string.IsNullOrWhiteSpace(_planDesc))
             { plan.Description = _planDesc.Trim(); AuditSvc.UpdatePlan(plan); }
+            ToastSvc.Success($"{_year} yılı denetim planı oluşturuldu.");
             _showCreatePlan = false;
             Load();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _formError = $"Plan oluşturulamadı — {ex.Message}";
+            _formError = "Plan oluşturulurken bir sorun oluştu. Lütfen tekrar deneyin.";
         }
     }
 
@@ -775,11 +778,12 @@
                 _editItem.ActualEndDate    = _fActualEnd.HasValue   ? DateOnly.FromDateTime(_fActualEnd.Value)   : null;
                 AuditSvc.UpdatePlanItem(_editItem);
             }
+            ToastSvc.Success(_editItem == null ? "Denetim planına eklendi." : "Denetim güncellendi.");
             Load();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _formError = $"Kayıt hatası: {ex.Message}";
+            _formError = "Kayıt sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
         }
     }
 
@@ -792,12 +796,13 @@
         try
         {
             AuditSvc.DeletePlanItem(_deleteItemId);
+            ToastSvc.Success("Denetim planından kaldırıldı.");
             _deleteItemId = 0;
             Load();
         }
-        catch (Exception ex)
+        catch (Exception)
         {
-            _deleteError = $"Silinemedi: {ex.Message}";
+            _deleteError = "Silme işlemi sırasında bir sorun oluştu. Lütfen tekrar deneyin.";
         }
     }
 
@@ -805,7 +810,7 @@
     {
         _convertItem  = item;
         _convertError = "";
-        _convertLeadId = UserId > 0 ? UserId : (_auditorUsers.FirstOrDefault()?.Id ?? 0);
+        _convertLeadId = _userId > 0 ? _userId : (_auditorUsers.FirstOrDefault()?.Id ?? 0);
     }
 
     private void CancelConvert() { _convertItem = null; _convertError = ""; }
@@ -819,9 +824,10 @@
             var audit    = AuditSvc.CreateAuditFromPlanItem(_convertItem!.Id, _convertLeadId);
             _convertItem = null;
             Load();
+            ToastSvc.Success("İç denetim oluşturuldu.");
             Nav.NavigateTo($"/audit/internal/{audit.Id}");
         }
-        catch (Exception ex) { _convertError = $"Hata: {ex.Message}"; }
+        catch (Exception) { _convertError = "Denetim oluşturulurken bir sorun oluştu. Lütfen tekrar deneyin."; }
     }
 
     // ── Görsel yardımcılar ────────────────────────────────────────────────────

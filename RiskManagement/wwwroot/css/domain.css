@@ -737,95 +737,218 @@
 .export-item:hover { background: var(--gray-100); }
 
 /* ══════════════════════════════════════════════════════════
-   RolePermissions — izin matrisi
+   RolePermissions — yetki matrisi
    ══════════════════════════════════════════════════════════ */
-.perm-matrix    { border-collapse: collapse; width: 100%; font-size: 13px; }
-.perm-matrix th { padding: 0; }
-.perm-matrix td { padding: 0; vertical-align: middle; }
 
-.role-col-head {
-  writing-mode: vertical-rl;
-  transform: rotate(180deg);
-  padding: 12px 8px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text);
-  white-space: nowrap;
-  text-align: left;
-  height: 100px;
-  letter-spacing: .3px;
+.perm-page { display: flex; flex-direction: column; gap: 0; }
+
+/* Rol özet çubuğu */
+.perm-role-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
 }
-.group-header-row td {
-  padding: 12px 16px;
-  font-weight: 700;
-  font-size: 12px;
-  letter-spacing: .5px;
-  text-transform: uppercase;
-  border-top: 2px solid;
-}
-.perm-row:hover { background: rgba(0,0,0,.025); }
-.perm-label-cell { padding: 9px 16px 9px 28px; border-bottom: 1px solid var(--gray-100); min-width: 260px; }
-.level-badge {
+.perm-role-chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 10px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 10px;
-  letter-spacing: .3px;
-  text-transform: uppercase;
-  margin-right: 6px;
-  border: 1px solid;
-}
-.perm-check-cell {
-  text-align: center;
-  border-bottom: 1px solid var(--gray-100);
-  border-left: 1px solid var(--gray-100);
-  width: 56px;
-  min-width: 56px;
-}
-.toggle-wrap  { display: flex; justify-content: center; align-items: center; height: 100%; padding: 6px 0; }
-.toggle-input { display: none; }
-.toggle-track {
-  width: 34px; height: 18px;
-  background: var(--gray-300);
-  border-radius: 9px;
-  cursor: pointer;
-  position: relative;
-  transition: background .2s;
-  flex-shrink: 0;
-}
-.toggle-track::after {
-  content: '';
-  position: absolute;
-  top: 2px; left: 2px;
-  width: 14px; height: 14px;
-  background: #fff;
-  border-radius: 50%;
-  transition: left .2s;
-  box-shadow: 0 1px 3px rgba(0,0,0,.3);
-}
-.toggle-input:checked + .toggle-track          { background: #16a34a; }
-.toggle-input:checked + .toggle-track::after   { left: 18px; }
-.admin-cell {
-  text-align: center;
-  border-bottom: 1px solid var(--gray-100);
-  border-left: 1px solid var(--gray-100);
-  width: 56px;
-  color: #16a34a;
-  font-size: 16px;
-}
-.sticky-save {
-  position: sticky;
-  bottom: 0;
+  gap: 8px;
+  padding: 7px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
   background: var(--surface);
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+  user-select: none;
+}
+.perm-role-chip:hover        { border-color: var(--navy-700); box-shadow: 0 0 0 3px rgba(30,58,95,.08); }
+.perm-role-chip.focused      { border-color: var(--navy-700); background: #f0f4fa; box-shadow: 0 0 0 3px rgba(30,58,95,.1); }
+.perm-role-chip-admin        { background: #f0fdf4; border-color: #bbf7d0; cursor: default; }
+.perm-role-chip-name         { font-size: 13px; font-weight: 600; color: var(--text); }
+.perm-role-chip-count        { font-size: 11px; font-weight: 600; padding: 2px 7px;
+                               background: var(--gray-100); border-radius: 10px; color: var(--text-2); }
+.perm-role-chip-admin .perm-role-chip-count { background: #bbf7d0; color: #15803d; }
+
+/* Matris wrap */
+.perm-matrix-wrap {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  overflow-x: auto;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Matris tablo */
+.perm-matrix2 {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.perm-matrix2 th,
+.perm-matrix2 td { padding: 0; }
+
+/* Başlık satırı */
+.perm-th-label {
+  padding: 12px 20px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-3);
+  background: var(--gray-50);
+  border-bottom: 1px solid var(--border);
+  min-width: 280px;
+  white-space: nowrap;
+}
+.perm-th-role {
+  padding: 12px 10px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  background: var(--gray-50);
+  border-bottom: 1px solid var(--border);
+  border-left: 1px solid var(--border);
+  min-width: 80px;
+  white-space: nowrap;
+}
+.perm-th-role.col-focused {
+  background: #eff3fb;
+  color: var(--navy-700);
+}
+.perm-th-admin {
+  background: #f0fdf4;
+  color: #15803d;
+  border-left: 1px solid #bbf7d0;
+}
+
+/* Grup başlığı satırı */
+.perm-group-row td {
+  padding: 8px 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--text-3);
+  background: var(--gray-50);
   border-top: 1px solid var(--border);
-  padding: 14px 24px;
+  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 12px;
-  z-index: 10;
+  gap: 7px;
+}
+.perm-group-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* İzin satırı */
+.perm-item-row { transition: background .1s; }
+.perm-item-row:hover { background: #fafbff; }
+
+.perm-td-label {
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--gray-100);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.perm-level-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.perm-item-desc {
+  font-size: 13px;
+  color: var(--text);
+  flex: 1;
+}
+.perm-item-key {
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-3);
+  background: var(--gray-100);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+/* Checkboxlar */
+.perm-td-check {
+  text-align: center;
+  border-bottom: 1px solid var(--gray-100);
+  border-left: 1px solid var(--gray-100);
+  width: 80px;
+  min-width: 80px;
+  padding: 8px 0;
+}
+.perm-td-check.col-focused { background: #f5f8ff; }
+
+.perm-check-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: all .15s;
+  color: transparent;
+}
+.perm-check-btn.on {
+  background: var(--navy-700);
+  border-color: var(--navy-700);
+  color: #fff;
+  box-shadow: 0 1px 3px rgba(30,58,95,.3);
+}
+.perm-check-btn.off:hover {
+  border-color: var(--navy-100);
+  background: var(--navy-50);
+}
+
+/* Admin sütunu */
+.perm-td-admin {
+  text-align: center;
+  border-bottom: 1px solid #d1fae5;
+  border-left: 1px solid #d1fae5;
+  background: #f8fffe;
+  width: 80px;
+  min-width: 80px;
+  padding: 8px 0;
+}
+
+/* Alt açıklama şeridi */
+.perm-legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 12px;
+  padding: 10px 4px;
+}
+.perm-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* Kaydedilmemiş değişiklik badge */
+.perm-unsaved-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: #92400e;
+  background: #fef3c7;
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid #fcd34d;
 }
 
 /* ══════════════════════════════════════════════════════════

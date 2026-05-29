@@ -10,32 +10,32 @@ public class AnonymousRateLimiter(IMemoryCache cache)
 {
     private const int MaxAttempts = 5;
     private static readonly TimeSpan Window = TimeSpan.FromMinutes(10);
+    private readonly object _lock = new();
 
     public bool IsAllowed(string? ipAddress)
     {
         if (string.IsNullOrEmpty(ipAddress)) return true;
 
         var key = $"anon_risk:{ipAddress}";
-        var count = cache.GetOrCreate(key, entry =>
+
+        // Lock prevents TOCTOU race: another request could slip through between
+        // reading the count and writing the incremented value.
+        lock (_lock)
         {
-            entry.AbsoluteExpirationRelativeToNow = Window;
-            return 0;
-        });
+            var count = cache.GetOrCreate(key, entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = Window;
+                return 0;
+            });
 
-        if (count >= MaxAttempts) return false;
+            if (count >= MaxAttempts) return false;
 
-        cache.Set(key, count + 1, Window);
-        return true;
+            cache.Set(key, count + 1, new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = Window
+            });
+            return true;
+        }
     }
 
-    public TimeSpan GetRetryAfter(string? ipAddress)
-    {
-        if (string.IsNullOrEmpty(ipAddress)) return TimeSpan.Zero;
-        var key = $"anon_risk:{ipAddress}";
-        if (cache.TryGetValue<AbsoluteExpiry>(key + "_exp", out var expiry))
-            return expiry.ExpiresAt - DateTime.UtcNow;
-        return Window;
-    }
-
-    private record AbsoluteExpiry(DateTime ExpiresAt);
 }

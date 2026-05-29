@@ -28,7 +28,7 @@
             <tr><th>Kod</th><th>Konu</th><th>Kategori</th><th>Durum</th><th>Tarih</th><th></th></tr>
         </thead>
         <tbody>
-            @foreach (var r in _reports)
+            @foreach (var r in PagedReports)
             {
                 <tr>
                     <td><code>@r.Code</code></td>
@@ -47,9 +47,39 @@
     </table>
 </div>
 
+@if (TotalEthicsPages > 1)
+{
+    <div class="pagination-bar">
+        <div class="pagination-info">
+            @((_ePage-1)*_ePageSize+1)–@(Math.Min(_ePage*_ePageSize, _reports.Count)) / @_reports.Count kayıt
+        </div>
+        <div class="pagination-controls">
+            <button class="btn btn-outline btn-sm" @onclick="() => _ePage=1"              disabled="@(_ePage==1)">«</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _ePage--"              disabled="@(_ePage==1)">‹</button>
+            @for (int p = Math.Max(1,_ePage-2); p <= Math.Min(TotalEthicsPages,_ePage+2); p++)
+            { var pp = p; <button class="btn @(_ePage==pp?"btn-primary":"btn-outline") btn-sm" @onclick="() => _ePage=pp">@pp</button> }
+            <button class="btn btn-outline btn-sm" @onclick="() => _ePage++"              disabled="@(_ePage==TotalEthicsPages)">›</button>
+            <button class="btn btn-outline btn-sm" @onclick="() => _ePage=TotalEthicsPages" disabled="@(_ePage==TotalEthicsPages)">»</button>
+        </div>
+        <div class="pagination-size">
+            Sayfa başı:
+            <select class="form-control" @bind="_ePageSize" @bind:after="() => _ePage=1">
+                <option value="25">25</option><option value="50">50</option><option value="100">100</option>
+            </select>
+        </div>
+    </div>
+}
+
 @code {
     private List<RiskManagement.Models.EthicsReport> _reports = [];
     private bool _showImport;
+    private int _ePage = 1, _ePageSize = 25;
+
+    private IEnumerable<RiskManagement.Models.EthicsReport> PagedReports
+        => _reports.Skip((_ePage-1)*_ePageSize).Take(_ePageSize);
+    private int TotalEthicsPages
+        => (int)Math.Ceiling(_reports.Count / (double)_ePageSize);
+
     protected override void OnInitialized() => _reports = EthicsSvc.GetAll();
 
     private static string StatusLabel(string s) => s switch

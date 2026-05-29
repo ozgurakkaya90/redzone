@@ -23,6 +23,10 @@ namespace RiskManagement.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ClosureNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("TEXT");
 
@@ -31,6 +35,10 @@ namespace RiskManagement.Migrations
 
                     b.Property<int>("CreatedById")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("DelayReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -64,6 +72,8 @@ namespace RiskManagement.Migrations
 
                     b.HasIndex("RiskId");
 
+                    b.HasIndex("DueDate", "Status");
+
                     b.ToTable("ActionPlans");
                 });
 
@@ -95,6 +105,11 @@ namespace RiskManagement.Migrations
                         .HasMaxLength(20)
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("AuditSource")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<int>("AuditorId")
                         .HasColumnType("INTEGER");
 
@@ -123,6 +138,9 @@ namespace RiskManagement.Migrations
                     b.Property<DateOnly?>("DueDate")
                         .HasColumnType("TEXT");
 
+                    b.Property<int?>("ExternalAuditId")
+                        .HasColumnType("INTEGER");
+
                     b.Property<int?>("InternalAuditId")
                         .HasColumnType("INTEGER");
 
@@ -147,11 +165,17 @@ namespace RiskManagement.Migrations
 
                     b.HasIndex("AuditorId");
 
+                    b.HasIndex("Code");
+
                     b.HasIndex("DepartmentId");
+
+                    b.HasIndex("ExternalAuditId");
 
                     b.HasIndex("InternalAuditId");
 
                     b.HasIndex("OwnerId");
+
+                    b.HasIndex("Status");
 
                     b.ToTable("AuditFindings");
                 });
@@ -162,6 +186,10 @@ namespace RiskManagement.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ClosureNote")
+                        .HasMaxLength(1000)
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("TEXT");
 
@@ -170,6 +198,10 @@ namespace RiskManagement.Migrations
 
                     b.Property<int>("CreatedById")
                         .HasColumnType("INTEGER");
+
+                    b.Property<string>("DelayReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("Description")
                         .IsRequired()
@@ -196,6 +228,8 @@ namespace RiskManagement.Migrations
                     b.HasIndex("CreatedById");
 
                     b.HasIndex("FindingId");
+
+                    b.HasIndex("DueDate", "Status");
 
                     b.ToTable("AuditFindingActions");
                 });
@@ -365,6 +399,37 @@ namespace RiskManagement.Migrations
                     b.ToTable("Companies");
                 });
 
+            modelBuilder.Entity("RiskManagement.Models.ConfigChangeLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("ChangedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ChangedBy")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NewValue")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OldValue")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SettingKey")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ConfigChangeLogs");
+                });
+
             modelBuilder.Entity("RiskManagement.Models.Control", b =>
                 {
                     b.Property<int>("Id")
@@ -424,6 +489,36 @@ namespace RiskManagement.Migrations
                     b.HasKey("Key");
 
                     b.ToTable("Counters");
+                });
+
+            modelBuilder.Entity("RiskManagement.Models.CustomRole", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsSystem")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Label")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("CustomRoles");
                 });
 
             modelBuilder.Entity("RiskManagement.Models.DatabaseConnectionConfig", b =>
@@ -658,6 +753,150 @@ namespace RiskManagement.Migrations
                     b.ToTable("Evaluations");
                 });
 
+            modelBuilder.Entity("RiskManagement.Models.ExternalAudit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly>("AuditDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("AuditingBody")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly?>("EndDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Notes")
+                        .HasMaxLength(2000)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReportFilePath")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ResponsibleDeptId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("ResponsibleUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Score")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Standard")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(300)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("AuditDate");
+
+                    b.HasIndex("AuditingBody");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("ResponsibleDeptId");
+
+                    b.HasIndex("ResponsibleUserId");
+
+                    b.HasIndex("Status");
+
+                    b.ToTable("ExternalAudits");
+                });
+
+            modelBuilder.Entity("RiskManagement.Models.ExternalAuditBody", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive");
+
+                    b.HasIndex("Name")
+                        .IsUnique();
+
+                    b.ToTable("ExternalAuditBodies");
+                });
+
+            modelBuilder.Entity("RiskManagement.Models.FindingActivityLog", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(500)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("FindingId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FindingId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("FindingActivityLogs");
+                });
+
             modelBuilder.Entity("RiskManagement.Models.FindingAttachment", b =>
                 {
                     b.Property<int>("Id")
@@ -824,6 +1063,52 @@ namespace RiskManagement.Migrations
                     b.ToTable("LdapConfigurations");
                 });
 
+            modelBuilder.Entity("RiskManagement.Models.McpApiKey", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("KeyHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("KeyPrefix")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("ScopeUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("KeyPrefix");
+
+                    b.HasIndex("ScopeUserId");
+
+                    b.ToTable("McpApiKeys");
+                });
+
             modelBuilder.Entity("RiskManagement.Models.Organization", b =>
                 {
                     b.Property<int>("Id")
@@ -972,13 +1257,19 @@ namespace RiskManagement.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Code");
+
                     b.HasIndex("DepartmentId");
 
                     b.HasIndex("OrganizationId");
 
                     b.HasIndex("OwnerId");
 
+                    b.HasIndex("ProposedAt");
+
                     b.HasIndex("ProposedById");
+
+                    b.HasIndex("Status");
 
                     b.ToTable("Risks");
                 });
@@ -1016,11 +1307,41 @@ namespace RiskManagement.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RiskId");
-
                     b.HasIndex("UserId");
 
+                    b.HasIndex("RiskId", "Timestamp");
+
                     b.ToTable("RiskAuditLogs");
+                });
+
+            modelBuilder.Entity("RiskManagement.Models.RiskFindingLink", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CreatedById")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("FindingId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("RiskId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedById");
+
+                    b.HasIndex("FindingId");
+
+                    b.HasIndex("RiskId", "FindingId")
+                        .IsUnique();
+
+                    b.ToTable("RiskFindingLinks");
                 });
 
             modelBuilder.Entity("RiskManagement.Models.RiskLibraryItem", b =>
@@ -1178,6 +1499,9 @@ namespace RiskManagement.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("FailedLoginCount")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(200)
@@ -1185,6 +1509,9 @@ namespace RiskManagement.Migrations
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LockoutUntil")
+                        .HasColumnType("TEXT");
 
                     b.Property<int?>("OrganizationId")
                         .HasColumnType("INTEGER");
@@ -1258,6 +1585,34 @@ namespace RiskManagement.Migrations
                         .IsUnique();
 
                     b.ToTable("UserDepartments");
+                });
+
+            modelBuilder.Entity("RiskManagement.Models.UserExternalAuditBody", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("AuditingBody")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("CanEdit")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "AuditingBody")
+                        .IsUnique();
+
+                    b.ToTable("UserExternalAuditBodies");
                 });
 
             modelBuilder.Entity("RiskManagement.Models.UserOrganization", b =>
@@ -1342,6 +1697,11 @@ namespace RiskManagement.Migrations
                         .HasForeignKey("DepartmentId")
                         .OnDelete(DeleteBehavior.SetNull);
 
+                    b.HasOne("RiskManagement.Models.ExternalAudit", "ExternalAudit")
+                        .WithMany("Findings")
+                        .HasForeignKey("ExternalAuditId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("RiskManagement.Models.InternalAudit", "InternalAudit")
                         .WithMany("Findings")
                         .HasForeignKey("InternalAuditId")
@@ -1355,6 +1715,8 @@ namespace RiskManagement.Migrations
                     b.Navigation("Auditor");
 
                     b.Navigation("Department");
+
+                    b.Navigation("ExternalAudit");
 
                     b.Navigation("InternalAudit");
 
@@ -1532,6 +1894,49 @@ namespace RiskManagement.Migrations
                     b.Navigation("Risk");
                 });
 
+            modelBuilder.Entity("RiskManagement.Models.ExternalAudit", b =>
+                {
+                    b.HasOne("RiskManagement.Models.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RiskManagement.Models.Department", "ResponsibleDept")
+                        .WithMany()
+                        .HasForeignKey("ResponsibleDeptId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("RiskManagement.Models.User", "ResponsibleUser")
+                        .WithMany()
+                        .HasForeignKey("ResponsibleUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("ResponsibleDept");
+
+                    b.Navigation("ResponsibleUser");
+                });
+
+            modelBuilder.Entity("RiskManagement.Models.FindingActivityLog", b =>
+                {
+                    b.HasOne("RiskManagement.Models.AuditFinding", "Finding")
+                        .WithMany("ActivityLogs")
+                        .HasForeignKey("FindingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RiskManagement.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Finding");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("RiskManagement.Models.FindingAttachment", b =>
                 {
                     b.HasOne("RiskManagement.Models.AuditFinding", "Finding")
@@ -1574,6 +1979,24 @@ namespace RiskManagement.Migrations
                     b.Navigation("Department");
 
                     b.Navigation("LeadAuditor");
+                });
+
+            modelBuilder.Entity("RiskManagement.Models.McpApiKey", b =>
+                {
+                    b.HasOne("RiskManagement.Models.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RiskManagement.Models.User", "ScopeUser")
+                        .WithMany()
+                        .HasForeignKey("ScopeUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("ScopeUser");
                 });
 
             modelBuilder.Entity("RiskManagement.Models.Organization", b =>
@@ -1644,6 +2067,33 @@ namespace RiskManagement.Migrations
                     b.Navigation("Risk");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("RiskManagement.Models.RiskFindingLink", b =>
+                {
+                    b.HasOne("RiskManagement.Models.User", "CreatedBy")
+                        .WithMany()
+                        .HasForeignKey("CreatedById")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("RiskManagement.Models.AuditFinding", "Finding")
+                        .WithMany("RiskLinks")
+                        .HasForeignKey("FindingId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("RiskManagement.Models.Risk", "Risk")
+                        .WithMany("FindingLinks")
+                        .HasForeignKey("RiskId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CreatedBy");
+
+                    b.Navigation("Finding");
+
+                    b.Navigation("Risk");
                 });
 
             modelBuilder.Entity("RiskManagement.Models.RiskLibraryItem", b =>
@@ -1737,6 +2187,17 @@ namespace RiskManagement.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("RiskManagement.Models.UserExternalAuditBody", b =>
+                {
+                    b.HasOne("RiskManagement.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("RiskManagement.Models.UserOrganization", b =>
                 {
                     b.HasOne("RiskManagement.Models.Organization", "Organization")
@@ -1771,9 +2232,13 @@ namespace RiskManagement.Migrations
                 {
                     b.Navigation("Actions");
 
+                    b.Navigation("ActivityLogs");
+
                     b.Navigation("Attachments");
 
                     b.Navigation("ClosureRequests");
+
+                    b.Navigation("RiskLinks");
                 });
 
             modelBuilder.Entity("RiskManagement.Models.AuditPlan", b =>
@@ -1789,6 +2254,11 @@ namespace RiskManagement.Migrations
             modelBuilder.Entity("RiskManagement.Models.EthicsReport", b =>
                 {
                     b.Navigation("Attachments");
+                });
+
+            modelBuilder.Entity("RiskManagement.Models.ExternalAudit", b =>
+                {
+                    b.Navigation("Findings");
                 });
 
             modelBuilder.Entity("RiskManagement.Models.InternalAudit", b =>
@@ -1810,6 +2280,8 @@ namespace RiskManagement.Migrations
                     b.Navigation("Controls");
 
                     b.Navigation("Evaluations");
+
+                    b.Navigation("FindingLinks");
 
                     b.Navigation("Reviews");
                 });

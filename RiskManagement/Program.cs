@@ -1,12 +1,17 @@
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
-using System.Security.Claims;
-using System.Threading.RateLimiting;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using RiskManagement.Data;
+using RiskManagement.Extensions;
+using RiskManagement.Mcp;
 using RiskManagement.Models;
 using RiskManagement.Services;
+using RiskManagement.Services.Ai;
 using RiskManagement.Services.Email;
+using System.Security.Claims;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,20 +46,27 @@ if (builder.Environment.IsProduction())
 
 // ─── Veritabanı ───────────────────────────────────────────────────────────────
 var useSqlite = builder.Configuration.GetValue<bool>("AppSettings:UseSqlite");
+Action<DbContextOptionsBuilder> configureDb;
 if (useSqlite)
 {
     var sqlitePath = builder.Configuration.GetValue<string>("AppSettings:SqlitePath") ?? "risk_management.db";
-    builder.Services.AddDbContext<AppDbContext>(opt =>
-        opt.UseSqlite($"Data Source={sqlitePath}"));
+    configureDb = opt => opt.UseSqlite($"Data Source={sqlitePath}");
 }
 else
 {
     var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
         ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
         ?? throw new InvalidOperationException("Connection string bulunamadı.");
-    builder.Services.AddDbContext<AppDbContext>(opt =>
-        opt.UseMySql(connStr, new MySqlServerVersion(new Version(8, 0, 36))));
+    configureDb = opt => opt.UseMySql(connStr, new MySqlServerVersion(new Version(8, 0, 36)));
 }
+// Blazor Server'da scoped context = circuit ömrü (tüm oturum). Tek paylaşımlı context,
+// eşzamanlı işlemlerde "second operation started" hatasına ve bayat change-tracker'a yol açar.
+// Çözüm: DbContextFactory kaydet. Geriye dönük uyum için scoped AppDbContext de fabrikadan
+// üretilir — mevcut @inject AppDbContext kullanımları değişmeden çalışır; yüksek-frekanslı /
+// her-zaman-açık bileşenler ise IDbContextFactory ile kısa-ömürlü, izole context alır.
+builder.Services.AddDbContextFactory<AppDbContext>(configureDb);
+builder.Services.AddScoped<AppDbContext>(sp =>
+    sp.GetRequiredService<IDbContextFactory<AppDbContext>>().CreateDbContext());
 
 // ─── Auth: Cookie ─────────────────────────────────────────────────────────────
 builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
@@ -62,7 +74,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
     {
         opt.LoginPath = "/login";
         opt.LogoutPath = "/logout";
-        opt.ExpireTimeSpan = TimeSpan.FromHours(8);
+        opt.ExpireTimeSpan = TimeSpan.FromHours(8); // DB değeri PostConfigure ile üstüne yazar
         opt.SlidingExpiration = true;
         opt.Cookie.HttpOnly = true;
         // Prod için cookie transport güvenliğini zorunlu kıl
@@ -72,6 +84,28 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         opt.Cookie.SameSite = SameSiteMode.Lax;
     });
 builder.Services.AddAuthorization();
+
+// Oturum süresi DB'deki security_session_timeout_hours değerinden okunur.
+// IOptionsMonitor sayesinde uygulama yeniden başlatıldığında güncel değeri alır.
+builder.Services.AddSingleton<Microsoft.Extensions.Options.IPostConfigureOptions<Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationOptions>>(sp =>
+    new Microsoft.Extensions.Options.PostConfigureOptions<Microsoft.AspNetCore.Authentication.Cookies.CookieAuthenticationOptions>(
+        CookieAuthenticationDefaults.AuthenticationScheme,
+        opt =>
+        {
+            var scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
+            using var scope = scopeFactory.CreateScope();
+            try
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                var row = db.AppConfigs.AsNoTracking()
+                    .FirstOrDefault(c => c.Key == "security_session_timeout_hours");
+                if (row?.Value is not null
+                    && int.TryParse(row.Value.Trim('"'), out var h)
+                    && h > 0)
+                    opt.ExpireTimeSpan = TimeSpan.FromHours(h);
+            }
+            catch { /* migration henüz çalışmadıysa varsayılan 8h kalır */ }
+        }));
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 builder.Services.AddRateLimiter(opts =>
@@ -107,8 +141,14 @@ builder.Services.AddServerSideBlazor();
 // ─── E-posta Servisi ─────────────────────────────────────────────────────────
 // Ayarlar DB'de saklanır (ConfigService), appsettings.json'a gerek kalmaz.
 // Admin paneli → Sistem Yapılandırması → E-posta üzerinden yönetilir.
+// ─── In-memory log buffer (singleton) ────────────────────────────────────────
+var logBuffer = new RecentLogBuffer();
+builder.Services.AddSingleton(logBuffer);
+builder.Logging.AddProvider(new RecentLogBufferProvider(logBuffer));
+
 builder.Services.AddSingleton<EmailQueue>();
 builder.Services.AddHostedService<EmailWorker>();
+builder.Services.AddHostedService<ActionReminderWorker>();
 builder.Services.AddScoped<SmtpNotificationService>();
 builder.Services.AddScoped<INotificationService, SmtpNotificationService>();
 builder.Services.AddScoped<AuthService>();
@@ -123,87 +163,44 @@ builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<ExportService>();
 builder.Services.AddScoped<ImportService>();
 builder.Services.AddScoped<RiskLibraryService>();
+builder.Services.AddScoped<McpApiKeyService>();
+builder.Services.AddScoped<McpRequestContext>();
+
+// ─── AI Servisleri ────────────────────────────────────────────────────────────
+// Provider seçimi ConfigService'ten okunur — her şirket kendi ayarını girer.
+builder.Services.AddHttpClient();
+builder.Services.AddScoped<IAiCompletionService>(sp =>
+{
+    var cfg      = sp.GetRequiredService<ConfigService>();
+    var settings = cfg.GetAiSettings();
+    var http     = sp.GetRequiredService<IHttpClientFactory>();
+    return settings.Provider switch
+    {
+        "anthropic"                        => new AnthropicCompletionService(settings, http),
+        // "openai_compatible" yeni evrensel protokol adı;
+        // eski provider adları (openai/gemini/deepseek/ollama) geriye dönük uyumluluk için korunuyor.
+        "openai_compatible" or "openai" or "gemini" or "deepseek" or "ollama"
+            => new OpenAiCompatibleCompletionService(settings, http),
+        _                                  => new NullCompletionService()
+    };
+});
+builder.Services.AddScoped<AiRiskDraftService>();
+
+// ─── MCP Server ───────────────────────────────────────────────────────────────
+builder.Services.AddMcpServer()
+    .WithHttpTransport()
+    .WithTools<RiskManagementTools>();
+
+builder.Services.AddHttpClient<UpdateCheckService>(client =>
+{
+    client.Timeout = TimeSpan.FromMilliseconds(3000);
+    client.DefaultRequestHeaders.Add("User-Agent", "RedZone-UpdateCheck/1.0");
+});
 
 // HTTP context erişimi için (Blazor Server'da gerekli)
 builder.Services.AddHttpContextAccessor();
 
 var app = builder.Build();
-
-// ─── MySQL Schema Fix (raw SQL — EF Core modelinden bağımsız) ────────────────
-// EF Core migration çalışmadan önce eksik kolon/tablo varsa direkt ekler.
-// SQLite ortamında çalışmaz (MySQL dışı ortamlar atlanır).
-if (!builder.Configuration.GetValue<bool>("AppSettings:UseSqlite"))
-{
-    var fixLogger = app.Services.GetRequiredService<ILogger<Program>>();
-    var fixConnStr = builder.Configuration.GetConnectionString("DefaultConnection")
-        ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection") ?? "";
-    if (!string.IsNullOrEmpty(fixConnStr))
-    {
-        try
-        {
-            using var fixConn = new MySqlConnector.MySqlConnection(fixConnStr);
-            fixConn.Open();
-            var fixCmds = new[]
-            {
-                "ALTER TABLE `Risks` ADD COLUMN IF NOT EXISTS `SourceLibraryItemId` int NULL",
-
-                @"CREATE TABLE IF NOT EXISTS `AuditPlans` (
-                    `Id` int NOT NULL AUTO_INCREMENT,
-                    `Year` int NOT NULL DEFAULT 0,
-                    `Title` varchar(200) NOT NULL DEFAULT '',
-                    `Description` longtext NULL,
-                    `CreatedById` int NOT NULL DEFAULT 0,
-                    `CreatedAt` datetime(6) NOT NULL DEFAULT '2000-01-01 00:00:00',
-                    PRIMARY KEY (`Id`)
-                ) CHARACTER SET utf8mb4",
-
-                @"CREATE TABLE IF NOT EXISTS `AuditPlanItems` (
-                    `Id` int NOT NULL AUTO_INCREMENT,
-                    `AuditPlanId` int NOT NULL DEFAULT 0,
-                    `Title` varchar(200) NOT NULL DEFAULT '',
-                    `AuditType` varchar(100) NULL,
-                    `AuditedUnit` varchar(200) NULL,
-                    `Description` varchar(500) NULL,
-                    `PlannedStartDate` date NOT NULL DEFAULT '2000-01-01',
-                    `PlannedEndDate` date NOT NULL DEFAULT '2000-01-01',
-                    `ActualStartDate` date NULL,
-                    `ActualEndDate` date NULL,
-                    `DepartmentId` int NULL,
-                    `ResponsibleId` int NULL,
-                    `Notes` varchar(500) NULL,
-                    `SortOrder` int NOT NULL DEFAULT 0,
-                    PRIMARY KEY (`Id`)
-                ) CHARACTER SET utf8mb4",
-
-                "ALTER TABLE `AuditPlans`    MODIFY COLUMN `Id` int NOT NULL AUTO_INCREMENT",
-                "ALTER TABLE `AuditPlanItems` MODIFY COLUMN `Id` int NOT NULL AUTO_INCREMENT",
-
-                "ALTER TABLE `AuditPlanItems`  ADD COLUMN IF NOT EXISTS `DepartmentId`    int NULL",
-                "ALTER TABLE `InternalAudits`  ADD COLUMN IF NOT EXISTS `DepartmentId`    int NULL",
-                "ALTER TABLE `InternalAudits`  ADD COLUMN IF NOT EXISTS `AuditPlanItemId` int NULL",
-
-                @"INSERT IGNORE INTO `__EFMigrationsHistory` (`MigrationId`, `ProductVersion`) VALUES
-                    ('20260514183416_AddSourceLibraryItemIdToRisk','8.0.2'),
-                    ('20260514184823_AddAuditPlan','8.0.2'),
-                    ('20260514190109_AddAuditPlanItemDepartment','8.0.2'),
-                    ('20260514190916_AddAuditDeptAndPlanLink','8.0.2'),
-                    ('20260514200000_FixMySqlAutoIncrement','8.0.2')",
-            };
-            foreach (var sql in fixCmds)
-            {
-                try
-                {
-                    using var cmd = new MySqlConnector.MySqlCommand(sql, fixConn);
-                    cmd.CommandTimeout = 20;
-                    cmd.ExecuteNonQuery();
-                }
-                catch (Exception ex) { fixLogger.LogWarning("Fix SQL atlandı: {Msg}", ex.Message); }
-            }
-            fixLogger.LogInformation("Schema fix tamamlandı.");
-        }
-        catch (Exception ex) { fixLogger.LogError(ex, "Schema fix bağlantı hatası."); }
-    }
-}
 
 // ─── Migrations + Seed ───────────────────────────────────────────────────────
 using (var scope = app.Services.CreateScope())
@@ -211,8 +208,9 @@ using (var scope = app.Services.CreateScope())
     var db     = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-    // Migration 30 saniyede tamamlanmazsa uyarı ver, devam et
+    // Migration 30 saniyede tamamlanmazsa uyarı ver; production'da kritik hata uygulamayı durdurur.
     using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30));
+    Exception? migrationError = null;
     try
     {
         await db.Database.MigrateAsync(cts.Token);
@@ -224,15 +222,38 @@ using (var scope = app.Services.CreateScope())
     }
     catch (Exception ex)
     {
+        migrationError = ex;
         logger.LogError(ex, "Migration hatası: {Message}", ex.Message);
     }
+
+    // Production'da migration hatası uygulamayı durdurur — şema uyumsuzluğuyla çalışmak tehlikeli.
+    if (migrationError != null && app.Environment.IsProduction())
+        throw new InvalidOperationException(
+            "Production ortamında migration başarısız. Veritabanını kontrol edin ve yeniden başlatın.",
+            migrationError);
 
     try
     {
         if (app.Configuration.GetValue<bool>("AppSettings:DemoMode"))
             await SeedData.RunAsync(db);
 
+        // Demo verisi sıfırlama — AppSettings:DemoReset=true ve sürüm değiştiğinde çalışır
+        if (app.Configuration.GetValue<bool>("AppSettings:DemoReset"))
+        {
+            var seedVer = db.AppConfigs.FirstOrDefault(c => c.Key == "demo_seed_version")?.Value;
+            if (seedVer != DemoSeedData.SeedVersion)
+            {
+                logger.LogInformation("Demo verisi sıfırlanıyor (v{V})…", DemoSeedData.SeedVersion);
+                await DemoSeedData.ResetAndSeedAsync(db);
+                db.AppConfigs.RemoveRange(db.AppConfigs.Where(c => c.Key == "demo_seed_version"));
+                db.AppConfigs.Add(new AppConfig { Key = "demo_seed_version", Value = DemoSeedData.SeedVersion });
+                db.SaveChanges();
+                logger.LogInformation("Demo verisi tamamlandı.");
+            }
+        }
+
         scope.ServiceProvider.GetRequiredService<RiskLibraryService>().SeedIfEmpty();
+        AuthService.SeedSystemData(db);
         SyncUserAssignments(db);
     }
     catch (Exception ex)
@@ -242,20 +263,60 @@ using (var scope = app.Services.CreateScope())
 }
 
 // ─── Middleware ───────────────────────────────────────────────────────────────
+
+// Ters proxy (nginx / AWS ALB) arkasındaki deploy'larda X-Forwarded-Proto başlığından
+// scheme'i doğru oku. Aksi hâlde auth redirect URL'leri http:// ile üretilir.
+// Development ortamında da zararsızdır; bayrak sıfırlanmaz.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseForwardedHeaders(new ForwardedHeadersOptions
+    {
+        ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto,
+    });
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error");
     app.UseHsts();
 }
 
+// ─── Güvenlik response header'ları ────────────────────────────────────────────
+// Clickjacking, MIME sniffing ve bilgi sızıntısı önleme.
+// CSP notu: Blazor Server, SignalR WebSocket + inline script (_framework/blazor.server.js)
+// gerektirdiğinden katı bir CSP zorlu; mevcut yapıda 'unsafe-inline' kaçınılmaz.
+// Yükseltme yolu: nonce-tabanlı CSP + script-src 'nonce-{değer}' (ileride değerlendirilebilir).
 app.Use(async (context, next) =>
 {
-    if (context.Request.Path.StartsWithSegments("/uploads"))
+    context.Response.Headers["X-Frame-Options"]        = "SAMEORIGIN";
+    context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    context.Response.Headers["Referrer-Policy"]        = "strict-origin-when-cross-origin";
+    context.Response.Headers["X-Permitted-Cross-Domain-Policies"] = "none";
+    // Temel CSP: framing ve plugin kaynağını sınırla; script/style kaynakları Blazor
+    // gereksinimleri nedeniyle self + unsafe-inline ile kısıtlı tutuldu.
+    context.Response.Headers["Content-Security-Policy"] =
+        "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data:; " +
+        "font-src 'self'; " +
+        "connect-src 'self' ws: wss:; " +  // Blazor SignalR WebSocket
+        "frame-ancestors 'self'; " +
+        "object-src 'none'; " +
+        "base-uri 'self';";
+    await next();
+});
+
+// Hassas attachment dizinlerine doğrudan erişimi engelle.
+// Auth gerektirmez — her zaman erken çalışmalı.
+app.Use(async (context, next) =>
+{
+    if (context.Request.Path.StartsWithSegments("/uploads/findings") ||
+        context.Request.Path.StartsWithSegments("/uploads/ethics"))
     {
         context.Response.StatusCode = StatusCodes.Status404NotFound;
         return;
     }
-
     await next();
 });
 
@@ -266,274 +327,96 @@ app.UseAntiforgery();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Kapalı modüllerin sayfalarına erişimi engelle.
+// UseAuthentication()'dan SONRA gelir — context.User burada dolu olur.
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated == true)
+    {
+        var path = context.Request.Path.Value ?? "";
+        var isInfra = path.StartsWith("/_blazor") || path.StartsWith("/_framework")
+                   || path.StartsWith("/_content") || path.StartsWith("/css")
+                   || path.StartsWith("/js") || path.StartsWith("/lib");
+        if (!isInfra)
+        {
+            var cache = context.RequestServices.GetRequiredService<Microsoft.Extensions.Caching.Memory.IMemoryCache>();
+
+            // Modül durumu 60 saniye önbelleğe alınır — her request'te DB'ye vurulmaz
+            bool IsDisabled(string module) => cache.GetOrCreate($"module_guard:{module}", entry =>
+            {
+                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(60);
+                using var s = context.RequestServices.CreateScope();
+                return !s.ServiceProvider.GetRequiredService<RiskManagement.Services.ConfigService>().IsModuleActive(module);
+            });
+
+            var isAnonRisk   = path.Equals("/risk/propose", StringComparison.OrdinalIgnoreCase);
+            var isAnonEthics = path.StartsWith("/ethics/submit", StringComparison.OrdinalIgnoreCase)
+                            || path.StartsWith("/ethics/status", StringComparison.OrdinalIgnoreCase);
+
+            if ((!isAnonRisk   && path.StartsWith("/risk",   StringComparison.OrdinalIgnoreCase) && IsDisabled("risk"))  ||
+                (                 path.StartsWith("/audit",  StringComparison.OrdinalIgnoreCase) && IsDisabled("audit")) ||
+                (!isAnonEthics && path.StartsWith("/ethics", StringComparison.OrdinalIgnoreCase) && IsDisabled("ethics")))
+            {
+                context.Response.Redirect("/?modul_kapali=1");
+                return;
+            }
+        }
+    }
+    await next();
+});
+
+// ─── MCP endpoint — API key ile korumalı ─────────────────────────────────────
+app.Use(async (context, next) =>
+{
+    if (!context.Request.Path.StartsWithSegments("/mcp"))
+    {
+        await next();
+        return;
+    }
+
+    var rawKey = context.Request.Headers["X-Api-Key"].FirstOrDefault()
+        ?? context.Request.Headers["Authorization"].FirstOrDefault()
+               ?.Replace("Bearer ", "", StringComparison.OrdinalIgnoreCase);
+
+    if (string.IsNullOrEmpty(rawKey))
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(new { error = "X-Api-Key header zorunludur" });
+        return;
+    }
+
+    using var scope = context.RequestServices.CreateScope();
+    var keySvc = scope.ServiceProvider.GetRequiredService<McpApiKeyService>();
+    var apiKey = keySvc.Validate(rawKey);
+    if (apiKey is null)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        await context.Response.WriteAsJsonAsync(new { error = "Geçersiz API anahtarı" });
+        return;
+    }
+
+    // Scope user'ı request context'ine aktar
+    var mcpCtx = context.RequestServices.GetRequiredService<McpRequestContext>();
+    mcpCtx.ScopeUser = apiKey.ScopeUser;
+
+    await next();
+});
+
 app.MapHealthChecks("/healthz");
 app.MapRazorPages();
 app.MapBlazorHub();
-// ─── Export Endpoints ─────────────────────────────────────────────────────────
-app.MapGet("/export/risks/excel", (RiskService riskSvc, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var risks = riskSvc.GetForUser(userObj.Id, userObj.Role);
-    var bytes = exportSvc.ExportRisksToExcel(risks);
-    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        $"Risk_Kaydi_{DateTime.Now:yyyyMMdd}.xlsx");
-}).RequireAuthorization();
+app.MapExportEndpoints();
+app.MapImportEndpoints();
+app.MapMcp("/mcp");
 
-app.MapGet("/export/risks/pdf", (RiskService riskSvc, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var risks = riskSvc.GetForUser(userObj.Id, userObj.Role);
-    var bytes = exportSvc.ExportRisksToPdf(risks);
-    return Results.File(bytes, "application/pdf",
-        $"Risk_Kaydi_{DateTime.Now:yyyyMMdd}.pdf");
-}).RequireAuthorization();
-
-app.MapGet("/export/findings/excel", (AuditService auditSvc, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var findings = auditSvc.GetFindingsForUser(userObj.Id, userObj.Role);
-    var bytes = exportSvc.ExportFindingsToExcel(findings);
-    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        $"Denetim_Bulgulari_{DateTime.Now:yyyyMMdd}.xlsx");
-}).RequireAuthorization();
-
-app.MapGet("/export/findings/pdf", (AuditService auditSvc, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var findings = auditSvc.GetFindingsForUser(userObj.Id, userObj.Role);
-    var bytes = exportSvc.ExportFindingsToPdf(findings);
-    return Results.File(bytes, "application/pdf",
-        $"Denetim_Bulgulari_{DateTime.Now:yyyyMMdd}.pdf");
-}).RequireAuthorization();
-
-// ── Kontrol Planı Export ──────────────────────────────────────────────────────
-app.MapGet("/export/controls/excel", (AppDbContext db, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var controls = db.Controls
-        .Include(c => c.Risk)
-        .Include(c => c.EnteredBy)
-        .Include(c => c.OwnerDept)
-        .ToList();
-    var bytes = exportSvc.ExportControlsToExcel(controls);
-    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        $"Kontrol_Plani_{DateTime.Now:yyyyMMdd}.xlsx");
-}).RequireAuthorization();
-
-app.MapGet("/export/controls/pdf", (AppDbContext db, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var controls = db.Controls
-        .Include(c => c.Risk)
-        .Include(c => c.EnteredBy)
-        .Include(c => c.OwnerDept)
-        .ToList();
-    var bytes = exportSvc.ExportControlsToPdf(controls);
-    return Results.File(bytes, "application/pdf",
-        $"Kontrol_Plani_{DateTime.Now:yyyyMMdd}.pdf");
-}).RequireAuthorization();
-
-// ── Risk Aksiyon Planları Export ──────────────────────────────────────────────
-app.MapGet("/export/action-plans/excel", (AppDbContext db, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var plans = db.ActionPlans
-        .Include(a => a.Risk)
-        .Include(a => a.CreatedBy)
-        .Include(a => a.OwnerDept)
-        .ToList();
-    var bytes = exportSvc.ExportActionPlansToExcel(plans);
-    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        $"Aksiyon_Planlari_{DateTime.Now:yyyyMMdd}.xlsx");
-}).RequireAuthorization();
-
-app.MapGet("/export/action-plans/pdf", (AppDbContext db, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var plans = db.ActionPlans
-        .Include(a => a.Risk)
-        .Include(a => a.CreatedBy)
-        .Include(a => a.OwnerDept)
-        .ToList();
-    var bytes = exportSvc.ExportActionPlansToPdf(plans);
-    return Results.File(bytes, "application/pdf",
-        $"Aksiyon_Planlari_{DateTime.Now:yyyyMMdd}.pdf");
-}).RequireAuthorization();
-
-// ── Denetim Aksiyon Planları Export ──────────────────────────────────────────
-app.MapGet("/export/audit-actions/excel", (AppDbContext db, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var actions = db.AuditFindingActions
-        .Include(a => a.Finding)
-        .Include(a => a.CreatedBy)
-        .ToList();
-    var bytes = exportSvc.ExportAuditActionsToExcel(actions);
-    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        $"Denetim_Aksiyonlari_{DateTime.Now:yyyyMMdd}.xlsx");
-}).RequireAuthorization();
-
-app.MapGet("/export/audit-actions/pdf", (AppDbContext db, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var actions = db.AuditFindingActions
-        .Include(a => a.Finding)
-        .Include(a => a.CreatedBy)
-        .ToList();
-    var bytes = exportSvc.ExportAuditActionsToPdf(actions);
-    return Results.File(bytes, "application/pdf",
-        $"Denetim_Aksiyonlari_{DateTime.Now:yyyyMMdd}.pdf");
-}).RequireAuthorization();
-
-// ── Etik Bildirimler Export ───────────────────────────────────────────────────
-app.MapGet("/export/ethics/excel", (AppDbContext db, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var reports = db.EthicsReports.ToList();
-    var bytes = exportSvc.ExportEthicsToExcel(reports);
-    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        $"Etik_Bildirimler_{DateTime.Now:yyyyMMdd}.xlsx");
-}).RequireAuthorization();
-
-app.MapGet("/export/ethics/pdf", (AppDbContext db, ExportService exportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-    var reports = db.EthicsReports.ToList();
-    var bytes = exportSvc.ExportEthicsToPdf(reports);
-    return Results.File(bytes, "application/pdf",
-        $"Etik_Bildirimler_{DateTime.Now:yyyyMMdd}.pdf");
-}).RequireAuthorization();
-
-// ── Risk Kütüphanesi Export ───────────────────────────────────────────────────
-app.MapGet("/export/library/excel", (RiskLibraryService libSvc, ClaimsPrincipal user) =>
-{
-    if (AuthService.UserFromPrincipal(user) is null) return Results.Unauthorized();
-    var items = libSvc.Search(null, null, null, null);
-    var bytes = libSvc.ExportToExcel(items);
-    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        $"Risk_Kutuphanesi_{DateTime.Now:yyyyMMdd}.xlsx");
-}).RequireAuthorization();
-
-// ── Şablon İndirme ────────────────────────────────────────────────────────────
-app.MapGet("/import/template/{module}", (string module, ExportService exportSvc, RiskLibraryService libSvc, ClaimsPrincipal user) =>
-{
-    if (AuthService.UserFromPrincipal(user) is null) return Results.Unauthorized();
-    var (bytes, fileName) = module switch
-    {
-        "risks"        => (exportSvc.GetRiskImportTemplate(),        "Risk_Sablon.xlsx"),
-        "controls"     => (exportSvc.GetControlImportTemplate(),     "Kontrol_Sablon.xlsx"),
-        "action-plans" => (exportSvc.GetActionPlanImportTemplate(),  "AksiyonPlan_Sablon.xlsx"),
-        "findings"     => (exportSvc.GetFindingImportTemplate(),     "Bulgu_Sablon.xlsx"),
-        "audit-actions"=> (exportSvc.GetAuditActionImportTemplate(), "DenetimAksiyon_Sablon.xlsx"),
-        "ethics"       => (exportSvc.GetEthicsImportTemplate(),      "Etik_Sablon.xlsx"),
-        "library"      => (libSvc.GetImportTemplate(),               "Kutuphane_Sablon.xlsx"),
-        _              => ((byte[]?)null, "")
-    };
-    if (bytes is null) return Results.NotFound();
-    return Results.File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-}).RequireAuthorization();
-
-// ── İçe Aktarma ───────────────────────────────────────────────────────────────
-app.MapPost("/import/{module}", async (string module, HttpRequest request, ImportService importSvc, RiskLibraryService libraryImportSvc, ClaimsPrincipal user) =>
-{
-    var userObj = AuthService.UserFromPrincipal(user);
-    if (userObj is null) return Results.Unauthorized();
-
-    if (!request.HasFormContentType || request.Form.Files.Count == 0)
-        return Results.BadRequest(new { error = "Dosya yüklenmedi." });
-
-    var file = request.Form.Files[0];
-    if (file.Length == 0)
-        return Results.BadRequest(new { error = "Boş dosya." });
-
-    using var stream = new MemoryStream();
-    await file.CopyToAsync(stream);
-    stream.Position = 0;
-
-    ImportResult result = module switch
-    {
-        "risks"         => importSvc.ImportRisksFromExcel(stream, userObj.Id),
-        "controls"      => importSvc.ImportControlsFromExcel(stream, userObj.Id),
-        "action-plans"  => importSvc.ImportActionPlansFromExcel(stream, userObj.Id),
-        "findings"      => importSvc.ImportFindingsFromExcel(stream, userObj.Id),
-        "audit-actions" => importSvc.ImportAuditActionsFromExcel(stream, userObj.Id),
-        "ethics"        => importSvc.ImportEthicsFromExcel(stream),
-        "library"       => libraryImportSvc.ImportFromExcel(stream, userObj.Id),
-        _               => new ImportResult { Errors = ["Geçersiz modül."] }
-    };
-
-    return Results.Ok(result);
-}).RequireAuthorization().DisableAntiforgery();
-
-app.MapGet("/audit/findings/{findingId:int}/attachments/{attachmentId:int}/download",
-    async (int findingId, int attachmentId, AppDbContext db, IWebHostEnvironment env, ClaimsPrincipal user) =>
-    {
-        try
-        {
-            var attachment = await db.FindingAttachments
-                .Include(a => a.Finding).ThenInclude(f => f.InternalAudit)
-                .FirstOrDefaultAsync(a => a.Id == attachmentId && a.FindingId == findingId);
-            if (attachment == null) return Results.NotFound();
-            if (!AuditService.CanDownloadFindingFile(user, attachment.Finding)) return Results.Forbid();
-
-            var resolved = AuditService.ResolveAttachmentPath(attachment, env.ContentRootPath, env.WebRootPath);
-            return resolved is null
-                ? Results.NotFound()
-                : Results.File(resolved.Value.StoredPath!, "application/octet-stream", resolved.Value.FileName);
-        }
-        catch (Exception ex)
-        {
-            var log = app.Services.GetRequiredService<ILogger<Program>>();
-            log.LogError(ex, "Attachment download failed: findingId={FindingId} attachmentId={AttachmentId}", findingId, attachmentId);
-            return Results.Problem("Dosya indirme sırasında hata oluştu.", statusCode: 500);
-        }
-    })
-    .RequireAuthorization();
-
-app.MapGet("/audit/findings/{findingId:int}/closure-files/{fileName}",
-    async (int findingId, string fileName, AppDbContext db, IWebHostEnvironment env, ClaimsPrincipal user) =>
-    {
-        try
-        {
-            var finding = await db.AuditFindings
-                .Include(f => f.InternalAudit)
-                .FirstOrDefaultAsync(f => f.Id == findingId);
-            if (finding == null) return Results.NotFound();
-            if (!AuditService.CanDownloadFindingFile(user, finding)) return Results.Forbid();
-            if (!string.Equals(fileName, Path.GetFileName(fileName), StringComparison.Ordinal))
-                return Results.BadRequest();
-
-            var resolved = AuditService.ResolveClosureFilePath(findingId, fileName, env.ContentRootPath, env.WebRootPath);
-            return resolved is null
-                ? Results.NotFound()
-                : Results.File(resolved.Value.StoredPath!, "application/octet-stream", resolved.Value.FileName);
-        }
-        catch (Exception ex)
-        {
-            var log = app.Services.GetRequiredService<ILogger<Program>>();
-            log.LogError(ex, "Closure file download failed: findingId={FindingId} fileName={FileName}", findingId, fileName);
-            return Results.Problem("Dosya indirme sırasında hata oluştu.", statusCode: 500);
-        }
-    })
-    .RequireAuthorization();
 app.MapFallbackToPage("/_Host");
 
 app.Run();
 
 // Mevcut User.Role / DepartmentId / OrganizationId / CompanyId verilerinden
-// yeni çoklu atama tablolarını doldurur. Her startup'ta çalışır, idempotent.
+// yeni çoklu atama tablolarını doldurur. Her tablo ve her kullanıcı idempotent olarak
+// ayrı ayrı kontrol edilir — global erken dönüş kaldırıldı çünkü sonradan eklenen
+// kullanıcılar ya da yarım kalan migration'lar atlanabiliyordu.
 static void SyncUserAssignments(AppDbContext db)
 {
     // Rol ataması eksik kullanıcılar
