@@ -383,7 +383,9 @@ public class AuthService(AppDbContext db, IMemoryCache cache)
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
             new("full_name", user.FullName),
-            new("department", user.Department),
+            new("department", user.DepartmentNav?.Name
+                ?? user.UserDepartments.FirstOrDefault(ud => ud.DepartmentId == user.DepartmentId)?.Department?.Name
+                ?? ""),
         };
 
         // Tüm roller — tekrarsız olarak ayrı claim olarak eklenir
@@ -433,7 +435,6 @@ public class AuthService(AppDbContext db, IMemoryCache cache)
         user.Username     = anonTag;
         user.FullName     = "[Silinmiş Kullanıcı]";
         user.Email        = null;
-        user.Department   = "";
         user.PasswordHash = null; // oturum açılamaz
         user.IsActive     = false;
         user.LockoutUntil = DateTime.UtcNow.AddYears(100);
@@ -445,14 +446,18 @@ public class AuthService(AppDbContext db, IMemoryCache cache)
         await db.SaveChangesAsync();
     }
 
-    [Obsolete("Blazor Server'da deadlock riski. AnonymizeUserAsync kullanın.", error: false)]
-    public void AnonymizeUser(int userId)
-        => AnonymizeUserAsync(userId).GetAwaiter().GetResult();
-
     /// <summary>
     /// Claim'den userId'yi alır, DB'den tam aktif kullanıcıyı döndürür.
     /// Roller, departman/org/şirket atamaları dahil yüklenir; deaktive kullanıcı için null döner.
     /// </summary>
+    public User? GetUserById(int id) =>
+        db.Users
+            .Include(u => u.UserRoles)
+            .Include(u => u.UserDepartments)
+            .Where(u => u.Id == id)
+            .AsNoTracking()
+            .FirstOrDefault();
+
     public User? ActiveUserFromPrincipal(ClaimsPrincipal? principal)
     {
         var claimUser = UserFromPrincipal(principal);
@@ -487,7 +492,6 @@ public class AuthService(AppDbContext db, IMemoryCache cache)
             Id         = int.Parse(principal.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "0"),
             Username   = principal.FindFirst(ClaimTypes.Name)?.Value ?? "",
             FullName   = principal.FindFirst("full_name")?.Value ?? "",
-            Department = principal.FindFirst("department")?.Value ?? "",
             Role       = roles.FirstOrDefault() ?? "",
             UserRoles  = roles.Select(r => new UserRole { RoleName = r }).ToList(),
             UserDepartments  = deptIds.Select(id => new UserDepartment { DepartmentId = id }).ToList(),

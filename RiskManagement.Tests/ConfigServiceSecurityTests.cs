@@ -12,7 +12,7 @@ public class ConfigServiceSecurityTests
     private static ConfigService Build()
     {
         var db = TestDb.Create();
-        return new ConfigService(db, NullLogger<ConfigService>.Instance);
+        return TestDb.CreateConfigService(db);
     }
 
     // ── Kilitleme ayarları ───────────────────────────────────────────────────

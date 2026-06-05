@@ -255,9 +255,9 @@
 }
 .detail-nav-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: var(--r-md);
+  width: 44px; height: 44px; border-radius: var(--r-md);
   border: 1px solid var(--border); background: var(--surface);
-  color: var(--text-2); cursor: pointer; font-size: 20px; line-height: 1;
+  color: var(--text-2); cursor: pointer; line-height: 1;
   transition: background .12s, border-color .12s;
   text-decoration: none; user-select: none;
 }
@@ -710,7 +710,8 @@
    ══════════════════════════════════════════════════════════ */
 .export-dropdown { position: relative; display: inline-block; }
 .export-dropdown:hover .export-menu,
-.export-dropdown:focus-within .export-menu { display: block; }
+.export-dropdown:focus-within .export-menu,
+.export-dropdown.export-open .export-menu { display: block; }
 .export-menu {
   display: none;
   position: absolute;

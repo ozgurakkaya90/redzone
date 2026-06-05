@@ -180,21 +180,21 @@ public class UploadValidationTests
     }
 
     [Fact]
-    public void SaveAttachment_StoresOriginalFileName_SeparateFromPath()
+    public async Task SaveAttachment_StoresOriginalFileName_SeparateFromPath()
     {
         var db  = TestDb.Create();
         var svc = new AuditService(db);
 
         var user = new RiskManagement.Models.User
-            { Username = "u", FullName = "U", Department = "D", Role = "auditor" };
+            { Username = "u", FullName = "U", Role = "auditor" };
         db.Users.Add(user); db.SaveChanges();
 
-        var finding = svc.CreateFinding("Bulgu", null, null, null, null, user.Id, null, null, null);
+        var finding = await svc.CreateFindingAsync("Bulgu", null, null, null, null, user.Id, null, null, null);
 
         // Stored path Guid içeren farklı bir isim; FileName orijinal
         var stored   = $"{System.Guid.NewGuid()}.pdf";
         var original = "rapor.pdf";
-        svc.SaveAttachment(finding.Id, original, $"/uploads/{stored}", 1024, user.Id);
+        await svc.SaveAttachmentAsync(finding.Id, original, $"/uploads/{stored}", 1024, user.Id);
 
         var att = db.FindingAttachments.First(a => a.FindingId == finding.Id);
         Assert.Equal(original, att.FileName);

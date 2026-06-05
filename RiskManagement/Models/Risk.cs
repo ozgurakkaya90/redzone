@@ -40,6 +40,13 @@ public class Risk
     [MaxLength(500)]
     public string? PossibleImpact { get; set; }
 
+    // Faaliyet alanı — serbest metin
+    [MaxLength(1000)]
+    public string? ActivityArea { get; set; }
+
+    /// <summary>Risk aktif mi? Pasife alınan riskler envanter listesinde varsayılan olarak gizlenir.</summary>
+    public bool IsActive { get; set; } = true;
+
     public string? AffectedPersons { get; set; } // JSON array — GetAffectedPersonsList()/SetAffectedPersonsList() kullan
 
     private static readonly JsonSerializerOptions _jsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
@@ -85,12 +92,9 @@ public class Risk
     [MaxLength(1000)]
     public string? RejectionReason { get; set; }
 
-    /// <summary>
-    /// Status == risk_accepted ise RejectionReason alanındaki gerekçeyi semantik olarak döner.
-    /// Veritabanı sütunu değildir; UI katmanının her iki durumu ayrı göstermesini sağlar.
-    /// </summary>
-    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
-    public string? AcceptanceReason => Status == RiskStatus.RiskAccepted ? RejectionReason : null;
+    /// <summary>Kalıntı risk kabul gerekçesi — risk_accepted durumunda doldurulur.</summary>
+    [MaxLength(1000)]
+    public string? AcceptanceReason { get; set; }
 
     public User? ProposedBy { get; set; }
     public User? Owner { get; set; }
@@ -107,13 +111,41 @@ public class RiskReview
     public int Id { get; set; }
     public int RiskId { get; set; }
     public DateTime MeetingDate { get; set; }
+
+    /// <summary>Tek satır/legacy karar metni. Çok maddeli kararlar için DecisionItems kullanılır.</summary>
     public string? Decision { get; set; }
+
+    /// <summary>Bir toplantıda alınan birden fazla karar maddesi — JSON dizi olarak saklanır.
+    /// GetDecisionItemsList()/SetDecisionItemsList() ile erişin.</summary>
+    public string? DecisionItems { get; set; }
+
     public string? Notes { get; set; }
     public int CreatedById { get; set; }
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
     public Risk Risk { get; set; } = null!;
     public User CreatedBy { get; set; } = null!;
+
+    private static readonly JsonSerializerOptions _itemJsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    /// <summary>Karar maddelerini döner. DecisionItems boşsa legacy Decision tek madde olarak değerlendirilir.</summary>
+    public List<string> GetDecisionItemsList()
+    {
+        if (!string.IsNullOrWhiteSpace(DecisionItems))
+        {
+            var list = JsonSerializer.Deserialize<List<string>>(DecisionItems, _itemJsonOpts);
+            if (list is { Count: > 0 }) return list;
+        }
+        return string.IsNullOrWhiteSpace(Decision) ? [] : [Decision];
+    }
+
+    public void SetDecisionItemsList(IEnumerable<string> items)
+    {
+        var list = items.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
+        DecisionItems = list.Count > 0 ? JsonSerializer.Serialize(list, _itemJsonOpts) : null;
+        // Legacy Decision alanını ilk madde ile senkronize tut (eski raporlar/exportlar için).
+        Decision = list.Count > 0 ? string.Join(" • ", list) : null;
+    }
 }
 
 public class RiskFindingLink

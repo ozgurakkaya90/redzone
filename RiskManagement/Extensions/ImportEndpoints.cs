@@ -15,13 +15,14 @@ public static class ImportEndpoints
             if (authSvc.ActiveUserFromPrincipal(user) is null) return Results.Unauthorized();
             var (bytes, fileName) = module switch
             {
-                "risks"         => (exportSvc.GetRiskImportTemplate(),        "Risk_Sablon.xlsx"),
-                "controls"      => (exportSvc.GetControlImportTemplate(),     "Kontrol_Sablon.xlsx"),
-                "action-plans"  => (exportSvc.GetActionPlanImportTemplate(),  "AksiyonPlan_Sablon.xlsx"),
-                "findings"      => (exportSvc.GetFindingImportTemplate(),     "Bulgu_Sablon.xlsx"),
-                "audit-actions" => (exportSvc.GetAuditActionImportTemplate(), "DenetimAksiyon_Sablon.xlsx"),
-                "ethics"        => (exportSvc.GetEthicsImportTemplate(),      "Etik_Sablon.xlsx"),
-                "library"       => (libSvc.GetImportTemplate(),               "Kutuphane_Sablon.xlsx"),
+                "risks"                    => (exportSvc.GetRiskImportTemplate(),                           "Risk_Sablon.xlsx"),
+                "controls"                 => (exportSvc.GetControlImportTemplate(),                        "Kontrol_Sablon.xlsx"),
+                "action-plans"             => (exportSvc.GetActionPlanImportTemplate(),                     "AksiyonPlan_Sablon.xlsx"),
+                "findings"                 => (exportSvc.GetFindingImportTemplate(),                        "Bulgu_Sablon.xlsx"),
+                "audit-actions"            => (exportSvc.GetAuditActionImportTemplate(),                    "DenetimAksiyon_Sablon.xlsx"),
+                "ethics"                   => (exportSvc.GetEthicsImportTemplate(),                         "Etik_Sablon.xlsx"),
+                "library"                  => (libSvc.GetImportTemplate(),                                  "Kutuphane_Sablon.xlsx"),
+                "external-nonconformities" => (exportSvc.GetExternalAuditNonconformityTemplate(),           "ResmiDenetim_Uygunsuzluk_Sablon.xlsx"),
                 _               => ((byte[]?)null, "")
             };
             if (bytes is null) return Results.NotFound();
@@ -38,14 +39,15 @@ public static class ImportEndpoints
             // Modül bazlı yetki kontrolü — sadece login olmak yeterli değil
             var requiredPermission = module switch
             {
-                "risks"         => "risk.write",
-                "controls"      => "control.write",
-                "action-plans"  => "action.write",
-                "findings"      => "audit.write",
-                "audit-actions" => "audit.write",
-                "ethics"        => "ethics.write",
-                "library"       => "risk.manage",
-                _               => null
+                "risks"                    => "risk.write",
+                "controls"                 => "control.write",
+                "action-plans"             => "action.write",
+                "findings"                 => "audit.write",
+                "audit-actions"            => "audit.write",
+                "ethics"                   => "ethics.write",
+                "library"                  => "risk.manage",
+                "external-nonconformities" => "external_audit.write",
+                _                          => null
             };
 
             if (requiredPermission is not null && !authSvc.HasPermission(userObj, requiredPermission))
@@ -80,14 +82,15 @@ public static class ImportEndpoints
 
             ImportResult result = module switch
             {
-                "risks"         => importSvc.ImportRisksFromExcel(stream, userObj.Id),
-                "controls"      => importSvc.ImportControlsFromExcel(stream, userObj.Id, allowedRiskIds),
-                "action-plans"  => importSvc.ImportActionPlansFromExcel(stream, userObj.Id, allowedRiskIds),
-                "findings"      => importSvc.ImportFindingsFromExcel(stream, userObj.Id),
-                "audit-actions" => importSvc.ImportAuditActionsFromExcel(stream, userObj.Id, allowedFindingIds),
-                "ethics"        => importSvc.ImportEthicsFromExcel(stream),
-                "library"       => libraryImportSvc.ImportFromExcel(stream, userObj.Id),
-                _               => new ImportResult { Errors = ["Geçersiz modül."] }
+                "risks"                    => importSvc.ImportRisksFromExcel(stream, userObj.Id),
+                "controls"                 => importSvc.ImportControlsFromExcel(stream, userObj.Id, allowedRiskIds),
+                "action-plans"             => importSvc.ImportActionPlansFromExcel(stream, userObj.Id, allowedRiskIds),
+                "findings"                 => importSvc.ImportFindingsFromExcel(stream, userObj.Id),
+                "audit-actions"            => importSvc.ImportAuditActionsFromExcel(stream, userObj.Id, allowedFindingIds),
+                "ethics"                   => importSvc.ImportEthicsFromExcel(stream),
+                "library"                  => libraryImportSvc.ImportFromExcel(stream, userObj.Id),
+                "external-nonconformities" => importSvc.ImportExternalAuditNonconformitiesFromExcel(stream, userObj.Id),
+                _                          => new ImportResult { Errors = ["Geçersiz modül."] }
             };
 
             return Results.Ok(result);

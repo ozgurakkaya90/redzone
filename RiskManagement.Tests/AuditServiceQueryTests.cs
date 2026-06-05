@@ -15,7 +15,7 @@ file static class AQSeed
 
     public static User AddUser(AppDbContext db, string role)
     {
-        var u = new User { Username = $"{role}_{Guid.NewGuid():N}".Substring(0,20), FullName = role, Role = role, Department = role };
+        var u = new User { Username = $"{role}_{Guid.NewGuid():N}".Substring(0,20), FullName = role, Role = role };
         db.Users.Add(u); db.SaveChanges(); return u;
     }
 
@@ -99,13 +99,13 @@ public class AuditQueryTests
     }
 
     [Fact]
-    public void UpdateAudit_UpdatesFields()
+    public async Task UpdateAudit_UpdatesFields()
     {
         var (db, svc) = AQSeed.Build();
         var lead  = AQSeed.AddUser(db, "auditor");
         var audit = AQSeed.AddAudit(db, lead.Id);
 
-        var ok = svc.UpdateAudit(audit.Id, "Yeni Başlık", "follow_up", "BT Birimi",
+        var ok = await svc.UpdateAuditAsync(audit.Id, "Yeni Başlık", "follow_up", "BT Birimi",
             "BT sistemleri", "2026", null, null, "in_progress");
 
         Assert.True(ok);
@@ -115,10 +115,10 @@ public class AuditQueryTests
     }
 
     [Fact]
-    public void UpdateAudit_NonExistent_ReturnsFalse()
+    public async Task UpdateAudit_NonExistent_ReturnsFalse()
     {
         var (_, svc) = AQSeed.Build();
-        Assert.False(svc.UpdateAudit(99999, "X", null, null, null, "2026", null, null, "planned"));
+        Assert.False(await svc.UpdateAuditAsync(99999, "X", null, null, null, "2026", null, null, "planned"));
     }
 }
 
@@ -220,37 +220,37 @@ public class FindingQueryTests
     }
 
     [Fact]
-    public void SetActionDecision_UpdatesField()
+    public async Task SetActionDecision_UpdatesField()
     {
         var (db, svc) = AQSeed.Build();
         var aud     = AQSeed.AddUser(db, "auditor");
         var finding = AQSeed.AddFinding(db, aud.Id);
 
-        svc.InternalSetActionDecision(finding.Id, "risk_accepted");
+        await svc.InternalSetActionDecisionAsync(finding.Id, "risk_accepted");
 
         Assert.Equal("risk_accepted", db.AuditFindings.Find(finding.Id)!.ActionDecision);
     }
 
     [Fact]
-    public void DeleteFindingAction_RemovesAction()
+    public async Task DeleteFindingAction_RemovesAction()
     {
         var (db, svc) = AQSeed.Build();
         var aud     = AQSeed.AddUser(db, "auditor");
         var finding = AQSeed.AddFinding(db, aud.Id);
-        var action  = svc.InternalAddFindingAction(finding.Id, "Aksiyon", null, null, aud.Id);
+        var action  = await svc.InternalAddFindingActionAsync(finding.Id, "Aksiyon", null, null, aud.Id);
 
-        Assert.True(svc.InternalDeleteFindingAction(finding.Id, action.Id));
+        Assert.True(await svc.InternalDeleteFindingActionAsync(finding.Id, action.Id));
         Assert.Null(db.AuditFindingActions.Find(action.Id));
     }
 
     [Fact]
-    public void DeleteFindingAction_NonExistent_ReturnsFalse()
+    public async Task DeleteFindingAction_NonExistent_ReturnsFalse()
     {
         var (db, svc) = AQSeed.Build();
         var aud     = AQSeed.AddUser(db, "auditor");
         var finding = AQSeed.AddFinding(db, aud.Id);
 
-        Assert.False(svc.InternalDeleteFindingAction(finding.Id, 99999));
+        Assert.False(await svc.InternalDeleteFindingActionAsync(finding.Id, 99999));
     }
 }
 
@@ -315,14 +315,14 @@ public class AuditDashboardTests
     }
 
     [Fact]
-    public void GetAllFindingActions_ReturnsAllActions()
+    public async Task GetAllFindingActions_ReturnsAllActions()
     {
         var (db, svc) = AQSeed.Build();
         var aud     = AQSeed.AddUser(db, "auditor");
         var f1 = AQSeed.AddFinding(db, aud.Id);
         var f2 = AQSeed.AddFinding(db, aud.Id);
-        svc.InternalAddFindingAction(f1.Id, "Aksiyon 1", null, null, aud.Id);
-        svc.InternalAddFindingAction(f2.Id, "Aksiyon 2", null, null, aud.Id);
+        await svc.InternalAddFindingActionAsync(f1.Id, "Aksiyon 1", null, null, aud.Id);
+        await svc.InternalAddFindingActionAsync(f2.Id, "Aksiyon 2", null, null, aud.Id);
 
         Assert.Equal(2, svc.GetAllFindingActions().Count);
     }

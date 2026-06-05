@@ -12,10 +12,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="css/tokens.css?v=4" />
-    <link rel="stylesheet" href="css/layout.css?v=4" />
-    <link rel="stylesheet" href="css/components.css?v=4" />
-    <link rel="stylesheet" href="css/domain.css?v=4" />
+    <link rel="stylesheet" href="css/tokens.css?v=5" />
+    <link rel="stylesheet" href="css/layout.css?v=5" />
+    <link rel="stylesheet" href="css/components.css?v=5" />
+    <link rel="stylesheet" href="css/domain.css?v=5" />
     <link rel="stylesheet" href="RiskManagement.styles.css" />
     <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
 </head>
@@ -67,6 +67,35 @@
                     a.href = url; a.download = fileName; document.body.appendChild(a);
                     a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
                 } catch (e) { console.error('downloadFileFromBase64 hatası:', e); }
+            };
+
+            // Sayfa geçişinde ana içeriğe fokus — ekran okuyucu navigasyon
+            window.focusMain = function () {
+                const el = document.getElementById('main-content');
+                if (!el) return;
+                if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+                el.focus({ preventScroll: true });
+            };
+
+            // Modal fokus trap — Tab/Shift+Tab modalın dışına çıkmasını engeller
+            window.trapFocus = function (dialogId) {
+                const dialog = document.getElementById(dialogId);
+                if (!dialog) return;
+                const sel = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+                const nodes = Array.from(dialog.querySelectorAll(sel));
+                if (!nodes.length) return;
+                nodes[0].focus();
+                dialog._trapHandler = function (e) {
+                    if (e.key !== 'Tab') return;
+                    const first = nodes[0], last = nodes[nodes.length - 1];
+                    if (e.shiftKey) { if (document.activeElement === first) { last.focus(); e.preventDefault(); } }
+                    else { if (document.activeElement === last) { first.focus(); e.preventDefault(); } }
+                };
+                dialog.addEventListener('keydown', dialog._trapHandler);
+            };
+            window.releaseFocus = function (dialogId) {
+                const dialog = document.getElementById(dialogId);
+                if (dialog && dialog._trapHandler) dialog.removeEventListener('keydown', dialog._trapHandler);
             };
 
             // Enter tuşuyla form submit — key formlar için global

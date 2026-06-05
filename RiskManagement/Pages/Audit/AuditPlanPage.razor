@@ -2,7 +2,7 @@
 @attribute [Authorize(Roles = "auditor,audit_manager,admin")]
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
-@inject AppDbContext Db
+@inject OrgService OrgSvc
 @inject IHttpContextAccessor HttpCtx
 @inject NavigationManager Nav
 @inject ToastService ToastSvc
@@ -595,27 +595,10 @@
         if (_auditPlanTypes.Count == 0)
             _auditPlanTypes = [.. CfgSvc.GetList("audit_plan_types")];
 
-        _companies     = [.. Db.Companies.OrderBy(c => c.Name)];
-        _organizations = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
-        _departments   = [.. Db.Departments
-            .Include(d => d.Organization).ThenInclude(o => o!.Company)
-            .OrderBy(d => d.Name)];
-        // Denetçi kullanıcıları — UserRoles tablosu yoksa tüm aktif kullanıcıları al
-        try
-        {
-            var auditorIds = Db.UserRoles
-                .Where(ur => ur.RoleName == "auditor" || ur.RoleName == "audit_manager")
-                .Select(ur => ur.UserId)
-                .Distinct()
-                .ToHashSet();
-            _auditorUsers = auditorIds.Count > 0
-                ? [.. Db.Users.Where(u => auditorIds.Contains(u.Id) && u.IsActive).OrderBy(u => u.FullName)]
-                : [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
-        }
-        catch
-        {
-            _auditorUsers = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
-        }
+        _companies     = OrgSvc.GetCompanies();
+        _organizations = OrgSvc.GetOrganizations();
+        _departments   = OrgSvc.GetDepartments();
+        _auditorUsers  = OrgSvc.GetAuditorUsers();
         _convertLeadId = _userId;
         Load();
     }
@@ -641,9 +624,7 @@
             try
             {
                 var itemIds = _plan.Items.Select(i => i.Id).ToHashSet();
-                _linkedAudits = Db.InternalAudits
-                    .Where(a => a.AuditPlanItemId != null && itemIds.Contains(a.AuditPlanItemId!.Value))
-                    .ToDictionary(a => a.AuditPlanItemId!.Value, a => a);
+                _linkedAudits = AuditSvc.GetAuditsByPlanItems(itemIds);
             }
             catch { _linkedAudits = []; }
         }
@@ -665,15 +646,15 @@
         _showCreatePlan = true;
     }
 
-    private void CreatePlan()
+    private async Task CreatePlan()
     {
         _formError = "";
         if (string.IsNullOrWhiteSpace(_planTitle)) { _formError = "Plan adı zorunludur."; return; }
         try
         {
-            var plan = AuditSvc.EnsurePlan(_year, _planTitle.Trim(), _userId);
+            var plan = await AuditSvc.EnsurePlanAsync(_year, _planTitle.Trim(), _userId);
             if (!string.IsNullOrWhiteSpace(_planDesc))
-            { plan.Description = _planDesc.Trim(); AuditSvc.UpdatePlan(plan); }
+            { plan.Description = _planDesc.Trim(); await AuditSvc.UpdatePlanAsync(plan); }
             ToastSvc.Success($"{_year} yılı denetim planı oluşturuldu.");
             _showCreatePlan = false;
             Load();
@@ -736,7 +717,7 @@
         _fDepartmentId = null;
     }
 
-    private void SaveItem()
+    private async Task SaveItem()
     {
         _formError = "";
         if (string.IsNullOrWhiteSpace(_fTitle))    { _formError = "Başlık zorunludur."; return; }
@@ -751,7 +732,7 @@
         {
             if (_editItem == null)
             {
-                AuditSvc.AddPlanItem(new AuditPlanItem
+                await AuditSvc.AddPlanItemAsync(new AuditPlanItem
                 {
                     AuditPlanId      = _plan!.Id,
                     Title            = _fTitle.Trim(),
@@ -776,7 +757,7 @@
                 _editItem.PlannedEndDate   = DateOnly.FromDateTime(_fPlannedEnd!.Value);
                 _editItem.ActualStartDate  = _fActualStart.HasValue ? DateOnly.FromDateTime(_fActualStart.Value) : null;
                 _editItem.ActualEndDate    = _fActualEnd.HasValue   ? DateOnly.FromDateTime(_fActualEnd.Value)   : null;
-                AuditSvc.UpdatePlanItem(_editItem);
+                await AuditSvc.UpdatePlanItemAsync(_editItem);
             }
             ToastSvc.Success(_editItem == null ? "Denetim planına eklendi." : "Denetim güncellendi.");
             Load();
@@ -790,12 +771,12 @@
     private void RequestDelete(int id) { _deleteItemId = id; _deleteError = ""; }
     private void CancelDelete()        { _deleteItemId = 0;  _deleteError = ""; }
 
-    private void ConfirmDelete()
+    private async Task ConfirmDelete()
     {
         _deleteError = "";
         try
         {
-            AuditSvc.DeletePlanItem(_deleteItemId);
+            await AuditSvc.DeletePlanItemAsync(_deleteItemId);
             ToastSvc.Success("Denetim planından kaldırıldı.");
             _deleteItemId = 0;
             Load();
@@ -815,13 +796,13 @@
 
     private void CancelConvert() { _convertItem = null; _convertError = ""; }
 
-    private void ConfirmConvert()
+    private async Task ConfirmConvert()
     {
         _convertError = "";
         if (_convertLeadId <= 0) { _convertError = "Lütfen bir baş denetçi seçin."; return; }
         try
         {
-            var audit    = AuditSvc.CreateAuditFromPlanItem(_convertItem!.Id, _convertLeadId);
+            var audit    = await AuditSvc.CreateAuditFromPlanItemAsync(_convertItem!.Id, _convertLeadId);
             _convertItem = null;
             Load();
             ToastSvc.Success("İç denetim oluşturuldu.");

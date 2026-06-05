@@ -85,15 +85,37 @@ else
                         </div>
                         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                             <div class="form-group">
-                                <label class="form-label">Önem</label>
+                                <label class="form-label">Majör/Minör</label>
                                 <select class="form-control" @bind="_newFinding.Severity">
                                     <option value="">— Seçin —</option>
-                                    <option value="low">Düşük</option>
-                                    <option value="medium">Orta</option>
-                                    <option value="high">Yüksek</option>
+                                    <option value="Majör">Majör</option>
+                                    <option value="Minör">Minör</option>
                                     <option value="critical">Kritik</option>
+                                    <option value="high">Yüksek</option>
+                                    <option value="medium">Orta</option>
+                                    <option value="low">Düşük</option>
                                 </select>
                             </div>
+                            <div class="form-group">
+                                <label class="form-label">Uygunsuzluk Adedi</label>
+                                <input type="number" class="form-control" min="1" @bind="_newFinding.NonconformityCount" placeholder="—" />
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">İlgili Mevzuat Maddesi</label>
+                            <input class="form-control" @bind="_newFinding.StandardArticle" maxlength="500"
+                                   placeholder="örn. IPSG.1, Madde 5.2" />
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Uygunsuzluğa Konu Olan Standart Maddesi</label>
+                            <textarea class="form-control" rows="2" @bind="_newFinding.StandardClause" maxlength="1000"
+                                      placeholder="Standart/checklist maddesini buraya yazın…"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Uygunsuzluk Detay Açıklaması</label>
+                            <textarea class="form-control" rows="3" @bind="_newFinding.Description" maxlength="2000"></textarea>
+                        </div>
+                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                             <div class="form-group">
                                 <label class="form-label">Bulgu Sahibi</label>
                                 <select class="form-control" @bind="_newFinding.OwnerId">
@@ -102,8 +124,6 @@ else
                                     { <option value="@u.Id">@u.FullName</option> }
                                 </select>
                             </div>
-                        </div>
-                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
                             <div class="form-group">
                                 <label class="form-label">Sahip Birimi</label>
                                 <select class="form-control" @bind="_newFinding.DepartmentId">
@@ -112,14 +132,10 @@ else
                                     { <option value="@d.Id">@d.Name</option> }
                                 </select>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Termin</label>
-                                <input type="date" class="form-control" @bind="_newFindingDue" />
-                            </div>
                         </div>
                         <div class="form-group">
-                            <label class="form-label">Açıklama</label>
-                            <textarea class="form-control" rows="3" @bind="_newFinding.Description" maxlength="2000"></textarea>
+                            <label class="form-label">Termin</label>
+                            <input type="date" class="form-control" @bind="_newFindingDue" />
                         </div>
                         <div style="display:flex;gap:8px">
                             <button class="btn btn-primary btn-sm" @onclick="SaveFinding">Kaydet</button>
@@ -155,15 +171,31 @@ else
                                             </div>
                                             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
                                                 <div class="form-group">
-                                                    <label class="form-label">Önem</label>
+                                                    <label class="form-label">Majör/Minör</label>
                                                     <select class="form-control" @bind="_editFinding.Severity">
                                                         <option value="">— Seçin —</option>
-                                                        <option value="low">Düşük</option>
-                                                        <option value="medium">Orta</option>
-                                                        <option value="high">Yüksek</option>
+                                                        <option value="Majör">Majör</option>
+                                                        <option value="Minör">Minör</option>
                                                         <option value="critical">Kritik</option>
+                                                        <option value="high">Yüksek</option>
+                                                        <option value="medium">Orta</option>
+                                                        <option value="low">Düşük</option>
                                                     </select>
                                                 </div>
+                                                <div class="form-group">
+                                                    <label class="form-label">Uygunsuzluk Adedi</label>
+                                                    <input type="number" class="form-control" min="1" @bind="_editFinding.NonconformityCount" placeholder="—" />
+                                                </div>
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label">İlgili Mevzuat Maddesi</label>
+                                                <input class="form-control" @bind="_editFinding.StandardArticle" maxlength="500" />
+                                            </div>
+                                            <div class="form-group">
+                                                <label class="form-label">Uygunsuzluğa Konu Standart Maddesi</label>
+                                                <textarea class="form-control" rows="2" @bind="_editFinding.StandardClause" maxlength="1000"></textarea>
+                                            </div>
+                                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
                                                 <div class="form-group">
                                                     <label class="form-label">Bulgu Sahibi</label>
                                                     <select class="form-control" @bind="_editFinding.OwnerId">
@@ -172,8 +204,6 @@ else
                                                         { <option value="@u.Id">@u.FullName</option> }
                                                     </select>
                                                 </div>
-                                            </div>
-                                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
                                                 <div class="form-group">
                                                     <label class="form-label">Sahip Birimi</label>
                                                     <select class="form-control" @bind="_editFinding.DepartmentId">
@@ -182,6 +212,8 @@ else
                                                         { <option value="@d.Id">@d.Name</option> }
                                                     </select>
                                                 </div>
+                                            </div>
+                                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
                                                 <div class="form-group">
                                                     <label class="form-label">Termin</label>
                                                     <input type="date" class="form-control" @bind="_editFindingDue" />
@@ -203,13 +235,27 @@ else
                                             <code>@f.Code</code>
                                             <span style="margin-left:6px">@f.Title</span>
                                         </div>
+                                        @if (!string.IsNullOrEmpty(f.StandardArticle))
+                                        {
+                                            <div style="margin-top:4px;font-size:12px;color:var(--text-3)">
+                                                <strong>Mevzuat Maddesi:</strong> @f.StandardArticle
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(f.StandardClause))
+                                        {
+                                            <div style="margin-top:4px;font-size:12px;color:var(--text-2);white-space:pre-wrap">
+                                                <strong>Standart Maddesi:</strong> @f.StandardClause
+                                            </div>
+                                        }
                                         @if (!string.IsNullOrEmpty(f.Description))
                                         {
                                             <div class="text-muted" style="margin-top:6px;white-space:pre-wrap">@f.Description</div>
                                         }
                                         <div class="ead-finding-meta">
                                             @if (!string.IsNullOrEmpty(f.Severity))
-                                            { <span class="badge @SeverityBadge(f.Severity)">@SeverityLabel(f.Severity)</span> }
+                                            { <span class="badge @SeverityBadge(f.Severity)">@f.Severity</span> }
+                                            @if (f.NonconformityCount.HasValue)
+                                            { <span class="tag">@f.NonconformityCount Adet</span> }
                                             @if (f.Owner != null)
                                             { <span class="tag">@f.Owner.FullName</span> }
                                             @if (f.Department != null)
@@ -329,8 +375,12 @@ else
                 <div class="section-title">Bilgiler</div>
                 <div class="ead-info-list">
                     <div><strong>Kurum:</strong> @_audit.AuditingBody</div>
+                    @if (!string.IsNullOrEmpty(_audit.AuditType))
+                    { <div><strong>Denetim Türü:</strong> @_audit.AuditType</div> }
                     @if (!string.IsNullOrEmpty(_audit.Standard))
                     { <div><strong>Standart:</strong> @_audit.Standard</div> }
+                    @if (!string.IsNullOrEmpty(_audit.ChecklistName))
+                    { <div><strong>Denetim Listesi:</strong> @_audit.ChecklistName</div> }
                     <div><strong>Tarih:</strong> @_audit.AuditDate.ToString("dd.MM.yyyy")</div>
                     @if (_audit.EndDate.HasValue)
                     { <div><strong>Bitiş:</strong> @_audit.EndDate.Value.ToString("dd.MM.yyyy")</div> }
@@ -475,11 +525,14 @@ else
         _editFindingId    = f.Id;
         _editFinding      = new AuditFinding
         {
-            Title        = f.Title,
-            Description  = f.Description,
-            Severity     = f.Severity,
-            OwnerId      = f.OwnerId,
-            DepartmentId = f.DepartmentId,
+            Title                = f.Title,
+            Description          = f.Description,
+            Severity             = f.Severity,
+            StandardArticle      = f.StandardArticle,
+            StandardClause       = f.StandardClause,
+            NonconformityCount   = f.NonconformityCount,
+            OwnerId              = f.OwnerId,
+            DepartmentId         = f.DepartmentId,
         };
         _editFindingDue   = f.DueDate.HasValue ? f.DueDate.Value.ToDateTime(TimeOnly.MinValue) : null;
         _editFindingError = "";
@@ -504,12 +557,15 @@ else
         {
             var f = await Db.AuditFindings.FindAsync(findingId);
             if (f is null) return;
-            f.Title        = _editFinding.Title.Trim();
-            f.Description  = string.IsNullOrWhiteSpace(_editFinding.Description) ? null : _editFinding.Description.Trim();
-            f.Severity     = string.IsNullOrWhiteSpace(_editFinding.Severity)    ? null : _editFinding.Severity;
-            f.OwnerId      = _editFinding.OwnerId;
-            f.DepartmentId = _editFinding.DepartmentId;
-            f.DueDate      = _editFindingDue.HasValue ? DateOnly.FromDateTime(_editFindingDue.Value) : null;
+            f.Title                = _editFinding.Title.Trim();
+            f.Description          = string.IsNullOrWhiteSpace(_editFinding.Description)   ? null : _editFinding.Description.Trim();
+            f.Severity             = string.IsNullOrWhiteSpace(_editFinding.Severity)      ? null : _editFinding.Severity;
+            f.StandardArticle      = string.IsNullOrWhiteSpace(_editFinding.StandardArticle) ? null : _editFinding.StandardArticle.Trim();
+            f.StandardClause       = string.IsNullOrWhiteSpace(_editFinding.StandardClause)  ? null : _editFinding.StandardClause.Trim();
+            f.NonconformityCount   = _editFinding.NonconformityCount;
+            f.OwnerId              = _editFinding.OwnerId;
+            f.DepartmentId         = _editFinding.DepartmentId;
+            f.DueDate              = _editFindingDue.HasValue ? DateOnly.FromDateTime(_editFindingDue.Value) : null;
             await Db.SaveChangesAsync();
             CancelFindingEdit();
             _findings = LoadFindingsForAudit(_audit!.Id);

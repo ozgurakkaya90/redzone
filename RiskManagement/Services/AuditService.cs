@@ -25,45 +25,45 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
     public List<int> GetPlanYears() =>
         [.. db.AuditPlans.Select(p => p.Year).Distinct().OrderByDescending(y => y)];
 
-    public AuditPlan EnsurePlan(int year, string title, int userId)
+    public async Task<AuditPlan> EnsurePlanAsync(int year, string title, int userId)
     {
         var plan = db.AuditPlans.FirstOrDefault(p => p.Year == year);
         if (plan != null) return plan;
         plan = new AuditPlan { Year = year, Title = title, CreatedById = userId };
         db.AuditPlans.Add(plan);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return plan;
     }
 
-    public void UpdatePlan(AuditPlan plan)
+    public async Task UpdatePlanAsync(AuditPlan plan)
     {
         db.AuditPlans.Update(plan);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
-    public AuditPlanItem AddPlanItem(AuditPlanItem item)
+    public async Task<AuditPlanItem> AddPlanItemAsync(AuditPlanItem item)
     {
         var maxOrder = db.AuditPlanItems
             .Where(i => i.AuditPlanId == item.AuditPlanId)
             .Select(i => (int?)i.SortOrder).Max() ?? 0;
         item.SortOrder = maxOrder + 1;
         db.AuditPlanItems.Add(item);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return item;
     }
 
-    public void UpdatePlanItem(AuditPlanItem item)
+    public async Task UpdatePlanItemAsync(AuditPlanItem item)
     {
         db.AuditPlanItems.Update(item);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
-    public void DeletePlanItem(int itemId)
+    public async Task DeletePlanItemAsync(int itemId)
     {
-        var item = db.AuditPlanItems.Find(itemId);
+        var item = await db.AuditPlanItems.FindAsync(itemId);
         if (item is null) return;
         db.AuditPlanItems.Remove(item);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
     public static string GetItemStatus(AuditPlanItem item)
@@ -139,18 +139,8 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
         );
     }
 
-    public InternalAudit? GetAudit(int id)
-    {
-        try
-        {
-            return AuditQueryFull().FirstOrDefault(a => a.Id == id);
-        }
-        catch (System.Data.Common.DbException)
-        {
-            // Yeni kolonlar henüz migration edilmemişse temel sorguya düş
-            return AuditQuery().FirstOrDefault(a => a.Id == id);
-        }
-    }
+    public InternalAudit? GetAudit(int id) =>
+        AuditQueryFull().FirstOrDefault(a => a.Id == id);
 
     public InternalAudit? GetAuditForUser(int id, int userId, string role)
     {
@@ -178,7 +168,7 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
         return false;
     }
 
-    public InternalAudit CreateAudit(string title, string? auditType, string? auditedUnit,
+    public async Task<InternalAudit> CreateAuditAsync(string title, string? auditType, string? auditedUnit,
         string? scope, string period, DateOnly? startDate, DateOnly? endDate, int leadAuditorId,
         int? departmentId = null, int? auditPlanItemId = null)
     {
@@ -197,7 +187,7 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
             AuditPlanItemId= auditPlanItemId,
         };
         db.InternalAudits.Add(audit);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return audit;
     }
 
@@ -205,7 +195,7 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
     /// Denetim planındaki bir maddeden otomatik iç denetim oluşturur.
     /// Madde zaten bir denetime bağlıysa hata fırlatır.
     /// </summary>
-    public InternalAudit CreateAuditFromPlanItem(int planItemId, int leadAuditorId)
+    public async Task<InternalAudit> CreateAuditFromPlanItemAsync(int planItemId, int leadAuditorId)
     {
         var item = db.AuditPlanItems
             .Include(i => i.Department)
@@ -219,7 +209,7 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
         var unitName = item.Department?.Name ?? item.AuditedUnit;
         var period   = $"{item.Plan.Year}";
 
-        var audit = CreateAudit(
+        return await CreateAuditAsync(
             title          : item.Title,
             auditType      : item.AuditType,
             auditedUnit    : unitName,
@@ -230,15 +220,13 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
             leadAuditorId  : leadAuditorId,
             departmentId   : item.DepartmentId,
             auditPlanItemId: planItemId);
-
-        return audit;
     }
 
-    public bool UpdateAudit(int id, string title, string? auditType, string? auditedUnit,
+    public async Task<bool> UpdateAuditAsync(int id, string title, string? auditType, string? auditedUnit,
         string? scope, string period, DateOnly? startDate, DateOnly? endDate, string status,
         int? departmentId = null)
     {
-        var audit = db.InternalAudits.Find(id);
+        var audit = await db.InternalAudits.FindAsync(id);
         if (audit == null) return false;
         audit.Title        = title;
         audit.AuditType    = auditType;
@@ -249,21 +237,17 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
         audit.EndDate      = endDate;
         audit.Status       = status;
         audit.DepartmentId = departmentId ?? audit.DepartmentId;
-        db.SaveChanges();
+        await db.SaveChangesAsync();
 
-        // Plan maddesinin actual tarihlerini güncelle
-        SyncPlanItemDates(audit);
+        await SyncPlanItemDatesAsync(audit);
 
         return true;
     }
 
-    /// <summary>
-    /// İç denetimin durumuna göre bağlı plan maddesinin gerçekleşen tarihlerini günceller.
-    /// </summary>
-    private void SyncPlanItemDates(InternalAudit audit)
+    private async Task SyncPlanItemDatesAsync(InternalAudit audit)
     {
         if (audit.AuditPlanItemId == null) return;
-        var item = db.AuditPlanItems.Find(audit.AuditPlanItemId);
+        var item = await db.AuditPlanItems.FindAsync(audit.AuditPlanItemId);
         if (item == null) return;
 
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -278,12 +262,20 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
             item.ActualEndDate = audit.EndDate ?? today;
         }
 
-        db.SaveChanges();
+        await db.SaveChangesAsync();
     }
 
     /// <summary>Plan maddesine bağlı InternalAudit'i döner (yoksa null).</summary>
     public InternalAudit? GetAuditByPlanItem(int planItemId) =>
         AuditQuery().FirstOrDefault(a => a.AuditPlanItemId == planItemId);
+
+    public Dictionary<int, InternalAudit> GetAuditsByPlanItems(IEnumerable<int> planItemIds)
+    {
+        var ids = planItemIds.ToHashSet();
+        return db.InternalAudits
+            .Where(a => a.AuditPlanItemId != null && ids.Contains(a.AuditPlanItemId!.Value))
+            .ToDictionary(a => a.AuditPlanItemId!.Value, a => a);
+    }
 
     // ─── Findings ─────────────────────────────────────────────────────────────
 
@@ -452,7 +444,7 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
         return direct;
     }
 
-    public AuditFinding CreateFinding(string title, string? description,
+    public async Task<AuditFinding> CreateFindingAsync(string title, string? description,
         string? category, string? severity, string? auditPeriod,
         int auditorId, int? ownerId, int? internalAuditId, DateOnly? dueDate)
     {
@@ -470,31 +462,32 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
             DueDate = dueDate,
         };
 
-        using var tx = db.Database.BeginTransaction();
+        await using var tx = await db.Database.BeginTransactionAsync();
         db.AuditFindings.Add(finding);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         LogFinding(finding.Id, auditorId, "Bulgu Oluşturuldu", title);
-        db.SaveChanges();
-        tx.Commit();
+        await db.SaveChangesAsync();
+        await tx.CommitAsync();
 
         if (ownerId.HasValue)
             _ = notifications?.NotifyFindingAssignedAsync(finding.Code, title, ownerId.Value);
         return finding;
     }
 
-    public bool UpdateFinding(int id, string title, string? description,
+    public async Task<bool> UpdateFindingAsync(int id, string title, string? description,
         string? category, string? severity, string? auditPeriod,
         int? ownerId, DateOnly? dueDate, User caller)
     {
-        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return false;
-        return InternalUpdateFinding(id, title, description, category, severity, auditPeriod, ownerId, dueDate);
+        if (auth is null) throw new InvalidOperationException("AuditService: AuthService inject edilmedi");
+        if (!auth.HasPermission(caller, "audit.modify")) return false;
+        return await InternalUpdateFindingAsync(id, title, description, category, severity, auditPeriod, ownerId, dueDate);
     }
 
-    public bool InternalUpdateFinding(int id, string title, string? description,
+    internal async Task<bool> InternalUpdateFindingAsync(int id, string title, string? description,
         string? category, string? severity, string? auditPeriod,
         int? ownerId, DateOnly? dueDate)
     {
-        var f = db.AuditFindings.Find(id);
+        var f = await db.AuditFindings.FindAsync(id);
         if (f == null || f.Status == FindingStatus.Closed) return false;
         f.Title = title;
         f.Description = description;
@@ -505,7 +498,7 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
         f.OwnerId = ownerId;
         f.DueDate = dueDate;
         LogFinding(id, ownerId, "Bulgu Güncellendi", title);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         if (ownerChanged && ownerId.HasValue)
             notifications?.NotifyFindingAssignedAsync(f.Code, title, ownerId.Value);
         return true;
@@ -513,14 +506,15 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
 
     // ─── Closure Requests ─────────────────────────────────────────────────────
 
-    public ClosureRequest? SubmitClosureRequest(int findingId, string description,
+    public async Task<ClosureRequest?> SubmitClosureRequestAsync(int findingId, string description,
         string? evidence, int requestedById, User caller)
     {
-        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return null;
-        return InternalSubmitClosureRequest(findingId, description, evidence, requestedById);
+        if (auth is null) throw new InvalidOperationException("AuditService: AuthService inject edilmedi");
+        if (!auth.HasPermission(caller, "audit.modify")) return null;
+        return await InternalSubmitClosureRequestAsync(findingId, description, evidence, requestedById);
     }
 
-    public ClosureRequest? InternalSubmitClosureRequest(int findingId, string description,
+    internal async Task<ClosureRequest?> InternalSubmitClosureRequestAsync(int findingId, string description,
         string? evidence, int requestedById)
     {
         var req = new ClosureRequest
@@ -531,26 +525,26 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
             RequestedById = requestedById,
         };
         db.ClosureRequests.Add(req);
-        var finding = db.AuditFindings.Find(findingId);
+        var finding = await db.AuditFindings.FindAsync(findingId);
         if (finding != null) finding.Status = FindingStatus.ClosureRequested;
         LogFinding(findingId, requestedById, "Kapanış Başvurusu Yapıldı");
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         if (finding != null)
             _ = notifications?.NotifyClosureRequestedAsync(finding.Code, finding.Title, finding.AuditorId);
         return req;
     }
 
-    public bool ReviewClosureRequest(int findingId, int requestId,
+    public async Task<bool> ReviewClosureRequestAsync(int findingId, int requestId,
         string decision, string? notes, int reviewedById, User caller)
     {
-        if (auth != null && !auth.HasPermission(caller, "audit.close_approve")) return false;
-        return InternalReviewClosureRequest(findingId, requestId, decision, notes, reviewedById);
+        if (auth is null) throw new InvalidOperationException("AuditService: AuthService inject edilmedi");
+        if (!auth.HasPermission(caller, "audit.close_approve")) return false;
+        return await InternalReviewClosureRequestAsync(findingId, requestId, decision, notes, reviewedById);
     }
 
-    public bool InternalReviewClosureRequest(int findingId, int requestId,
+    internal async Task<bool> InternalReviewClosureRequestAsync(int findingId, int requestId,
         string decision, string? notes, int reviewedById)
     {
-        // Bilinmeyen karar değerini reddet — geçersiz string, bulguyu istemeden Open'a düşürür.
         if (decision is not ("approved" or "rejected"))
         {
             logger?.LogWarning("Kapanış değerlendirme reddi — geçersiz karar: {Decision}, FindingId: {FindingId}, Kullanıcı: {UserId}",
@@ -562,12 +556,12 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
             .FirstOrDefault(r => r.Id == requestId && r.FindingId == findingId);
         if (req == null) return false;
 
-        req.Status = decision; // approved | rejected
+        req.Status = decision;
         req.ReviewNotes = notes;
         req.ReviewedById = reviewedById;
         req.ReviewedAt = DateTime.UtcNow;
 
-        var finding = db.AuditFindings.Find(findingId);
+        var finding = await db.AuditFindings.FindAsync(findingId);
         if (finding != null)
         {
             finding.Status = decision == "approved" ? FindingStatus.Closed : FindingStatus.Open;
@@ -575,7 +569,7 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
         }
         var actionLabel = decision == "approved" ? "Bulgu Kapatıldı" : "Kapanış Başvurusu Reddedildi";
         LogFinding(findingId, reviewedById, actionLabel, notes);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         if (finding?.OwnerId.HasValue == true)
             _ = notifications?.NotifyClosureDecidedAsync(finding.Code, finding.Title, decision, finding.OwnerId.Value);
         return true;
@@ -583,14 +577,15 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
 
     // ─── Finding Actions ──────────────────────────────────────────────────────
 
-    public AuditFindingAction? AddFindingAction(int findingId, string description,
+    public async Task<AuditFindingAction?> AddFindingActionAsync(int findingId, string description,
         string? responsible, DateOnly? dueDate, int createdById, User caller)
     {
-        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return null;
-        return InternalAddFindingAction(findingId, description, responsible, dueDate, createdById);
+        if (auth is null) throw new InvalidOperationException("AuditService: AuthService inject edilmedi");
+        if (!auth.HasPermission(caller, "audit.modify")) return null;
+        return await InternalAddFindingActionAsync(findingId, description, responsible, dueDate, createdById);
     }
 
-    public AuditFindingAction InternalAddFindingAction(int findingId, string description,
+    internal async Task<AuditFindingAction> InternalAddFindingActionAsync(int findingId, string description,
         string? responsible, DateOnly? dueDate, int createdById)
     {
         var action = new AuditFindingAction
@@ -602,21 +597,22 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
             CreatedById = createdById,
         };
         db.AuditFindingActions.Add(action);
-        var finding = db.AuditFindings.Find(findingId);
+        var finding = await db.AuditFindings.FindAsync(findingId);
         if (finding != null) finding.ActionDecision = "action_planned";
         LogFinding(findingId, createdById, "Aksiyon Planı Eklendi", description.Length > 80 ? description[..80] + "…" : description);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return action;
     }
 
-    public bool UpdateFindingAction(int findingId, int actionId,
+    public async Task<bool> UpdateFindingActionAsync(int findingId, int actionId,
         string description, string? responsible, DateOnly? dueDate, User caller)
     {
-        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return false;
-        return InternalUpdateFindingAction(findingId, actionId, description, responsible, dueDate);
+        if (auth is null) throw new InvalidOperationException("AuditService: AuthService inject edilmedi");
+        if (!auth.HasPermission(caller, "audit.modify")) return false;
+        return await InternalUpdateFindingActionAsync(findingId, actionId, description, responsible, dueDate);
     }
 
-    public bool InternalUpdateFindingAction(int findingId, int actionId,
+    internal async Task<bool> InternalUpdateFindingActionAsync(int findingId, int actionId,
         string description, string? responsible, DateOnly? dueDate)
     {
         var action = db.AuditFindingActions
@@ -627,17 +623,18 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
         action.DueDate      = dueDate;
         LogFinding(findingId, action.CreatedById, "Aksiyon Güncellendi",
             description.Length > 80 ? description[..80] + "…" : description);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return true;
     }
 
-    public bool UpdateFindingActionStatus(int findingId, int actionId, string newStatus, User caller)
+    public async Task<bool> UpdateFindingActionStatusAsync(int findingId, int actionId, string newStatus, User caller)
     {
-        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return false;
-        return InternalUpdateFindingActionStatus(findingId, actionId, newStatus);
+        if (auth is null) throw new InvalidOperationException("AuditService: AuthService inject edilmedi");
+        if (!auth.HasPermission(caller, "audit.modify")) return false;
+        return await InternalUpdateFindingActionStatusAsync(findingId, actionId, newStatus);
     }
 
-    public bool InternalUpdateFindingActionStatus(int findingId, int actionId, string newStatus)
+    internal async Task<bool> InternalUpdateFindingActionStatusAsync(int findingId, int actionId, string newStatus)
     {
         var action = db.AuditFindingActions.FirstOrDefault(a => a.Id == actionId && a.FindingId == findingId);
         if (action == null) return false;
@@ -645,7 +642,7 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
         action.Status = newStatus;
         if (newStatus == "completed") action.CompletedAt = DateTime.UtcNow;
         LogFinding(findingId, action.CreatedById, "Aksiyon Durumu Güncellendi", $"{ActionStatusLabel(oldStatus)} → {ActionStatusLabel(newStatus)}");
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return true;
     }
 
@@ -655,33 +652,35 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
         "completed" => "Tamamlandı", "cancelled" => "İptal", _ => s
     };
 
-    public bool DeleteFindingAction(int findingId, int actionId, User caller)
+    public async Task<bool> DeleteFindingActionAsync(int findingId, int actionId, User caller)
     {
-        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return false;
-        return InternalDeleteFindingAction(findingId, actionId);
+        if (auth is null) throw new InvalidOperationException("AuditService: AuthService inject edilmedi");
+        if (!auth.HasPermission(caller, "audit.modify")) return false;
+        return await InternalDeleteFindingActionAsync(findingId, actionId);
     }
 
-    public bool InternalDeleteFindingAction(int findingId, int actionId)
+    internal async Task<bool> InternalDeleteFindingActionAsync(int findingId, int actionId)
     {
         var action = db.AuditFindingActions.FirstOrDefault(a => a.Id == actionId && a.FindingId == findingId);
         if (action == null) return false;
         db.AuditFindingActions.Remove(action);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return true;
     }
 
-    public bool SetActionDecision(int findingId, string? decision, User caller)
+    public async Task<bool> SetActionDecisionAsync(int findingId, string? decision, User caller)
     {
-        if (auth != null && !auth.HasPermission(caller, "audit.modify")) return false;
-        return InternalSetActionDecision(findingId, decision);
+        if (auth is null) throw new InvalidOperationException("AuditService: AuthService inject edilmedi");
+        if (!auth.HasPermission(caller, "audit.modify")) return false;
+        return await InternalSetActionDecisionAsync(findingId, decision);
     }
 
-    public bool InternalSetActionDecision(int findingId, string? decision)
+    internal async Task<bool> InternalSetActionDecisionAsync(int findingId, string? decision)
     {
-        var finding = db.AuditFindings.Find(findingId);
+        var finding = await db.AuditFindings.FindAsync(findingId);
         if (finding == null) return false;
         finding.ActionDecision = decision;
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return true;
     }
 
@@ -744,7 +743,7 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
 
     // ─── Attachments ──────────────────────────────────────────────────────────
 
-    public FindingAttachment SaveAttachment(int findingId, string fileName, string storedPath, long fileSize, int uploadedById)
+    public async Task<FindingAttachment> SaveAttachmentAsync(int findingId, string fileName, string storedPath, long fileSize, int uploadedById)
     {
         var att = new FindingAttachment
         {
@@ -755,17 +754,17 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
             UploadedById = uploadedById,
         };
         db.FindingAttachments.Add(att);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return att;
     }
 
-    public bool DeleteAttachment(int attachmentId)
+    public async Task<bool> DeleteAttachmentAsync(int attachmentId)
     {
-        var att = db.FindingAttachments.Find(attachmentId);
+        var att = await db.FindingAttachments.FindAsync(attachmentId);
         if (att == null) return false;
         if (File.Exists(att.StoredPath)) File.Delete(att.StoredPath);
         db.FindingAttachments.Remove(att);
-        db.SaveChanges();
+        await db.SaveChangesAsync();
         return true;
     }
 

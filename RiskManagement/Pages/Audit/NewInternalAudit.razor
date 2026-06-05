@@ -185,7 +185,7 @@
         _departmentId = null;
     }
 
-    private void Submit()
+    private async Task Submit()
     {
         if (string.IsNullOrWhiteSpace(_title))  { _error = "Başlık zorunludur."; return; }
         if (string.IsNullOrWhiteSpace(_period)) { _error = "Dönem zorunludur."; return; }
@@ -195,7 +195,7 @@
         var unit  = _departmentId.HasValue
             ? _departments.FirstOrDefault(d => d.Id == _departmentId)?.Name
             : (_auditedUnit.NullIfEmpty());
-        var audit = AuditSvc.CreateAudit(
+        var audit = await AuditSvc.CreateAuditAsync(
             _title, _auditType.NullIfEmpty(), unit,
             _scope.NullIfEmpty(), _period, start, end, UserId,
             departmentId: _departmentId);

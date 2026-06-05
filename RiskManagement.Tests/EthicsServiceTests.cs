@@ -79,7 +79,7 @@ public class EthicsServiceTests
     public async Task AuditReview_Irrelevant_SetsStatusIrrelevant()
     {
         var (db, svc) = Build();
-        var reviewer = new User { Username = "mgr", FullName = "Mgr", Role = "audit_manager", Department = "D" };
+        var reviewer = new User { Username = $"rev_{Guid.NewGuid():N}".Substring(0,20), FullName = "Reviewer", Role = "auditor" };
         db.Users.Add(reviewer); db.SaveChanges();
 
         var report = await svc.SubmitAsync("Şikayet", "İçerik", null, []);
@@ -95,7 +95,7 @@ public class EthicsServiceTests
     public async Task AuditReview_BoardNotified_AdvancesStatus()
     {
         var (db, svc) = Build();
-        var reviewer = new User { Username = "mgr", FullName = "Mgr", Role = "audit_manager", Department = "D" };
+        var reviewer = new User { Username = $"rev_{Guid.NewGuid():N}".Substring(0,20), FullName = "Reviewer", Role = "auditor" };
         db.Users.Add(reviewer); db.SaveChanges();
 
         var report = await svc.SubmitAsync("Şikayet", "İçerik", null, []);
@@ -110,7 +110,7 @@ public class EthicsServiceTests
     public async Task EthicsReview_NoViolation_ClosesCase()
     {
         var (db, svc) = Build();
-        var user = new User { Username = "board", FullName = "Board", Role = "ethics_board", Department = "D" };
+        var user = new User { Username = $"usr_{Guid.NewGuid():N}".Substring(0,20), FullName = "User", Role = "admin" };
         db.Users.Add(user); db.SaveChanges();
 
         var report = await svc.SubmitAsync("Şikayet", "İçerik", null, []);
@@ -126,7 +126,7 @@ public class EthicsServiceTests
     public async Task EthicsReview_DisciplinaryReferred_SetsCorrectStatus()
     {
         var (db, svc) = Build();
-        var user = new User { Username = "board2", FullName = "Board2", Role = "ethics_board", Department = "D" };
+        var user = new User { Username = $"usr_{Guid.NewGuid():N}".Substring(0,20), FullName = "User", Role = "admin" };
         db.Users.Add(user); db.SaveChanges();
 
         var report = await svc.SubmitAsync("İhlal", "Detay", null, []);
@@ -157,7 +157,7 @@ public class EthicsServiceTests
     public async Task GetAll_StatusFilter_Works()
     {
         var (db, svc) = Build();
-        var user = new User { Username = "mgr3", FullName = "Mgr3", Role = "audit_manager", Department = "D" };
+        var user = new User { Username = $"usr_{Guid.NewGuid():N}".Substring(0,20), FullName = "User", Role = "admin" };
         db.Users.Add(user); db.SaveChanges();
 
         await svc.SubmitAsync("A", "A", null, []);

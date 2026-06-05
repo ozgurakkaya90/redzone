@@ -12,7 +12,7 @@ file static class QSeed
     public static (AppDbContext db, ConfigService cfg, RiskService svc) Build()
     {
         var db   = TestDb.Create();
-        var cfg  = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var cfg  = TestDb.CreateConfigService(db);
         var calc = new RiskCalculator(cfg);
         var auth = new AuthService(db, new MemoryCache(new MemoryCacheOptions()));
         var svc  = new RiskService(db, calc, auth);
@@ -21,7 +21,7 @@ file static class QSeed
 
     public static User AddUser(AppDbContext db, string role)
     {
-        var u = new User { Username = $"{role}_{Guid.NewGuid():N}".Substring(0,20), FullName = role, Role = role, Department = role };
+        var u = new User { Username = $"{role}_{Guid.NewGuid():N}".Substring(0,20), FullName = role, Role = role };
         db.Users.Add(u); db.SaveChanges();
         db.UserRoles.Add(new UserRole { UserId = u.Id, RoleName = role });
         db.SaveChanges();
@@ -162,13 +162,13 @@ public class RiskServiceGetAllTests
 public class RiskServiceUpdateFieldsTests
 {
     [Fact]
-    public void UpdateRiskFields_UpdatesAllFields()
+    public async Task UpdateRiskFields_UpdatesAllFields()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "risk_manager");
         var risk = QSeed.AddRisk(db, u.Id);
 
-        var ok = svc.UpdateRiskFields(risk.Id, "external", "Tedarikçi", "Yangın",
+        var ok = await svc.UpdateRiskFieldsAsync(risk.Id, "external", "Tedarikçi", "Yangın",
             "İş durması", null, "KVKK Md.12", null, null, null, "Gözlemlendi", u.Id, "Operasyonel");
 
         Assert.True(ok);
@@ -180,33 +180,33 @@ public class RiskServiceUpdateFieldsTests
     }
 
     [Fact]
-    public void UpdateRiskFields_NonExistentRisk_ReturnsFalse()
+    public async Task UpdateRiskFields_NonExistentRisk_ReturnsFalse()
     {
         var (db, _, svc) = QSeed.Build();
-        Assert.False(svc.UpdateRiskFields(99999, "internal", null, null, null, null, null, null, null, null, null));
+        Assert.False(await svc.UpdateRiskFieldsAsync(99999, "internal", null, null, null, null, null, null, null, null, null));
     }
 
     [Fact]
-    public void UpdateRiskFields_LogsChanges()
+    public async Task UpdateRiskFields_LogsChanges()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "risk_manager");
         var risk = QSeed.AddRisk(db, u.Id);
 
-        svc.UpdateRiskFields(risk.Id, "external", "Kaynak", null, null, null, null,
+        await svc.UpdateRiskFieldsAsync(risk.Id, "external", "Kaynak", null, null, null, null,
             null, null, null, null, u.Id);
 
         Assert.Contains(db.RiskAuditLogs, l => l.RiskId == risk.Id && l.Action.Contains("Güncellendi"));
     }
 
     [Fact]
-    public void UpdateRiskFields_NoChanges_StillLogsUpdate()
+    public async Task UpdateRiskFields_NoChanges_StillLogsUpdate()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "risk_manager");
         var risk = QSeed.AddRisk(db, u.Id);
 
-        svc.UpdateRiskFields(risk.Id, "internal", null, null, null, null, null,
+        await svc.UpdateRiskFieldsAsync(risk.Id, "internal", null, null, null, null, null,
             null, null, null, null, u.Id);
 
         Assert.Contains(db.RiskAuditLogs, l => l.RiskId == risk.Id);
@@ -218,14 +218,14 @@ public class RiskServiceUpdateFieldsTests
 public class RiskControlCrudTests
 {
     [Fact]
-    public void EditControl_UpdatesFields()
+    public async Task EditControl_UpdatesFields()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "risk_manager");
         var risk = QSeed.AddRisk(db, u.Id, "strategy_set");
-        var ctrl = svc.AddControl(risk.Id, "Eski açıklama", "Önleyici", null, null, u.Id);
+        var ctrl = await svc.AddControlAsync(risk.Id, "Eski açıklama", "Önleyici", null, null, u.Id);
 
-        var ok = svc.EditControl(risk.Id, ctrl.Id, "Yeni açıklama", "Tespit Edici", "Tatmin Edici", "Aylık", null, u.Id);
+        var ok = await svc.EditControlAsync(risk.Id, ctrl.Id, "Yeni açıklama", "Tespit Edici", "Tatmin Edici", "Aylık", null, u.Id);
 
         Assert.True(ok);
         var updated = db.Controls.Find(ctrl.Id)!;
@@ -234,50 +234,50 @@ public class RiskControlCrudTests
     }
 
     [Fact]
-    public void EditControl_WrongRiskId_ReturnsFalse()
+    public async Task EditControl_WrongRiskId_ReturnsFalse()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "risk_manager");
         var risk = QSeed.AddRisk(db, u.Id, "strategy_set");
-        var ctrl = svc.AddControl(risk.Id, "Kontrol", "Önleyici", null, null, u.Id);
+        var ctrl = await svc.AddControlAsync(risk.Id, "Kontrol", "Önleyici", null, null, u.Id);
 
-        Assert.False(svc.EditControl(99999, ctrl.Id, "X", "Önleyici", null, null, null));
+        Assert.False(await svc.EditControlAsync(99999, ctrl.Id, "X", "Önleyici", null, null, null));
     }
 
     [Fact]
-    public void DeleteControl_RemovesFromDb()
+    public async Task DeleteControl_RemovesFromDb()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "risk_manager");
         var risk = QSeed.AddRisk(db, u.Id, "controlled");
-        var ctrl = svc.AddControl(risk.Id, "Silinecek", "Önleyici", null, null, u.Id);
+        var ctrl = await svc.AddControlAsync(risk.Id, "Silinecek", "Önleyici", null, null, u.Id);
 
-        Assert.True(svc.DeleteControl(risk.Id, ctrl.Id, u.Id));
+        Assert.True(await svc.DeleteControlAsync(risk.Id, ctrl.Id, u.Id));
         Assert.Null(db.Controls.Find(ctrl.Id));
     }
 
     [Fact]
-    public void DeleteControl_NonExistent_ReturnsFalse()
+    public async Task DeleteControl_NonExistent_ReturnsFalse()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "risk_manager");
         var risk = QSeed.AddRisk(db, u.Id, "controlled");
 
-        Assert.False(svc.DeleteControl(risk.Id, 99999));
+        Assert.False(await svc.DeleteControlAsync(risk.Id, 99999));
     }
 }
 
 public class RiskActionCrudTests
 {
     [Fact]
-    public void EditAction_UpdatesFields()
+    public async Task EditAction_UpdatesFields()
     {
         var (db, _, svc) = QSeed.Build();
         var u      = QSeed.AddUser(db, "risk_manager");
         var risk   = QSeed.AddRisk(db, u.Id, "residual_evaluated");
-        var action = svc.AddAction(risk.Id, "Eski", "BT", null, u.Id);
+        var action = await svc.AddActionAsync(risk.Id, "Eski", "BT", null, u.Id);
 
-        var ok = svc.EditAction(risk.Id, action.Id, "Yeni açıklama", null,
+        var ok = await svc.EditActionAsync(risk.Id, action.Id, "Yeni açıklama", null,
             DateOnly.FromDateTime(DateTime.Today.AddMonths(1)), u.Id);
 
         Assert.True(ok);
@@ -285,36 +285,36 @@ public class RiskActionCrudTests
     }
 
     [Fact]
-    public void DeleteAction_RemovesFromDb()
+    public async Task DeleteAction_RemovesFromDb()
     {
         var (db, _, svc) = QSeed.Build();
         var u      = QSeed.AddUser(db, "risk_manager");
         var risk   = QSeed.AddRisk(db, u.Id, "residual_evaluated");
-        var action = svc.AddAction(risk.Id, "Silinecek", "IT", null, u.Id);
+        var action = await svc.AddActionAsync(risk.Id, "Silinecek", "IT", null, u.Id);
 
-        Assert.True(svc.DeleteAction(risk.Id, action.Id, u.Id));
+        Assert.True(await svc.DeleteActionAsync(risk.Id, action.Id, u.Id));
         Assert.Null(db.ActionPlans.Find(action.Id));
     }
 
     [Fact]
-    public void DeleteAction_NonExistent_ReturnsFalse()
+    public async Task DeleteAction_NonExistent_ReturnsFalse()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "risk_manager");
         var risk = QSeed.AddRisk(db, u.Id);
 
-        Assert.False(svc.DeleteAction(risk.Id, 99999));
+        Assert.False(await svc.DeleteActionAsync(risk.Id, 99999));
     }
 
     [Fact]
-    public void UpdateActionStatus_Cancelled_DoesNotSetCompletedAt()
+    public async Task UpdateActionStatus_Cancelled_DoesNotSetCompletedAt()
     {
         var (db, _, svc) = QSeed.Build();
         var u      = QSeed.AddUser(db, "risk_manager");
         var risk   = QSeed.AddRisk(db, u.Id, "action_planned");
-        var action = svc.AddAction(risk.Id, "Test", "IT", null, u.Id);
+        var action = await svc.AddActionAsync(risk.Id, "Test", "IT", null, u.Id);
 
-        svc.UpdateActionStatus(risk.Id, action.Id, "cancelled", u.Id);
+        await svc.UpdateActionStatusAsync(risk.Id, action.Id, "cancelled", u.Id);
 
         Assert.Null(db.ActionPlans.Find(action.Id)!.CompletedAt);
     }
@@ -325,47 +325,47 @@ public class RiskActionCrudTests
 public class RiskReviewTests
 {
     [Fact]
-    public void AddReview_PersistsData()
+    public async Task AddReview_PersistsData()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "committee");
         var risk = QSeed.AddRisk(db, u.Id, "approved");
 
-        var rv = svc.AddReview(risk.Id, DateTime.UtcNow, "Kabul edildi", "Toplantı notları", u.Id);
+        var rv = await svc.AddReviewAsync(risk.Id, DateTime.UtcNow, "Kabul edildi", "Toplantı notları", u.Id);
 
         Assert.NotNull(rv);
         Assert.Equal("Kabul edildi", db.RiskReviews.Find(rv.Id)!.Decision);
     }
 
     [Fact]
-    public void DeleteReview_RemovesFromDb()
+    public async Task DeleteReview_RemovesFromDb()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "committee");
         var risk = QSeed.AddRisk(db, u.Id, "approved");
-        var rv   = svc.AddReview(risk.Id, DateTime.UtcNow, "Karar", null, u.Id);
+        var rv   = await svc.AddReviewAsync(risk.Id, DateTime.UtcNow, "Karar", null, u.Id);
 
-        svc.DeleteReview(rv.Id, u.Id);
+        await svc.DeleteReviewAsync(rv.Id, u.Id);
 
         Assert.Null(db.RiskReviews.Find(rv.Id));
     }
 
     [Fact]
-    public void DeleteReview_NonExistent_DoesNotThrow()
+    public async Task DeleteReview_NonExistent_DoesNotThrow()
     {
         var (db, _, svc) = QSeed.Build();
-        var ex = Record.Exception(() => svc.DeleteReview(99999));
+        var ex = await Record.ExceptionAsync(() => svc.DeleteReviewAsync(99999));
         Assert.Null(ex);
     }
 
     [Fact]
-    public void AddReview_LogsAction()
+    public async Task AddReview_LogsAction()
     {
         var (db, _, svc) = QSeed.Build();
         var u    = QSeed.AddUser(db, "committee");
         var risk = QSeed.AddRisk(db, u.Id, "approved");
 
-        svc.AddReview(risk.Id, DateTime.UtcNow, "Karar", "Not", u.Id);
+        await svc.AddReviewAsync(risk.Id, DateTime.UtcNow, "Karar", "Not", u.Id);
 
         Assert.Contains(db.RiskAuditLogs, l =>
             l.RiskId == risk.Id && l.Action.Contains("Gözden Geçirme"));

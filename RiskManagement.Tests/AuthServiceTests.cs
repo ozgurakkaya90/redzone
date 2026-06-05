@@ -22,7 +22,6 @@ public class AuthServicePrincipalTests
         var user = new User
         {
             Id = 42, Username = "test", FullName = "Test User",
-            Department = "IT", Role = "risk_manager",
             UserRoles = [new UserRole { RoleName = "risk_manager" }],
         };
 
@@ -44,7 +43,6 @@ public class AuthServicePrincipalTests
         var user = new User
         {
             Id = 7, Username = "multi", FullName = "Multi User",
-            Department = "Ops", Role = "auditor",
             UserRoles =
             [
                 new UserRole { RoleName = "auditor" },
@@ -70,7 +68,6 @@ public class AuthServicePrincipalTests
         var svc = BuildSvc(db);
         var user = new User
         {
-            Id = 5, Username = "u", FullName = "U", Department = "D", Role = "user",
             UserRoles        = [new UserRole { RoleName = "user" }],
             UserDepartments  = [new UserDepartment  { DepartmentId  = 10 }],
             UserOrganizations= [new UserOrganization{ OrganizationId = 20 }],
@@ -165,7 +162,7 @@ public class AuthServicePrincipalTests
             Username     = "eski_calisan",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("sifre123"),
             FullName     = "Eski Çalışan",
-            Department   = "IT",
+
             Role         = "user",
             IsActive     = false,   // pasife alındı
         });
@@ -188,7 +185,7 @@ public class AuthServicePrincipalTests
             Username     = "ldap_user",
             PasswordHash = "$ldap$",
             FullName     = "AD Kullanıcısı",
-            Department   = "IT",
+
             Role         = "user",
             IsActive     = true,
         });
@@ -213,7 +210,7 @@ public class AuthServicePrincipalTests
             Username     = "aktif_kullanici",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword("sifre123"),
             FullName     = "Aktif",
-            Department   = "IT",
+
             Role         = "user",
             IsActive     = true,
         });

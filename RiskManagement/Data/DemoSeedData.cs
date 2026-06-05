@@ -93,44 +93,44 @@ public static class DemoSeedData
         var pw = (string s) => BCrypt.Net.BCrypt.HashPassword(s);
 
         // ── Sistem & Demo ──────────────────────────────────────────────────────
-        var uAdmin  = new User { Username="admin",    FullName="Sistem Yöneticisi",     Department="Yönetim Kurulu",      Role="admin",         AuthType="local", IsActive=true, PasswordHash=pw("Admin123!"), DepartmentId=dYK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
-        var uDemo   = new User { Username="demo",     FullName="Demo Yönetici",          Department="Yönetim Kurulu",      Role="admin",         AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dYK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uAdmin  = new User { Username="admin",    FullName="Sistem Yöneticisi",          Role="admin",         AuthType="local", IsActive=true, PasswordHash=pw("Admin123!"), DepartmentId=dYK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uDemo   = new User { Username="demo",     FullName="Demo Yönetici",               Role="admin",         AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dYK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
 
         // ── Risk Komitesi (3 kişi — CFO, COO, Risk Direktörü) ─────────────────
-        var uKom1   = new User { Username="t.yilmaz", FullName="Taner Yılmaz",           Department="Yönetim Kurulu",      Role="committee",     AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dYK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
-        var uKom2   = new User { Username="a.kaya",   FullName="Ayşe Kaya",              Department="Finans & Muhasebe",   Role="committee",     AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dFin.Id,   OrganizationId=orgKB.Id,   CompanyId=finAŞ.Id };
-        var uKom3   = new User { Username="o.celik",  FullName="Osman Çelik",            Department="Risk Yönetimi",       Role="committee",     AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dRisk.Id,  OrganizationId=orgRisk.Id, CompanyId=finAŞ.Id };
+        var uKom1   = new User { Username="t.yilmaz", FullName="Taner Yılmaz",                Role="committee",     AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dYK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uKom2   = new User { Username="a.kaya",   FullName="Ayşe Kaya",                Role="committee",     AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dFin.Id,   OrganizationId=orgKB.Id,   CompanyId=finAŞ.Id };
+        var uKom3   = new User { Username="o.celik",  FullName="Osman Çelik",                  Role="committee",     AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dRisk.Id,  OrganizationId=orgRisk.Id, CompanyId=finAŞ.Id };
 
         // ── Risk Yönetimi (2 kişi) ────────────────────────────────────────────
-        var uRMgr1  = new User { Username="f.arslan", FullName="Fatma Arslan",            Department="Risk Yönetimi",       Role="risk_manager",  AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dRisk.Id,  OrganizationId=orgRisk.Id, CompanyId=finAŞ.Id };
-        var uRMgr2  = new User { Username="b.ozkan",  FullName="Burak Özkan",             Department="Risk Yönetimi",       Role="risk_manager",  AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dRisk.Id,  OrganizationId=orgRisk.Id, CompanyId=finAŞ.Id };
+        var uRMgr1  = new User { Username="f.arslan", FullName="Fatma Arslan",                  Role="risk_manager",  AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dRisk.Id,  OrganizationId=orgRisk.Id, CompanyId=finAŞ.Id };
+        var uRMgr2  = new User { Username="b.ozkan",  FullName="Burak Özkan",                   Role="risk_manager",  AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dRisk.Id,  OrganizationId=orgRisk.Id, CompanyId=finAŞ.Id };
 
         // ── Risk Sahipleri — Departman yöneticileri (4 kişi) ──────────────────
-        var uROwn1  = new User { Username="m.yilmaz", FullName="Mehmet Yılmaz",           Department="Operasyon & Lojistik",Role="risk_owner",    AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dOps.Id,   OrganizationId=orgKB.Id,   CompanyId=finAŞ.Id };
-        var uROwn2  = new User { Username="a.celik",  FullName="Ali Çelik",               Department="Bilgi Teknolojileri", Role="risk_owner",    AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dBT.Id,    OrganizationId=orgInf.Id,  CompanyId=tekAŞ.Id };
-        var uROwn3  = new User { Username="g.demir",  FullName="Gülsüm Demir",            Department="Finans & Muhasebe",   Role="risk_owner",    AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dFin.Id,   OrganizationId=orgKB.Id,   CompanyId=finAŞ.Id };
-        var uROwn4  = new User { Username="k.sahin",  FullName="Kemal Şahin",             Department="İnsan Kaynakları",    Role="risk_owner",    AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dIK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uROwn1  = new User { Username="m.yilmaz", FullName="Mehmet Yılmaz",           Role="risk_owner",    AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dOps.Id,   OrganizationId=orgKB.Id,   CompanyId=finAŞ.Id };
+        var uROwn2  = new User { Username="a.celik",  FullName="Ali Çelik",               Role="risk_owner",    AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dBT.Id,    OrganizationId=orgInf.Id,  CompanyId=tekAŞ.Id };
+        var uROwn3  = new User { Username="g.demir",  FullName="Gülsüm Demir",              Role="risk_owner",    AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dFin.Id,   OrganizationId=orgKB.Id,   CompanyId=finAŞ.Id };
+        var uROwn4  = new User { Username="k.sahin",  FullName="Kemal Şahin",                Role="risk_owner",    AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dIK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
 
         // ── İç Denetim (1 müdür + 2 denetçi) ────────────────────────────────
-        var uDenMgr = new User { Username="c.sahin",  FullName="Can Şahin",               Department="İç Denetim",          Role="audit_manager", AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dDen.Id,   OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
-        var uDen1   = new User { Username="z.demir",  FullName="Zeynep Demir",            Department="İç Denetim",          Role="auditor",       AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dDen.Id,   OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
-        var uDen2   = new User { Username="y.polat",  FullName="Yunus Polat",             Department="İç Denetim",          Role="auditor",       AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dDen.Id,   OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uDenMgr = new User { Username="c.sahin",  FullName="Can Şahin",                        Role="audit_manager", AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dDen.Id,   OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uDen1   = new User { Username="z.demir",  FullName="Zeynep Demir",                     Role="auditor",       AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dDen.Id,   OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uDen2   = new User { Username="y.polat",  FullName="Yunus Polat",                      Role="auditor",       AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dDen.Id,   OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
 
         // ── Bulgu Sahipleri — Bulgularla görevlendirilen çalışanlar (3 kişi) ──
-        var uFOwn1  = new User { Username="h.polat",  FullName="Hasan Polat",             Department="Finans & Muhasebe",   Role="finding_owner", AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dFin.Id,   OrganizationId=orgKB.Id,   CompanyId=finAŞ.Id };
-        var uFOwn2  = new User { Username="p.arslan", FullName="Pınar Arslan",            Department="Bilgi Teknolojileri", Role="finding_owner", AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dBT.Id,    OrganizationId=orgInf.Id,  CompanyId=tekAŞ.Id };
-        var uFOwn3  = new User { Username="r.kurt",   FullName="Rıdvan Kurt",             Department="Satın Alma",          Role="finding_owner", AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dSatın.Id, OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uFOwn1  = new User { Username="h.polat",  FullName="Hasan Polat",               Role="finding_owner", AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dFin.Id,   OrganizationId=orgKB.Id,   CompanyId=finAŞ.Id };
+        var uFOwn2  = new User { Username="p.arslan", FullName="Pınar Arslan",            Role="finding_owner", AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dBT.Id,    OrganizationId=orgInf.Id,  CompanyId=tekAŞ.Id };
+        var uFOwn3  = new User { Username="r.kurt",   FullName="Rıdvan Kurt",                      Role="finding_owner", AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dSatın.Id, OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
 
         // ── Etik Kurul (2 kişi) ───────────────────────────────────────────────
-        var uEth1   = new User { Username="s.yildiz", FullName="Selin Yıldız",            Department="Hukuk & Uyum",        Role="ethics_board",  AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dHukuk.Id, OrganizationId=orgRisk.Id, CompanyId=finAŞ.Id };
-        var uEth2   = new User { Username="d.ozturk", FullName="Deniz Öztürk",            Department="İnsan Kaynakları",    Role="ethics_board",  AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dIK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uEth1   = new User { Username="s.yildiz", FullName="Selin Yıldız",                   Role="ethics_board",  AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dHukuk.Id, OrganizationId=orgRisk.Id, CompanyId=finAŞ.Id };
+        var uEth2   = new User { Username="d.ozturk", FullName="Deniz Öztürk",               Role="ethics_board",  AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dIK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
 
         // ── Standart Kullanıcılar — Risk öneri yapan çalışanlar (5 kişi) ─────
-        var uUser1  = new User { Username="e.kurt",   FullName="Esra Kurt",               Department="Satış & Pazarlama",   Role="user",          AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dSatiş.Id, OrganizationId=orgYaz.Id,  CompanyId=tekAŞ.Id };
-        var uUser2  = new User { Username="n.arslan", FullName="Neslihan Arslan",          Department="İnsan Kaynakları",    Role="user",          AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dIK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
-        var uUser3  = new User { Username="i.yuce",   FullName="İbrahim Yüce",            Department="Yazılım Geliştirme",  Role="user",          AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dSW.Id,    OrganizationId=orgYaz.Id,  CompanyId=tekAŞ.Id };
-        var uUser4  = new User { Username="l.koc",    FullName="Leyla Koç",               Department="Satın Alma",          Role="user",          AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dSatın.Id, OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
-        var uUser5  = new User { Username="m.ozdemir",FullName="Mustafa Özdemir",          Department="Siber Güvenlik",      Role="user",          AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dSiber.Id, OrganizationId=orgInf.Id,  CompanyId=tekAŞ.Id };
+        var uUser1  = new User { Username="e.kurt",   FullName="Esra Kurt",                 Role="user",          AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dSatiş.Id, OrganizationId=orgYaz.Id,  CompanyId=tekAŞ.Id };
+        var uUser2  = new User { Username="n.arslan", FullName="Neslihan Arslan",             Role="user",          AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dIK.Id,    OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uUser3  = new User { Username="i.yuce",   FullName="İbrahim Yüce",             Role="user",          AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dSW.Id,    OrganizationId=orgYaz.Id,  CompanyId=tekAŞ.Id };
+        var uUser4  = new User { Username="l.koc",    FullName="Leyla Koç",                        Role="user",          AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dSatın.Id, OrganizationId=orgGMD.Id,  CompanyId=holding.Id };
+        var uUser5  = new User { Username="m.ozdemir",FullName="Mustafa Özdemir",               Role="user",          AuthType="local", IsActive=true, PasswordHash=pw("Demo123!"),  DepartmentId=dSiber.Id, OrganizationId=orgInf.Id,  CompanyId=tekAŞ.Id };
 
         db.Users.AddRange(
             uAdmin, uDemo,

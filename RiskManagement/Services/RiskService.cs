@@ -12,32 +12,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
     public string GenerateCode()
     {
         var year = DateTime.UtcNow.Year;
-        var provider = db.Database.ProviderName ?? "";
-        if (provider.Contains("SqlServer"))
-        {
-            var code = GetNextCodeFromSqlServerSequence(year);
-            if (!string.IsNullOrEmpty(code)) return code;
-        }
         return $"R-{year}-{CounterHelper.GetNext(db, $"risk-{year}"):D3}";
-    }
-
-    private string? GetNextCodeFromSqlServerSequence(int year)
-    {
-        try
-        {
-            var conn = db.Database.GetDbConnection();
-            if (conn.State != System.Data.ConnectionState.Open) conn.Open();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = "EXEC dbo.sp_GetNextRiskCode @year";
-            var p = cmd.CreateParameter(); p.ParameterName = "@year"; p.Value = year;
-            cmd.Parameters.Add(p);
-            return cmd.ExecuteScalar()?.ToString();
-        }
-        catch (Exception ex)
-        {
-            logger?.LogWarning(ex, "SQL Server sequence sorgusu başarısız (year={Year}), CounterHelper'a düşülüyor", year);
-            return null;
-        }
     }
 
     // ── Audit log helper ────────────────────────────────────────────────────
@@ -293,13 +268,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         throw new InvalidOperationException("Benzersiz risk kodu oluşturulamadı.");
     }
 
-    /// <summary>Geriye dönük uyumluluk — yeni kodu CreateAsync ile yazın.</summary>
-    [Obsolete("Blazor Server'da deadlock riski. CreateAsync kullanın.", error: false)]
-    public Risk Create(string title, string? description, string? category,
-        int? organizationId, string? riskStrategy, int? proposedById, string? proposerName)
-        => CreateAsync(title, description, category, organizationId, riskStrategy, proposedById, proposerName)
-            .GetAwaiter().GetResult();
-
     public async Task<bool> UpdateStatusAsync(int id, string newStatus, string? rejectionReason, User currentUser)
     {
         var risk = await db.Risks.FindAsync(id);
@@ -349,10 +317,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         return true;
     }
 
-    [Obsolete("Blazor Server'da deadlock riski. UpdateStatusAsync kullanın.", error: false)]
-    public bool UpdateStatus(int id, string newStatus, string? rejectionReason, User currentUser)
-        => UpdateStatusAsync(id, newStatus, rejectionReason, currentUser).GetAwaiter().GetResult();
-
     /// <summary>Kalıntı riski kabul eder; iş akışı geçişini ve loglama dahil tüm mantığı içerir.</summary>
     public async Task<(bool Ok, string? Error)> AcceptRiskAsync(int riskId, string? reason, int userId)
     {
@@ -362,10 +326,9 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         if (!RiskWorkflow.CanTransition(risk.Status, RiskStatus.RiskAccepted))
             return (false, "Mevcut risk durumunda kalıntı risk kabul edilemez.");
 
-        var oldStatus = risk.Status;           // geçiş öncesi durum — bildirimde kullanılacak
+        var oldStatus = risk.Status;
         risk.Status = RiskStatus.RiskAccepted;
-        // Gerekçe; semantik olarak AcceptanceReason — depolama alanı RejectionReason'ı paylaşır.
-        risk.RejectionReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        risk.AcceptanceReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
 
         Log(riskId, userId > 0 ? userId : null, "Kalıntı Risk Kabul Edildi",
             newVal: risk.RejectionReason);
@@ -384,6 +347,20 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         }
 
         return (true, null);
+    }
+
+    /// <summary>Riski pasife alır / yeniden aktifleştirir. Pasif riskler envanter listesinde varsayılan gizlidir.</summary>
+    public async Task<bool> SetActiveAsync(int id, bool isActive, int? userId = null)
+    {
+        var risk = await db.Risks.FindAsync(id);
+        if (risk == null) return false;
+        if (risk.IsActive == isActive) return true; // değişiklik yok
+
+        risk.IsActive = isActive;
+        Log(id, userId, isActive ? "Risk Yeniden Aktifleştirildi" : "Risk Pasife Alındı",
+            "Durum (Aktif/Pasif)", isActive ? "Pasif" : "Aktif", isActive ? "Aktif" : "Pasif");
+        await db.SaveChangesAsync();
+        return true;
     }
 
     public async Task<bool> UpdateMetadataAsync(int id, int? organizationId, int? departmentId, string? riskStrategy, int? userId = null)
@@ -411,14 +388,11 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         return true;
     }
 
-    [Obsolete("Blazor Server'da deadlock riski. UpdateMetadataAsync kullanın.", error: false)]
-    public bool UpdateMetadata(int id, int? organizationId, int? departmentId, string? riskStrategy, int? userId = null)
-        => UpdateMetadataAsync(id, organizationId, departmentId, riskStrategy, userId).GetAwaiter().GetResult();
-
     public async Task<bool> UpdateRiskFieldsAsync(int id, string sourceType, string? source, string? hazard,
         string? possibleImpact, string? affectedPersons, string? relevantLegislation,
         DateTime? lastReviewedAt, string? lastReviewerName, string? lastReviewerTitle,
-        string? currentStatus = null, int? userId = null, string? category = null)
+        string? currentStatus = null, int? userId = null, string? category = null,
+        string? activityArea = null)
     {
         var risk = await db.Risks.FindAsync(id);
         if (risk == null) return false;
@@ -427,10 +401,12 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         void Track(string f, string? o, string? n) { if (o != n) changes.Add((f, o, n)); }
 
         Track("Kategori", risk.Category, category);
-        Track("Kaynak Türü", risk.SourceType, sourceType);
-        Track("Kaynak", risk.Source, source);
+        // Etiketler güncellendi: SourceType → "Kaynak Sınıflandırması", Source → "Kaynak Türü".
+        Track("Kaynak Sınıflandırması", risk.SourceType, sourceType);
+        Track("Kaynak Türü", risk.Source, source);
         Track("Tehlike", risk.Hazard, hazard);
         Track("Olası Etki", risk.PossibleImpact, possibleImpact);
+        Track("Faaliyet Alanı", risk.ActivityArea, activityArea);
         Track("Etkilenecek Kişiler", risk.AffectedPersons, affectedPersons);
         Track("İlgili Mevzuat", risk.RelevantLegislation, relevantLegislation);
         Track("Mevcut Durum", risk.CurrentStatus, currentStatus);
@@ -438,6 +414,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         if (category != null) risk.Category = string.IsNullOrEmpty(category) ? null : category;
         risk.SourceType = sourceType; risk.Source = source; risk.Hazard = hazard;
         risk.PossibleImpact = possibleImpact; risk.AffectedPersons = affectedPersons;
+        risk.ActivityArea = activityArea;
         risk.RelevantLegislation = relevantLegislation; risk.CurrentStatus = currentStatus;
         risk.LastReviewedAt = lastReviewedAt; risk.LastReviewerName = lastReviewerName;
         risk.LastReviewerTitle = lastReviewerTitle;
@@ -450,15 +427,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         await db.SaveChangesAsync();
         return true;
     }
-
-    [Obsolete("Blazor Server'da deadlock riski. UpdateRiskFieldsAsync kullanın.", error: false)]
-    public bool UpdateRiskFields(int id, string sourceType, string? source, string? hazard,
-        string? possibleImpact, string? affectedPersons, string? relevantLegislation,
-        DateTime? lastReviewedAt, string? lastReviewerName, string? lastReviewerTitle,
-        string? currentStatus = null, int? userId = null, string? category = null)
-        => UpdateRiskFieldsAsync(id, sourceType, source, hazard, possibleImpact, affectedPersons,
-            relevantLegislation, lastReviewedAt, lastReviewerName, lastReviewerTitle,
-            currentStatus, userId, category).GetAwaiter().GetResult();
 
     public async Task<bool> AssignOwnerAsync(int id, int ownerId, User currentUser)
     {
@@ -479,10 +447,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         }
         return true;
     }
-
-    [Obsolete("Blazor Server'da deadlock riski. AssignOwnerAsync kullanın.", error: false)]
-    public bool AssignOwner(int id, int ownerId, User currentUser)
-        => AssignOwnerAsync(id, ownerId, currentUser).GetAwaiter().GetResult();
 
     // ── Değerlendirme ────────────────────────────────────────────────────────
     public async Task<Evaluation> AddEvaluationAsync(int riskId, string evalType,
@@ -529,12 +493,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         return eval;
     }
 
-    [Obsolete("Blazor Server'da deadlock riski. AddEvaluationAsync kullanın.", error: false)]
-    public Evaluation AddEvaluation(int riskId, string evalType,
-        double probability, double exposure, double consequence, string? notes, int evaluatedById)
-        => AddEvaluationAsync(riskId, evalType, probability, exposure, consequence, notes, evaluatedById)
-            .GetAwaiter().GetResult();
-
     // ── Kontroller ───────────────────────────────────────────────────────────
     public async Task<Control> AddControlAsync(int riskId, string description, string controlType,
         string? effectiveness, string? frequency, int enteredById, int? ownerDeptId = null)
@@ -554,12 +512,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         await db.SaveChangesAsync();
         return ctrl;
     }
-
-    [Obsolete("Blazor Server'da deadlock riski. AddControlAsync kullanın.", error: false)]
-    public Control AddControl(int riskId, string description, string controlType,
-        string? effectiveness, string? frequency, int enteredById, int? ownerDeptId = null)
-        => AddControlAsync(riskId, description, controlType, effectiveness, frequency, enteredById, ownerDeptId)
-            .GetAwaiter().GetResult();
 
     public async Task<bool> EditControlAsync(int riskId, int controlId, string description,
         string controlType, string? effectiveness, string? frequency, int? ownerDeptId, int? userId = null)
@@ -581,12 +533,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         return true;
     }
 
-    [Obsolete("Blazor Server'da deadlock riski. EditControlAsync kullanın.", error: false)]
-    public bool EditControl(int riskId, int controlId, string description,
-        string controlType, string? effectiveness, string? frequency, int? ownerDeptId, int? userId = null)
-        => EditControlAsync(riskId, controlId, description, controlType, effectiveness, frequency, ownerDeptId, userId)
-            .GetAwaiter().GetResult();
-
     public async Task<bool> DeleteControlAsync(int riskId, int controlId, int? userId = null)
     {
         var ctrl = await db.Controls.FirstOrDefaultAsync(c => c.Id == controlId && c.RiskId == riskId);
@@ -596,10 +542,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         await db.SaveChangesAsync();
         return true;
     }
-
-    [Obsolete("Blazor Server'da deadlock riski. DeleteControlAsync kullanın.", error: false)]
-    public bool DeleteControl(int riskId, int controlId, int? userId = null)
-        => DeleteControlAsync(riskId, controlId, userId).GetAwaiter().GetResult();
 
     // ── Aksiyon Planları ─────────────────────────────────────────────────────
     public async Task<ActionPlan> AddActionAsync(int riskId, string description, string responsible,
@@ -621,12 +563,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         return action;
     }
 
-    [Obsolete("Blazor Server'da deadlock riski. AddActionAsync kullanın.", error: false)]
-    public ActionPlan AddAction(int riskId, string description, string responsible,
-        DateOnly? dueDate, int createdById, int? ownerDeptId = null)
-        => AddActionAsync(riskId, description, responsible, dueDate, createdById, ownerDeptId)
-            .GetAwaiter().GetResult();
-
     public async Task<bool> EditActionAsync(int riskId, int actionId, string description,
         int? ownerDeptId, DateOnly? dueDate, int? userId = null)
     {
@@ -646,12 +582,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         await db.SaveChangesAsync();
         return true;
     }
-
-    [Obsolete("Blazor Server'da deadlock riski. EditActionAsync kullanın.", error: false)]
-    public bool EditAction(int riskId, int actionId, string description,
-        int? ownerDeptId, DateOnly? dueDate, int? userId = null)
-        => EditActionAsync(riskId, actionId, description, ownerDeptId, dueDate, userId)
-            .GetAwaiter().GetResult();
 
     public async Task<bool> UpdateActionStatusAsync(int riskId, int actionId, string newStatus, int? userId = null)
     {
@@ -684,10 +614,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         return true;
     }
 
-    [Obsolete("Blazor Server'da deadlock riski. UpdateActionStatusAsync kullanın.", error: false)]
-    public bool UpdateActionStatus(int riskId, int actionId, string newStatus, int? userId = null)
-        => UpdateActionStatusAsync(riskId, actionId, newStatus, userId).GetAwaiter().GetResult();
-
     public async Task<bool> DeleteActionAsync(int riskId, int actionId, int? userId = null)
     {
         var action = await db.ActionPlans.FirstOrDefaultAsync(a => a.Id == actionId && a.RiskId == riskId);
@@ -698,32 +624,37 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         return true;
     }
 
-    [Obsolete("Blazor Server'da deadlock riski. DeleteActionAsync kullanın.", error: false)]
-    public bool DeleteAction(int riskId, int actionId, int? userId = null)
-        => DeleteActionAsync(riskId, actionId, userId).GetAwaiter().GetResult();
-
     // ── Gözden Geçirmeler ────────────────────────────────────────────────────
+    /// <summary>
+    /// Komite gözden geçirme kaydı ekler. Bir toplantıda alınan birden fazla karar maddesi
+    /// <paramref name="decisionItems"/> ile geçirilir; geriye dönük uyum için tek <paramref name="decision"/>
+    /// metni de kabul edilir.
+    /// </summary>
     public async Task<RiskReview> AddReviewAsync(int riskId, DateTime meetingDate, string? decision,
-        string? notes, int createdById)
+        string? notes, int createdById, IEnumerable<string>? decisionItems = null)
     {
         var review = new RiskReview
         {
             RiskId = riskId, MeetingDate = meetingDate.ToUniversalTime(),
-            Decision = decision, Notes = notes, CreatedById = createdById,
+            Notes = notes, CreatedById = createdById,
         };
+
+        var items = decisionItems?.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList() ?? [];
+        if (items.Count == 0 && !string.IsNullOrWhiteSpace(decision))
+            items.Add(decision.Trim());
+
+        if (items.Count > 0) review.SetDecisionItemsList(items);
+        else                  review.Decision = decision;
+
         db.RiskReviews.Add(review);
         Log(riskId, createdById, "Gözden Geçirme Kaydedildi",
             "Toplantı Tarihi", null, meetingDate.ToString("dd.MM.yyyy"));
-        if (!string.IsNullOrEmpty(decision))
-            Log(riskId, createdById, "Gözden Geçirme Kaydedildi", "Karar", null, decision);
+        for (int i = 0; i < items.Count; i++)
+            Log(riskId, createdById, "Gözden Geçirme Kaydedildi",
+                items.Count > 1 ? $"Karar (Madde {i + 1})" : "Karar", null, items[i]);
         await db.SaveChangesAsync();
         return review;
     }
-
-    [Obsolete("Blazor Server'da deadlock riski. AddReviewAsync kullanın.", error: false)]
-    public RiskReview AddReview(int riskId, DateTime meetingDate, string? decision,
-        string? notes, int createdById)
-        => AddReviewAsync(riskId, meetingDate, decision, notes, createdById).GetAwaiter().GetResult();
 
     public async Task DeleteReviewAsync(int reviewId, int? userId = null)
     {
@@ -734,10 +665,6 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         db.RiskReviews.Remove(r);
         await db.SaveChangesAsync();
     }
-
-    [Obsolete("Blazor Server'da deadlock riski. DeleteReviewAsync kullanın.", error: false)]
-    public void DeleteReview(int reviewId, int? userId = null)
-        => DeleteReviewAsync(reviewId, userId).GetAwaiter().GetResult();
 
     // ── Önceki / Sonraki navigasyon ──────────────────────────────────────────
 

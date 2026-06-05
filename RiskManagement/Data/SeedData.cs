@@ -36,37 +36,31 @@ public static class SeedData
         var admin = new User
         {
             Username = "admin", FullName = "Sistem Yöneticisi",
-            Department = "Yönetim", Role = "admin",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
         };
         var committee = new User
         {
             Username = "komite1", FullName = "Ayşe Kaya",
-            Department = "Risk Komitesi", Role = "committee",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPasswords["komite1"]),
         };
         var owner = new User
         {
             Username = "riskowner1", FullName = "Mehmet Yılmaz",
-            Department = "Operasyon", Role = "risk_owner",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPasswords["riskowner1"]),
         };
         var riskMgr = new User
         {
             Username = "riskymgr1", FullName = "Fatma Arslan",
-            Department = "Risk Yönetimi", Role = "risk_manager",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPasswords["riskymgr1"]),
         };
         var auditor = new User
         {
             Username = "denetci1", FullName = "Zeynep Demir",
-            Department = "İç Denetim", Role = "auditor",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPasswords["denetci1"]),
         };
         var auditMgr = new User
         {
             Username = "denetimmgr", FullName = "Can Şahin",
-            Department = "İç Denetim", Role = "audit_manager",
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(demoPasswords["denetimmgr"]),
         };
 

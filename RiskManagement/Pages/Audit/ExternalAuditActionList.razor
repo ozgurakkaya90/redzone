@@ -1,0 +1,373 @@
+@page "/audit/external/actions"
+@attribute [Authorize]
+@inject ExternalAuditService ExtSvc
+@inject ConfigService CfgSvc
+@inject AuthService Auth
+@inject AppDbContext Db
+@inject IHttpContextAccessor HttpCtx
+@inject ILogger<ExternalAuditActionList> Logger
+@using System.Security.Claims
+@using RiskManagement.Models
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Dış Denetim Aksiyon Planları</PageTitle>
+
+@if (!_canRead)
+{
+    <div class="card" style="padding:24px">
+        <div style="font-weight:700">Yetki yok</div>
+        <div style="color:var(--text-3)">Dış denetim modülüne erişiminiz bulunmuyor.</div>
+    </div>
+}
+else
+{
+    <div class="page-header" style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+            <h1 style="margin:0">Dış Denetim Aksiyon Planları</h1>
+            <div style="font-size:12px;color:var(--text-3);margin-top:2px">
+                @Filtered.Count() aksiyon
+                @if (_allowedBodies != null)
+                { <span> · @string.Join(", ", _allowedBodies)</span> }
+            </div>
+        </div>
+        <div style="display:flex;gap:8px">
+            <a href="/export/external-audit-actions/excel" class="btn btn-outline btn-sm">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"
+                     stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Excel
+            </a>
+            <a href="/audit/findings/external" class="btn btn-outline btn-sm">← Bulgular</a>
+        </div>
+    </div>
+
+    @* Preset hızlı filtreler *@
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
+        @{
+            var overdueCount = _all.Count(a => a.Action.DueDate.HasValue && a.Action.DueDate.Value < _today && a.Action.Status is "planned" or "in_progress");
+            var weekCount    = _all.Count(a => a.Action.DueDate.HasValue && a.Action.DueDate.Value >= _today && a.Action.DueDate.Value <= _today.AddDays(_weekDays) && a.Action.Status is "planned" or "in_progress");
+            var openCount    = _all.Count(a => a.Action.Status is "planned" or "in_progress");
+        }
+        @foreach (var (label, preset, count) in new[]{
+            ("Tümü",        "",         0),
+            ("Açık",        "open",     openCount),
+            ("Geciken",     "overdue",  overdueCount),
+            ("Bu Hafta",    "week",     weekCount),
+        })
+        {
+            var p = preset;
+            var isActive = _preset == p;
+            <button class="preset-chip @(isActive ? "preset-chip-active" : "") @(p == "overdue" && overdueCount > 0 ? "preset-overdue" : "")"
+                    @onclick="() => { _preset = p; _page = 1; }">
+                @label
+                @if (count > 0) { <span class="preset-chip-count">@count</span> }
+            </button>
+        }
+    </div>
+
+    <div class="card" style="padding:12px 16px;margin-bottom:16px">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+            <div style="flex:2;min-width:180px">
+                <input class="form-control" placeholder="Bulgu, aksiyon veya kurum ara…"
+                       @bind="_search" @bind:event="oninput" @bind:after="() => _page = 1" />
+            </div>
+            <div style="min-width:160px">
+                <select class="form-control" @bind="_filterBody" @bind:after="() => _page = 1">
+                    <option value="">Tüm Kurumlar</option>
+                    @foreach (var b in _bodies) { <option value="@b">@b</option> }
+                </select>
+            </div>
+            <div style="min-width:140px">
+                <select class="form-control" @bind="_filterStatus" @bind:after="() => _page = 1">
+                    <option value="">Tüm Durumlar</option>
+                    <option value="planned">Planlandı</option>
+                    <option value="in_progress">Devam Ediyor</option>
+                    <option value="completed">Tamamlandı</option>
+                    <option value="cancelled">İptal</option>
+                </select>
+            </div>
+            @if (!string.IsNullOrEmpty(_search) || !string.IsNullOrEmpty(_filterBody) || !string.IsNullOrEmpty(_filterStatus))
+            {
+                <button class="btn btn-outline btn-sm"
+                        @onclick="() => { _search = string.Empty; _filterBody = string.Empty; _filterStatus = string.Empty; _preset = string.Empty; _page = 1; }">
+                    Temizle
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="card" style="padding:0;overflow-x:auto">
+        <table class="table table-sticky" style="font-size:13px">
+            <thead>
+                <tr>
+                    <th style="width:200px">Bulgu</th>
+                    <th style="width:130px">Kurum</th>
+                    <th style="width:110px">Denetim</th>
+                    <th>Aksiyon</th>
+                    <th style="width:140px">Sorumlu Birim</th>
+                    <th style="width:100px">Durum</th>
+                    <th style="width:110px">Termin</th>
+                    <th style="width:60px"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in PagedRows)
+                {
+                    var a = row.Action;
+                    var aDaysLeft = a.DueDate.HasValue ? (a.DueDate.Value.DayNumber - _today.DayNumber) : (int?)null;
+                    var isOverdue = aDaysLeft.HasValue && aDaysLeft.Value < 0 && a.Status is not "completed" and not "cancelled";
+                    var rowCls    = aDaysLeft.HasValue && aDaysLeft.Value < -_critDays ? "overdue-row-crit" : isOverdue ? "overdue-row" : "";
+
+                    <tr class="@rowCls">
+                        <td>
+                            <div style="font-weight:600;font-size:12px">
+                                <code style="font-size:11px">@row.FindingCode</code>
+                            </div>
+                            <div style="font-size:11px;color:var(--text-3);max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+                                 title="@row.FindingTitle">
+                                @row.FindingTitle
+                            </div>
+                            @if (!string.IsNullOrEmpty(row.Severity))
+                            {
+                                <span class="badge @SeverityBadge(row.Severity)" style="font-size:10px;margin-top:2px">@row.Severity</span>
+                            }
+                        </td>
+                        <td>
+                            <span class="badge" style="background:#fef3c7;color:#92400e;font-weight:700;font-size:11px">
+                                @row.AuditingBody
+                            </span>
+                        </td>
+                        <td style="font-size:11px">
+                            <a href="/audit/external/@row.ExternalAuditId" style="color:#1e40af;text-decoration:none">
+                                @row.AuditCode
+                            </a>
+                        </td>
+                        <td style="max-width:280px">
+                            @a.Description
+                            @if (!string.IsNullOrEmpty(a.ClosureNote))
+                            {
+                                <div style="margin-top:4px;font-size:11px;color:#16a34a;background:#f0fdf4;padding:3px 7px;border-radius:4px;border:1px solid #bbf7d0">
+                                    <strong>Durum Notu:</strong> @a.ClosureNote
+                                </div>
+                            }
+                            @if (isOverdue && !string.IsNullOrEmpty(a.DelayReason))
+                            {
+                                <div style="margin-top:4px;font-size:11px;color:#92400e;background:#fffbeb;padding:3px 7px;border-radius:4px;border:1px solid #fcd34d">
+                                    <strong>Gecikme:</strong> @a.DelayReason
+                                </div>
+                            }
+                        </td>
+                        <td>
+                            @if (!string.IsNullOrEmpty(a.Responsible))
+                            { <span class="badge badge-orange" style="font-size:10px">@a.Responsible</span> }
+                            else { <span style="color:var(--text-3)">—</span> }
+                        </td>
+                        <td><span class="badge @StatusBadge(a.Status)">@StatusLabel(a.Status)</span></td>
+                        <td>
+                            @if (a.DueDate.HasValue)
+                            {
+                                <span class="@(isOverdue ? "overdue-date" : "")">@a.DueDate.Value.ToString("dd.MM.yyyy")</span>
+                                @if (aDaysLeft.HasValue)
+                                {
+                                    @if (aDaysLeft.Value < -_critDays)      { <span class="overdue-badge-crit">KRİTİK</span> }
+                                    else if (aDaysLeft.Value < 0)           { <span class="overdue-badge-late">GECİKTİ</span> }
+                                    else if (aDaysLeft.Value <= _warnDays && a.Status is not "completed" and not "cancelled")
+                                    { <span class="overdue-badge-warn">@aDaysLeft.Value GÜN</span> }
+                                }
+                            }
+                            else { <span style="color:var(--text-3)">—</span> }
+                        </td>
+                        <td>
+                            <a href="/audit/external/@row.ExternalAuditId" class="btn btn-outline btn-sm"
+                               style="padding:3px 10px;font-size:11px">Detay</a>
+                        </td>
+                    </tr>
+                }
+                @if (!Filtered.Any())
+                {
+                    <tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-3)">
+                        <div style="font-size:24px;margin-bottom:8px">📋</div>
+                        <div style="font-weight:600">Aksiyon planı bulunamadı</div>
+                        <div style="font-size:12px;margin-top:4px">Dış denetim bulgu detayından aksiyon eklenebilir.</div>
+                    </td></tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    @if (TotalPages > 1)
+    {
+        <div class="pagination-bar">
+            <div class="pagination-info">
+                @((_page-1)*_pageSize+1)–@(Math.Min(_page*_pageSize, Filtered.Count())) / @Filtered.Count() kayıt
+            </div>
+            <div class="pagination-controls">
+                <button class="btn btn-outline btn-sm" @onclick="() => _page=1"           disabled="@(_page==1)">«</button>
+                <button class="btn btn-outline btn-sm" @onclick="() => _page--"           disabled="@(_page==1)">‹</button>
+                @for (int p = Math.Max(1,_page-2); p <= Math.Min(TotalPages,_page+2); p++)
+                { var pp = p; <button class="btn @(_page==pp?"btn-primary":"btn-outline") btn-sm" @onclick="() => _page=pp">@pp</button> }
+                <button class="btn btn-outline btn-sm" @onclick="() => _page++"           disabled="@(_page==TotalPages)">›</button>
+                <button class="btn btn-outline btn-sm" @onclick="() => _page=TotalPages"  disabled="@(_page==TotalPages)">»</button>
+            </div>
+            <div class="pagination-size">
+                Sayfa başı:
+                <select class="form-control" @bind="_pageSize" @bind:after="() => _page=1">
+                    <option value="25">25</option><option value="50">50</option><option value="100">100</option>
+                </select>
+            </div>
+        </div>
+    }
+
+    @* Özet kartlar *@
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px;margin-top:16px">
+        <div class="card" style="padding:14px;text-align:center">
+            <div class="stat-label">Toplam</div>
+            <div style="font-size:28px;font-weight:700">@Filtered.Count()</div>
+        </div>
+        <div class="card" style="padding:14px;text-align:center">
+            <div class="stat-label">Planlandı</div>
+            <div style="font-size:28px;font-weight:700;color:#2563eb">@Filtered.Count(a => a.Action.Status == "planned")</div>
+        </div>
+        <div class="card" style="padding:14px;text-align:center">
+            <div class="stat-label">Devam Ediyor</div>
+            <div style="font-size:28px;font-weight:700;color:#ca8a04">@Filtered.Count(a => a.Action.Status == "in_progress")</div>
+        </div>
+        <div class="card" style="padding:14px;text-align:center">
+            <div class="stat-label">Tamamlandı</div>
+            <div style="font-size:28px;font-weight:700;color:#16a34a">@Filtered.Count(a => a.Action.Status == "completed")</div>
+        </div>
+        <div class="card" style="padding:14px;text-align:center;border-top:3px solid #ef4444">
+            <div class="stat-label">Geciken</div>
+            <div style="font-size:28px;font-weight:700;color:#dc2626">
+                @Filtered.Count(a => a.Action.DueDate.HasValue && a.Action.DueDate.Value < _today && a.Action.Status is "planned" or "in_progress")
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _canRead;
+    private List<string>? _allowedBodies;
+    private List<Row> _all = [];
+    private List<string> _bodies = [];
+
+    private string _search = "", _filterBody = "", _filterStatus = "", _preset = "";
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+    private int _weekDays, _warnDays, _critDays;
+    private int _page = 1, _pageSize = 25;
+    private int _userId;
+
+    record Row(AuditFindingAction Action, int FindingId, string FindingCode, string FindingTitle,
+               string? Severity, int ExternalAuditId, string AuditCode, string AuditingBody);
+
+    protected override void OnInitialized()
+    {
+        _weekDays = CfgSvc.GetWeekDays();
+        _warnDays = CfgSvc.GetWarnDays();
+        _critDays = CfgSvc.GetCritDays();
+
+        int.TryParse(HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out _userId);
+        var u = Db.Users.Include(x => x.UserRoles).FirstOrDefault(x => x.Id == _userId);
+        if (u is null) return;
+
+        _canRead = Auth.HasPermission(u, "external_audit.read") || ExtSvc.IsAdmin(u);
+        if (!_canRead) return;
+
+        _allowedBodies = ExtSvc.GetAllowedBodies(u);
+        Load();
+    }
+
+    private void Load()
+    {
+        try
+        {
+            var auditQ = Db.ExternalAudits.AsQueryable();
+            if (_allowedBodies != null)
+                auditQ = auditQ.Where(a => _allowedBodies.Contains(a.AuditingBody));
+            var audits = auditQ.AsNoTracking().ToList();
+            var auditMap = audits.ToDictionary(a => a.Id);
+            var auditIds = audits.Select(a => a.Id).ToList();
+
+            var findings = Db.AuditFindings
+                .Where(f => f.ExternalAuditId.HasValue && auditIds.Contains(f.ExternalAuditId.Value))
+                .AsNoTracking().ToList();
+            var findingMap = findings.ToDictionary(f => f.Id);
+            var findingIds = findings.Select(f => f.Id).ToList();
+
+            var actions = findingIds.Count == 0
+                ? new List<AuditFindingAction>()
+                : Db.AuditFindingActions
+                    .Where(a => findingIds.Contains(a.FindingId))
+                    .AsNoTracking().ToList();
+
+            _all = [.. actions
+                .Select(a =>
+                {
+                    if (!findingMap.TryGetValue(a.FindingId, out var f)) return null;
+                    if (!f.ExternalAuditId.HasValue || !auditMap.TryGetValue(f.ExternalAuditId.Value, out var au)) return null;
+                    return new Row(a, f.Id, f.Code, f.Title, f.Severity, au.Id, au.Code, au.AuditingBody);
+                })
+                .OfType<Row>()
+                .OrderByDescending(r => r.Action.DueDate.HasValue && r.Action.DueDate.Value < _today
+                                        && r.Action.Status is "planned" or "in_progress")
+                .ThenBy(r => r.Action.DueDate)
+                .ThenByDescending(r => r.Action.CreatedAt)];
+
+            _bodies = [.. _all.Select(r => r.AuditingBody).Distinct().OrderBy(b => b)];
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Dış denetim aksiyonları yüklenemedi");
+            _all = [];
+        }
+    }
+
+    private IEnumerable<Row> Filtered => _all
+        .Where(r =>
+        {
+            if (_preset == "overdue") return r.Action.DueDate.HasValue && r.Action.DueDate.Value < _today && r.Action.Status is "planned" or "in_progress";
+            if (_preset == "week")    return r.Action.DueDate.HasValue && r.Action.DueDate.Value >= _today && r.Action.DueDate.Value <= _today.AddDays(_weekDays) && r.Action.Status is "planned" or "in_progress";
+            if (_preset == "open")    return r.Action.Status is "planned" or "in_progress";
+            return true;
+        })
+        .Where(r => string.IsNullOrEmpty(_filterStatus) || r.Action.Status == _filterStatus)
+        .Where(r => string.IsNullOrEmpty(_filterBody)   || r.AuditingBody == _filterBody)
+        .Where(r =>
+        {
+            if (string.IsNullOrEmpty(_search)) return true;
+            var s = _search.Trim().ToLowerInvariant();
+            return r.FindingCode.ToLower().Contains(s)
+                || r.FindingTitle.ToLower().Contains(s)
+                || r.Action.Description.ToLower().Contains(s)
+                || r.AuditingBody.ToLower().Contains(s)
+                || r.AuditCode.ToLower().Contains(s);
+        });
+
+    private IEnumerable<Row> PagedRows => Filtered.Skip((_page - 1) * _pageSize).Take(_pageSize);
+    private int TotalPages => (int)Math.Ceiling(Filtered.Count() / (double)_pageSize);
+
+    private static string StatusLabel(string s) => s switch
+    {
+        "planned" => "Planlandı", "in_progress" => "Devam Ediyor",
+        "completed" => "Tamamlandı", "cancelled" => "İptal", _ => s
+    };
+    private static string StatusBadge(string s) => s switch
+    {
+        "planned" => "badge-blue", "in_progress" => "badge-yellow",
+        "completed" => "badge-green", "cancelled" => "badge-gray", _ => ""
+    };
+    private static string SeverityBadge(string? s)
+    {
+        if (string.IsNullOrEmpty(s)) return "";
+        return s.ToLower() switch
+        {
+            "majör" or "major" or "kritik" or "critical" => "badge-red",
+            "minör" or "minor"                           => "badge-yellow",
+            "high"                                       => "badge-yellow",
+            "low"                                        => "badge-gray",
+            _                                            => "badge-blue"
+        };
+    }
+}

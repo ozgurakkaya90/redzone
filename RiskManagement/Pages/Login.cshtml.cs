@@ -227,7 +227,6 @@ public class LoginModel(AuthService auth, AppDbContext db, ConfigService config,
         {
             Username     = samAccount,
             FullName     = displayName ?? samAccount,
-            Department   = department ?? "",
             Role         = cfg.DefaultRole,
             PasswordHash = "$ldap$", // yerel parola girişini engeller
             IsActive     = true,

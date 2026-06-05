@@ -6,7 +6,7 @@
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
 @inject IWebHostEnvironment Env
-@inject AppDbContext Db
+@inject OrgService OrgSvc
 @inject IJSRuntime JS
 @using System.Security.Claims
 @using Microsoft.EntityFrameworkCore
@@ -542,10 +542,10 @@ else
 
     protected override void OnInitialized()
     {
-        _user = Db.Users.Include(u => u.UserRoles).FirstOrDefault(u => u.Id == UserId);
+        _user = Auth.GetUserById(UserId);
         Load();
-        _departments     = [.. Db.Departments.OrderBy(d => d.Name)];
-        _allUsers        = [.. Db.Users.Where(u => u.IsActive).OrderBy(u => u.FullName)];
+        _departments     = OrgSvc.GetDepartments();
+        _allUsers        = OrgSvc.GetActiveUsers();
         _auditCategories = [.. CfgSvc.GetList("audit_categories")];
         _auditSeverities = [.. CfgSvc.GetList("audit_severities")];
     }
@@ -572,13 +572,13 @@ else
         }
     }
 
-    private void SaveFindingEdit()
+    private async Task SaveFindingEdit()
     {
         if (string.IsNullOrWhiteSpace(_editTitle)) { _error = "Başlık zorunludur."; return; }
         if (_user == null) { _error = "Oturum bilgisi alınamadı."; return; }
         _loading = true;
         var due = _editDueDate.HasValue ? DateOnly.FromDateTime(_editDueDate.Value) : (DateOnly?)null;
-        AuditSvc.UpdateFinding(Id, _editTitle,
+        await AuditSvc.UpdateFindingAsync(Id, _editTitle,
             string.IsNullOrWhiteSpace(_editDescription) ? null : _editDescription,
             string.IsNullOrWhiteSpace(_editCategory)    ? null : _editCategory,
             string.IsNullOrWhiteSpace(_editSeverity)    ? null : _editSeverity,
@@ -600,53 +600,53 @@ else
         _editActDue    = a.DueDate.HasValue ? a.DueDate.Value.ToDateTime(TimeOnly.MinValue) : null;
     }
 
-    private void SaveActionEdit(int actionId)
+    private async Task SaveActionEdit(int actionId)
     {
         if (string.IsNullOrWhiteSpace(_editActDesc)) { _error = "Açıklama zorunludur."; return; }
         if (_user == null) { _error = "Oturum bilgisi alınamadı."; return; }
         var due = _editActDue.HasValue ? DateOnly.FromDateTime(_editActDue.Value) : (DateOnly?)null;
-        AuditSvc.UpdateFindingAction(Id, actionId, _editActDesc,
+        await AuditSvc.UpdateFindingActionAsync(Id, actionId, _editActDesc,
             string.IsNullOrWhiteSpace(_editActResp) ? null : _editActResp, due, caller: _user);
         if (_editActStatus != _finding?.Actions.FirstOrDefault(a => a.Id == actionId)?.Status)
-            AuditSvc.UpdateFindingActionStatus(Id, actionId, _editActStatus, caller: _user);
+            await AuditSvc.UpdateFindingActionStatusAsync(Id, actionId, _editActStatus, caller: _user);
         _success = "Aksiyon güncellendi."; _error = "";
         _editActionId = 0;
         Load();
     }
 
-    private void AcceptRisk()
+    private async Task AcceptRisk()
     {
         if (_user == null) { _error = "Oturum bilgisi alınamadı."; return; }
-        AuditSvc.SetActionDecision(Id, "risk_accepted", caller: _user);
+        await AuditSvc.SetActionDecisionAsync(Id, "risk_accepted", caller: _user);
         _success = "Risk kabul edildi."; _error = "";
         _showAccept = false;
         Load();
     }
 
-    private void SaveAction()
+    private async Task SaveAction()
     {
         if (string.IsNullOrWhiteSpace(_actDesc)) { _error = "Açıklama zorunludur."; return; }
         if (string.IsNullOrWhiteSpace(_actResp)) { _error = "Sorumlu birim seçiniz."; return; }
         if (_user == null) { _error = "Oturum bilgisi alınamadı."; return; }
         _loading = true;
-        AuditSvc.AddFindingAction(Id, _actDesc, _actResp, null, UserId, caller: _user);
+        await AuditSvc.AddFindingActionAsync(Id, _actDesc, _actResp, null, UserId, caller: _user);
         _success = "Aksiyon eklendi."; _error = "";
         _actDesc = ""; _actResp = ""; _showAction = false;
         Load(); _loading = false;
     }
 
-    private void UpdateAction(int actionId, string status)
+    private async Task UpdateAction(int actionId, string status)
     {
         if (_user == null) return;
-        AuditSvc.UpdateFindingActionStatus(Id, actionId, status, caller: _user);
+        await AuditSvc.UpdateFindingActionStatusAsync(Id, actionId, status, caller: _user);
         _success = "Aksiyon güncellendi."; _error = "";
         Load();
     }
 
-    private void DeleteAction(int actionId)
+    private async Task DeleteAction(int actionId)
     {
         if (_user == null) return;
-        AuditSvc.DeleteFindingAction(Id, actionId, caller: _user);
+        await AuditSvc.DeleteFindingActionAsync(Id, actionId, caller: _user);
         _success = "Aksiyon silindi."; _error = "";
         Load();
     }
@@ -670,16 +670,16 @@ else
             await using var fs  = File.Create(dest);
             await using var src = file.OpenReadStream(maxAllowedSize: AuditService.MaxAttachmentSize);
             await src.CopyToAsync(fs);
-            AuditSvc.SaveAttachment(Id, originalName, dest, file.Size, UserId);
+            await AuditSvc.SaveAttachmentAsync(Id, originalName, dest, file.Size, UserId);
         }
         if (string.IsNullOrEmpty(_error)) _success = "Dosyalar yüklendi.";
         _uploading = false;
         Load();
     }
 
-    private void DeleteFile(int attachmentId)
+    private async Task DeleteFile(int attachmentId)
     {
-        AuditSvc.DeleteAttachment(attachmentId);
+        await AuditSvc.DeleteAttachmentAsync(attachmentId);
         _success = "Dosya silindi."; _error = "";
         Load();
     }
@@ -716,16 +716,16 @@ else
             }
             evidence = string.Join('\n', names);
         }
-        AuditSvc.SubmitClosureRequest(Id, _closureDesc, evidence, UserId, caller: _user);
+        await AuditSvc.SubmitClosureRequestAsync(Id, _closureDesc, evidence, UserId, caller: _user);
         _success = "Kapanış başvurusu yapıldı."; _closureDesc = ""; _closureFiles = [];
         Load(); _loading = false;
     }
 
-    private void ReviewClosure(int reqId, string decision)
+    private async Task ReviewClosure(int reqId, string decision)
     {
         if (_user == null) { _error = "Oturum bilgisi alınamadı."; return; }
         _loading = true;
-        AuditSvc.ReviewClosureRequest(Id, reqId, decision, _reviewNote, UserId, caller: _user);
+        await AuditSvc.ReviewClosureRequestAsync(Id, reqId, decision, _reviewNote, UserId, caller: _user);
         _success = decision == "approved" ? "Bulgu kapatıldı." : "Başvuru reddedildi.";
         _reviewNote = ""; Load(); _loading = false;
     }

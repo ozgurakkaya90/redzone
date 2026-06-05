@@ -9,7 +9,7 @@ public class ConfigServiceRiskLevelTests
     private static (ConfigService Config, IRiskCalculator Calc) Build()
     {
         var db     = TestDb.Create();
-        var config = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var config = TestDb.CreateConfigService(db);
         var calc   = new RiskCalculator(config);
         return (config, calc);
     }
@@ -86,7 +86,7 @@ public class ConfigServiceRiskLevelTests
     public void Set_OverridesDefault_AndGetReturnsNewValue()
     {
         var db     = TestDb.Create();
-        var config = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var config = TestDb.CreateConfigService(db);
 
         config.Set("review_threshold_days", 45);
         var result = config.Get<int>("review_threshold_days");
@@ -95,13 +95,14 @@ public class ConfigServiceRiskLevelTests
     }
 
     [Fact]
-    public void GetRiskDetailFields_ReturnsAllSixFields()
+    public void GetRiskDetailFields_ReturnsAllFields()
     {
         var (config, _) = Build();
         var fields = config.GetRiskDetailFields();
-        Assert.Equal(6, fields.Count);
+        Assert.Equal(7, fields.Count);
         Assert.True(fields["source_type"]);
         Assert.True(fields["hazard"]);
+        Assert.True(fields["activity_area"]);
     }
 
     // ── GetRiskLevelColor — renk DB'den okunur, hardcoded değil ─────────────

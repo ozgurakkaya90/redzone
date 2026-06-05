@@ -9,7 +9,7 @@ public class SystemHealthAndConfigTests
     private static ConfigService Build()
     {
         var db = TestDb.Create();
-        return new ConfigService(db, NullLogger<ConfigService>.Instance);
+        return TestDb.CreateConfigService(db);
     }
 
     [Fact]

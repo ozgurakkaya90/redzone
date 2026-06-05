@@ -53,6 +53,9 @@ public class ExternalAuditService(AppDbContext db, AuthService auth)
     public bool IsAdmin(User user) =>
         user.HasAnyRole("admin") || auth.HasPermission(user, "external_audit.admin");
 
+    public bool UserHasAnyBody(int userId) =>
+        db.UserExternalAuditBodies.Any(b => b.UserId == userId);
+
     // ─── Kurum Kataloğu ──────────────────────────────────────────────────────
     public List<ExternalAuditBody> GetBodies(bool includeInactive = false) =>
         [.. db.ExternalAuditBodies

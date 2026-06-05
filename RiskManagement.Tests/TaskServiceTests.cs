@@ -15,7 +15,7 @@ file static class TaskSeed
         // Fabrika ile seed context'i aynı in-memory deposunu paylaşır.
         var factory = TestDb.CreateFactory();
         var db    = factory.CreateDbContext();
-        var cfg   = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var cfg   = TestDb.CreateConfigService(db);
         var cache = new MemoryCache(Options.Create(new MemoryCacheOptions { SizeLimit = 100 }));
         var svc   = new TaskService(factory, cfg, cache);
         return (db, svc);
@@ -23,7 +23,7 @@ file static class TaskSeed
 
     public static User AddUser(AppDbContext db, string role, int? id = null)
     {
-        var u = new User { Id = id ?? 0, Username = $"{role}_{Guid.NewGuid():N}".Substring(0, 20), FullName = role, Role = role, Department = role };
+        var u = new User { Username = $"{role}_{Guid.NewGuid():N}".Substring(0,20), FullName = role, Role = role };
         db.Users.Add(u); db.SaveChanges();
         db.UserRoles.Add(new UserRole { UserId = u.Id, RoleName = role });
         db.SaveChanges();

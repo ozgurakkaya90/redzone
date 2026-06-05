@@ -119,6 +119,15 @@ public class AuditFinding
     [MaxLength(20)]
     public string? AuditPeriod { get; set; }
 
+    // Dış denetim uygunsuzluk alanları (Excel import/export formatıyla eşleşir)
+    [MaxLength(500)]
+    public string? StandardArticle { get; set; }     // İlgili Mevzuat Maddesi (Varsa)
+
+    [MaxLength(1000)]
+    public string? StandardClause { get; set; }      // Uygunsuzluğa Konu Olan Standart Maddesi
+
+    public int? NonconformityCount { get; set; }     // Uygunsuzluk Adedi
+
     public int AuditorId { get; set; }
     public int? OwnerId { get; set; }
     public int? DepartmentId { get; set; }
@@ -230,7 +239,13 @@ public class ExternalAudit
     public string AuditingBody { get; set; } = "";   // BRC, JCI, TSE, müşteri…
 
     [MaxLength(100)]
+    public string? AuditType { get; set; }           // Denetim Türü: Uluslararası Akreditasyon, Ulusal vb.
+
+    [MaxLength(100)]
     public string? Standard { get; set; }            // "BRC v9" gibi (opsiyonel)
+
+    [MaxLength(300)]
+    public string? ChecklistName { get; set; }       // İlgili Denetim Listesi Adı
 
     [Required, MaxLength(300)]
     public string Subject { get; set; } = "";        // Denetim Konusu

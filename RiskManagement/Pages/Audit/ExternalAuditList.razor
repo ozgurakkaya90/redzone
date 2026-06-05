@@ -11,6 +11,10 @@
 
 <PageTitle>Dış Denetimler</PageTitle>
 
+<ImportModal Visible="_showImport" Module="external-nonconformities"
+             Title="Resmi Denetim Uygunsuzluk Aksiyon Planı"
+             OnClose="() => { _showImport = false; Load(); }" />
+
 @if (_currentUser is null || !CanRead)
 {
     <div class="card" style="padding:24px">
@@ -33,10 +37,19 @@ else
                 else { <span> · tüm kurumlara erişim (admin)</span> }
             </div>
         </div>
-        <div style="display:flex;gap:8px">
-            <a href="/audit/findings/external" class="btn btn-outline btn-sm"> Dış Bulgular</a>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <a href="/audit/findings/external" class="btn btn-outline btn-sm">Dış Bulgular</a>
+            <a href="/audit/external/actions" class="btn btn-outline btn-sm">Aksiyon Planları</a>
+            <a href="/export/external-nonconformities/excel" class="btn btn-outline btn-sm">
+                <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Uygunsuzluk Dışa Aktar
+            </a>
             @if (CanCreateAny)
             {
+                <button class="btn btn-outline btn-sm" @onclick="() => _showImport = true">
+                    <svg width="13" height="13" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right:4px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Uygunsuzluk İçe Aktar
+                </button>
                 <a href="/audit/external/new" class="btn btn-primary btn-sm">+ Yeni Dış Denetim</a>
             }
         </div>
@@ -171,8 +184,7 @@ else
     private List<string>? _allowedBodies;
 
     private string _search = "", _filterBody = "", _filterStatus = "", _filterYear = "";
-    private bool _canRead;
-    private bool _canCreate;
+    private bool _canRead, _canCreate, _showImport;
     private User? _currentUser;
 
     private bool CanRead => _canRead;
@@ -195,19 +207,27 @@ else
             (Auth.HasPermission(u, "external_audit.write") &&
              Db.UserExternalAuditBodies.Any(b => b.UserId == u.Id && b.CanEdit));
 
+        Load();
+    }
+
+    private void Load()
+    {
+        if (_currentUser is null) return;
         try
         {
-            _all = ExtSvc.List(u);
+            _all = ExtSvc.List(_currentUser);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "Dış denetimler yüklenemedi (kullanıcı={UserId})", u.Id);
+            Logger.LogError(ex, "Dış denetimler yüklenemedi (kullanıcı={UserId})", _currentUser.Id);
             _all = [];
         }
 
-        _bodies = [.. _all.Select(a => a.AuditingBody).Distinct().OrderBy(b => b)];
-        _years = [.. _all.Select(a => a.AuditDate.Year).Distinct().OrderByDescending(y => y)];
+        _bodies   = [.. _all.Select(a => a.AuditingBody).Distinct().OrderBy(b => b)];
+        _years    = [.. _all.Select(a => a.AuditDate.Year).Distinct().OrderByDescending(y => y)];
         _filtered = _all;
+        ApplyFilter();
+        StateHasChanged();
     }
 
     private void ApplyFilter()

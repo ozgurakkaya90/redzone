@@ -288,12 +288,12 @@ public class DefaultPermissionsTests
 public class AnonymizeUserTests
 {
     [Fact]
-    public void AnonymizeUser_ClearsPersonalData()
+    public async Task AnonymizeUser_ClearsPersonalData()
     {
         var (db, auth) = RBase.Auth();
         var user = RBase.AddUser(db, "user", email: "ali@example.com");
 
-        auth.AnonymizeUser(user.Id);
+        await auth.AnonymizeUserAsync(user.Id);
 
         var after = db.Users.Find(user.Id)!;
         Assert.Equal("[Silinmiş Kullanıcı]", after.FullName);
@@ -303,24 +303,24 @@ public class AnonymizeUserTests
     }
 
     [Fact]
-    public void AnonymizeUser_Username_StartsWithAnonPrefix()
+    public async Task AnonymizeUser_Username_StartsWithAnonPrefix()
     {
         var (db, auth) = RBase.Auth();
         var user = RBase.AddUser(db, "risk_owner");
 
-        auth.AnonymizeUser(user.Id);
+        await auth.AnonymizeUserAsync(user.Id);
 
         var after = db.Users.Find(user.Id)!;
         Assert.StartsWith("anon_", after.Username);
     }
 
     [Fact]
-    public void AnonymizeUser_LockoutSet_PreventsLogin()
+    public async Task AnonymizeUser_LockoutSet_PreventsLogin()
     {
         var (db, auth) = RBase.Auth();
         var user = RBase.AddUser(db, "auditor");
 
-        auth.AnonymizeUser(user.Id);
+        await auth.AnonymizeUserAsync(user.Id);
 
         var after = db.Users.Find(user.Id)!;
         Assert.NotNull(after.LockoutUntil);
@@ -328,28 +328,28 @@ public class AnonymizeUserTests
     }
 
     [Fact]
-    public void AnonymizeUser_LastAdmin_ThrowsInvalidOperation()
+    public async Task AnonymizeUser_LastAdmin_ThrowsInvalidOperation()
     {
         var (db, auth) = RBase.Auth();
         var admin = RBase.AddUser(db, "admin");
 
-        Assert.Throws<InvalidOperationException>(() => auth.AnonymizeUser(admin.Id));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => auth.AnonymizeUserAsync(admin.Id));
     }
 
     [Fact]
-    public void AnonymizeUser_NotLastAdmin_Succeeds()
+    public async Task AnonymizeUser_NotLastAdmin_Succeeds()
     {
         var (db, auth) = RBase.Auth();
         var admin1 = RBase.AddUser(db, "admin");
         var admin2 = RBase.AddUser(db, "admin");
 
-        var ex = Record.Exception(() => auth.AnonymizeUser(admin1.Id));
+        var ex = await Record.ExceptionAsync(() => auth.AnonymizeUserAsync(admin1.Id));
         Assert.Null(ex);
         Assert.False(db.Users.Find(admin1.Id)!.IsActive);
     }
 
     [Fact]
-    public void AnonymizeUser_InvalidatesPasswordResetTokens()
+    public async Task AnonymizeUser_InvalidatesPasswordResetTokens()
     {
         var (db, auth) = RBase.Auth();
         var user = RBase.AddUser(db, "user");
@@ -363,17 +363,17 @@ public class AnonymizeUserTests
         });
         db.SaveChanges();
 
-        auth.AnonymizeUser(user.Id);
+        await auth.AnonymizeUserAsync(user.Id);
 
         var token = db.PasswordResetTokens.First(t => t.UserId == user.Id);
         Assert.True(token.Used);
     }
 
     [Fact]
-    public void AnonymizeUser_NonExistent_ThrowsInvalidOperation()
+    public async Task AnonymizeUser_NonExistent_ThrowsInvalidOperation()
     {
         var (_, auth) = RBase.Auth();
-        Assert.Throws<InvalidOperationException>(() => auth.AnonymizeUser(9999));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => auth.AnonymizeUserAsync(9999));
     }
 }
 
@@ -509,7 +509,7 @@ public class GetRadarDataTests
     private static (AppDbContext db, RiskService svc) Build()
     {
         var db   = TestDb.Create();
-        var cfg  = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var cfg  = TestDb.CreateConfigService(db);
         var calc = new RiskCalculator(cfg);
         var auth = new AuthService(db, new MemoryCache(new MemoryCacheOptions()));
         var svc  = new RiskService(db, calc, auth);

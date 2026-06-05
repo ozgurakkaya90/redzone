@@ -78,9 +78,22 @@ else
 
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
             <div class="form-group">
+                <label class="form-label">Denetim Türü (opsiyonel)</label>
+                <input class="form-control" @bind="_auditType" maxlength="100"
+                       placeholder="örn. Uluslararası Akreditasyon, Ulusal" />
+            </div>
+            <div class="form-group">
                 <label class="form-label">Standart (opsiyonel)</label>
                 <input class="form-control" @bind="_standard" maxlength="100"
                        placeholder="örn. BRC v9, JCI 7th ed" />
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="form-group">
+                <label class="form-label">İlgili Denetim Listesi Adı (opsiyonel)</label>
+                <input class="form-control" @bind="_checklistName" maxlength="300"
+                       placeholder="örn. JCI 2024 Nihai Karar Raporu" />
             </div>
             <div class="form-group">
                 <label class="form-label">Skor / Sonuç (opsiyonel)</label>
@@ -173,8 +186,8 @@ else
 
 
 @code {
-    private string _bodySelect = "", _bodyText = "", _standard = "", _score = "",
-                   _subject = "", _notes = "";
+    private string _bodySelect = "", _bodyText = "", _auditType = "", _standard = "",
+                   _checklistName = "", _score = "", _subject = "", _notes = "";
     private DateTime? _auditDate = DateTime.Today, _endDate;
     private int? _companyId, _orgId, _deptId, _responsibleUserId;
     private bool _useFreeText, _isAdmin, _canCreate, _loading;
@@ -259,10 +272,12 @@ else
 
             var audit = new ExternalAudit
             {
-                AuditingBody = body,
-                Standard = _standard.NullIfEmpty(),
-                Subject = _subject.Trim(),
-                Score = _score.NullIfEmpty(),
+                AuditingBody  = body,
+                AuditType     = _auditType.NullIfEmpty(),
+                Standard      = _standard.NullIfEmpty(),
+                ChecklistName = _checklistName.NullIfEmpty(),
+                Subject       = _subject.Trim(),
+                Score         = _score.NullIfEmpty(),
                 AuditDate = DateOnly.FromDateTime(_auditDate!.Value),
                 EndDate = _endDate.HasValue ? DateOnly.FromDateTime(_endDate.Value) : (DateOnly?)null,
                 ResponsibleDeptId = _deptId,

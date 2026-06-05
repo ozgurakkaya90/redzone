@@ -5,8 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <!-- Testler [Obsolete] işaretli sync wrapper'ları kasıtlı olarak test eder; CS8602 pre-existing. -->
-    <NoWarn>$(NoWarn);CS0618;CS8602</NoWarn>
+    <NoWarn>$(NoWarn);CS8602</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +14,8 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="bunit" Version="1.35.3" />
+    <PackageReference Include="Microsoft.AspNetCore.DataProtection" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="8.0.0" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.0" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />

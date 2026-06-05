@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using RiskManagement.Data;
@@ -9,11 +10,13 @@ using RiskManagement.Services.Email;
 
 namespace RiskManagement.Services;
 
-public class ConfigService(AppDbContext db, ILogger<ConfigService> logger)
+public class ConfigService(AppDbContext db, ILogger<ConfigService> logger,
+    IDataProtectionProvider dataProtection)
 {
     // Scoped servis olduğu için cache per-request'tir; yine de Blazor Server'ın
     // eş zamanlı bileşen güncellemelerine karşı ConcurrentDictionary kullanılıyor.
     private readonly ConcurrentDictionary<string, object> _cache = new();
+    private readonly IDataProtector _protector = dataProtection.CreateProtector("ConfigService.AiApiKey");
 
     private static readonly JsonSerializerOptions _jsonOpts = new()
     {
@@ -49,7 +52,6 @@ public class ConfigService(AppDbContext db, ILogger<ConfigService> logger)
                 new(1.0,  "Nadir",      "Örn: başka sektörde yaşandı, bizde henüz olmadı"),
                 new(0.5,  "Zayıf",      "Örn: birçok güvenlik katmanının aynı anda devre dışı kalması"),
                 new(0.2,  "Teorik",     "Örn: laboratuvar koşullarında bile zor tekrarlanır"),
-                new(0.1,  "İmkansız",   "Örn: yalnızca akademik çevrelerde teorik olarak tartışılan senaryo"),
             },
 
             ["fk_exposure"] = new ScoredOption[]
@@ -144,6 +146,7 @@ public class ConfigService(AppDbContext db, ILogger<ConfigService> logger)
                 ["source"]               = true,
                 ["hazard"]               = true,
                 ["possible_impact"]      = true,
+                ["activity_area"]        = true,
                 ["affected_persons"]     = true,
                 ["relevant_legislation"] = true,
             },
@@ -220,12 +223,23 @@ public class ConfigService(AppDbContext db, ILogger<ConfigService> logger)
         _cache.TryRemove("email_settings", out _);
     }
 
-    public AiSettings GetAiSettings() =>
-        Get<AiSettings>("ai_settings") ?? new AiSettings();
+    public AiSettings GetAiSettings()
+    {
+        var s = Get<AiSettings>("ai_settings") ?? new AiSettings();
+        if (string.IsNullOrEmpty(s.ApiKey)) return s;
+        try { return s with { ApiKey = _protector.Unprotect(s.ApiKey) }; }
+        catch { return s; /* eski şifresiz değer — olduğu gibi kullan */ }
+    }
 
     public void SetAiSettings(AiSettings settings)
     {
-        Set("ai_settings", settings);
+        var toStore = settings with
+        {
+            ApiKey = string.IsNullOrEmpty(settings.ApiKey)
+                ? settings.ApiKey
+                : _protector.Protect(settings.ApiKey)
+        };
+        Set("ai_settings", toStore);
         _cache.TryRemove("ai_settings", out _);
     }
 

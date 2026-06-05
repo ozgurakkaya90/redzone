@@ -172,6 +172,64 @@ public static class ExportEndpoints
                 $"Etik_Bildirimler_{DateTime.Now:yyyyMMdd}.pdf");
         }).RequireAuthorization();
 
+        // ── Dış Denetim Aksiyon Planları ─────────────────────────────────────
+        app.MapGet("/export/external-audit-actions/excel",
+            (AuthService authSvc, ExternalAuditService extSvc, AppDbContext db,
+             ExportService exportSvc, ClaimsPrincipal user) =>
+            {
+                var userObj = authSvc.ActiveUserFromPrincipal(user);
+                if (userObj is null) return Results.Unauthorized();
+
+                var allowed = extSvc.GetAllowedBodies(userObj);
+                var auditQ = db.ExternalAudits.AsQueryable();
+                if (allowed != null) auditQ = auditQ.Where(a => allowed.Contains(a.AuditingBody));
+                var auditIds = auditQ.Select(a => a.Id).ToList();
+
+                var findingIds = db.AuditFindings
+                    .Where(f => f.ExternalAuditId.HasValue && auditIds.Contains(f.ExternalAuditId.Value))
+                    .Select(f => f.Id).ToList();
+
+                var actions = db.AuditFindingActions
+                    .Include(a => a.Finding).ThenInclude(f => f!.ExternalAudit)
+                    .Where(a => findingIds.Contains(a.FindingId))
+                    .OrderBy(a => a.Finding.ExternalAudit!.AuditingBody)
+                    .ThenBy(a => a.DueDate)
+                    .ToList();
+
+                var bytes = exportSvc.ExportExternalAuditActionsToExcel(actions);
+                return Results.File(bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    $"DisD_AksiyonPlanlari_{DateTime.Now:yyyyMMdd}.xlsx");
+            }).RequireAuthorization();
+
+        // ── Dış Denetim Uygunsuzluk Aksiyon Planı ────────────────────────────
+        app.MapGet("/export/external-nonconformities/excel",
+            (AuthService authSvc, ExternalAuditService extSvc, AppDbContext db,
+             ExportService exportSvc, ClaimsPrincipal user) =>
+            {
+                var userObj = authSvc.ActiveUserFromPrincipal(user);
+                if (userObj is null) return Results.Unauthorized();
+
+                var allowed = extSvc.GetAllowedBodies(userObj);
+                var query = db.AuditFindings
+                    .Include(f => f.ExternalAudit)
+                    .Include(f => f.Actions)
+                    .Where(f => f.AuditSource == "external" && f.ExternalAuditId != null);
+
+                if (allowed != null)
+                    query = query.Where(f => allowed.Contains(f.ExternalAudit!.AuditingBody));
+
+                var findings = query
+                    .OrderBy(f => f.ExternalAudit!.AuditDate)
+                    .ThenBy(f => f.Id)
+                    .ToList();
+
+                var bytes = exportSvc.ExportExternalAuditNonconformitiesToExcel(findings);
+                return Results.File(bytes,
+                    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    $"ResmiDenetim_Uygunsuzluk_{DateTime.Now:yyyyMMdd}.xlsx");
+            }).RequireAuthorization();
+
         // ── Risk Kütüphanesi ──────────────────────────────────────────────────
         // Kütüphane şablonları hassas değildir; kimlik doğrulaması yeterlidir.
         // Değerlendirme değişirse risk.read izni eklenmelidir.

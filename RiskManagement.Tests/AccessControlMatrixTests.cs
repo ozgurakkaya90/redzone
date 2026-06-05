@@ -28,7 +28,7 @@ public class AccessControlMatrixTests
     {
         using var db = TestDb.Create();
         var authSvc = new AuthService(db, new MemoryCache(new MemoryCacheOptions()));
-        var cfgSvc = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var cfgSvc = TestDb.CreateConfigService(db);
         var svc = new RiskService(db, new RiskCalculator(cfgSvc), authSvc);
 
         db.Departments.AddRange(
@@ -71,7 +71,7 @@ public class AccessControlMatrixTests
     {
         using var db = TestDb.Create();
         var authSvc = new AuthService(db, new MemoryCache(new MemoryCacheOptions()));
-        var cfgSvc = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var cfgSvc = TestDb.CreateConfigService(db);
         var svc = new RiskService(db, new RiskCalculator(cfgSvc), authSvc);
 
         db.Departments.Add(new Department { Id = 30, Name = "BaşkaDept" });
@@ -109,7 +109,7 @@ public class AccessControlMatrixTests
     {
         using var db = TestDb.Create();
         var authSvc = new AuthService(db, new MemoryCache(new MemoryCacheOptions()));
-        var cfgSvc = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var cfgSvc = TestDb.CreateConfigService(db);
         var svc = new RiskService(db, new RiskCalculator(cfgSvc), authSvc);
 
         db.Departments.AddRange(
@@ -149,7 +149,7 @@ public class AccessControlMatrixTests
     {
         using var db = TestDb.Create();
         var authSvc = new AuthService(db, new MemoryCache(new MemoryCacheOptions()));
-        var cfgSvc = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var cfgSvc = TestDb.CreateConfigService(db);
         var svc = new RiskService(db, new RiskCalculator(cfgSvc), authSvc);
 
         db.Departments.Add(new Department { Id = 10, Name = "DeptA" });
@@ -185,7 +185,7 @@ public class AccessControlMatrixTests
     // ── ReviewClosureRequest whitelist ────────────────────────────────────────
 
     [Fact]
-    public void ReviewClosureRequest_RejectsUnknownDecision()
+    public async Task ReviewClosureRequest_RejectsUnknownDecision()
     {
         using var db = TestDb.Create();
         var svc = new AuditService(db);
@@ -201,7 +201,7 @@ public class AccessControlMatrixTests
         db.SaveChanges();
 
         // "approved"/"rejected" dışı bir değer reddedilmeli
-        var result = svc.InternalReviewClosureRequest(1, 1, "force_close", null, 99);
+        var result = await svc.InternalReviewClosureRequestAsync(1, 1, "force_close", null, 99);
         Assert.False(result);
 
         // Bulgu durumu değişmemiş olmalı
@@ -210,7 +210,7 @@ public class AccessControlMatrixTests
     }
 
     [Fact]
-    public void ReviewClosureRequest_AcceptsValidDecisions()
+    public async Task ReviewClosureRequest_AcceptsValidDecisions()
     {
         using var db = TestDb.Create();
         var svc = new AuditService(db);
@@ -225,7 +225,7 @@ public class AccessControlMatrixTests
         });
         db.SaveChanges();
 
-        var result = svc.InternalReviewClosureRequest(2, 2, "approved", null, 99);
+        var result = await svc.InternalReviewClosureRequestAsync(2, 2, "approved", null, 99);
         Assert.True(result);
 
         var finding = db.AuditFindings.Find(2);

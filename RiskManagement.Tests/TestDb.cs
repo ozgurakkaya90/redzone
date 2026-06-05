@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using RiskManagement.Data;
+using RiskManagement.Services;
 
 namespace RiskManagement.Tests;
 
@@ -12,6 +14,13 @@ internal static class TestDb
             .Options;
 
     public static AppDbContext Create() => new(NewOptions());
+
+    // Testler için ephemeral (in-memory) DataProtection provider
+    public static IDataProtectionProvider DataProtection { get; } =
+        new EphemeralDataProtectionProvider();
+
+    public static ConfigService CreateConfigService(AppDbContext db) =>
+        new(db, new Microsoft.Extensions.Logging.Abstractions.NullLogger<ConfigService>(), DataProtection);
 
     /// <summary>
     /// Factory-tabanlı servisler için test fabrikası. Tek bir options örneği üzerinden üretir;

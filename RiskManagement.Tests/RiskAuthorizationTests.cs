@@ -16,7 +16,7 @@ public class RiskAuthorizationTests
         db.Departments.Add(new Department { Id = 20, Name = "Safety", OrganizationId = 10, ManagerUserId = 4 });
         db.SaveChanges();
 
-        var cfg = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var cfg = TestDb.CreateConfigService(db);
         var service = new RiskService(db, new RiskCalculator(cfg), new AuthService(db, new MemoryCache(new MemoryCacheOptions())));
         var risk = new Risk
         {
@@ -53,7 +53,7 @@ public class RiskAuthorizationTests
         });
         db.SaveChanges();
 
-        var cfg = new ConfigService(db, NullLogger<ConfigService>.Instance);
+        var cfg = TestDb.CreateConfigService(db);
         var service = new RiskService(db, new RiskCalculator(cfg), new AuthService(db, new MemoryCache(new MemoryCacheOptions())));
 
         Assert.NotNull(service.GetByIdForUser(100, 2, "user"));

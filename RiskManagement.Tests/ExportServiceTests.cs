@@ -68,8 +68,9 @@ public class ExportServiceTests
         var ws = wb.Worksheets.First();
 
         Assert.Equal(2, ws.LastRowUsed()!.RowNumber()); // başlık + veri
-        Assert.Equal("Kod", ws.Cell(1, 1).GetString());
-        Assert.Equal("Başlık", ws.Cell(1, 2).GetString());
+        // Kod sütunu içe aktarmada güncelleme anahtarı olduğu için başlık açıklayıcıdır.
+        Assert.StartsWith("Kod", ws.Cell(1, 1).GetString());
+        Assert.StartsWith("Başlık", ws.Cell(1, 2).GetString());
         Assert.Equal("R-001", ws.Cell(2, 1).GetString());
     }
 
@@ -99,7 +100,7 @@ public class ExportServiceTests
         using var wb = new XLWorkbook(new MemoryStream(bytes));
         var ws = wb.Worksheets.First();
 
-        var scoreCell = ws.Cell(2, 12); // Başlangıç Skoru kolonu
+        var scoreCell = ws.Cell(2, 22); // Başlangıç Skoru kolonu (düzenlenebilir 14 sütun + bilgi sütunları)
         Assert.Contains("150", scoreCell.GetString());
     }
 

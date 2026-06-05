@@ -30,10 +30,10 @@ public class RiskManagementTools(
     [Description("Risk yönetim sisteminin genel durumunu özetler. Toplam risk sayısı, risk seviyesi dağılımı, aksiyon planı istatistikleri ve gecikmiş aksiyonlar hakkında bilgi döndürür.")]
     public string GetDashboard()
     {
+        // Servis katmanı üzerinden — yetki kontrolü ve iş mantığı devrede
         var risks = ctx.IsFullAccess
-            ? db.Risks.AsNoTracking().Include(r => r.Evaluations).Include(r => r.ActionPlans).ToList()
-            : riskSvc.GetForUser(ctx.ScopeUser!)
-                     .Select(r => { r.ActionPlans ??= []; return r; }).ToList();
+            ? riskSvc.GetAll()
+            : riskSvc.GetForUser(ctx.ScopeUser!);
 
         var today = DateOnly.FromDateTime(DateTime.Today);
 
@@ -51,7 +51,7 @@ public class RiskManagementTools(
             a.DueDate.HasValue && a.DueDate.Value < today);
 
         var findings = ctx.IsFullAccess
-            ? db.AuditFindings.AsNoTracking().ToList()
+            ? auditSvc.GetFindings()
             : auditSvc.GetFindingsForUser(ctx.ScopeUser!);
         var findingsByStatus = findings.GroupBy(f => f.Status)
             .ToDictionary(g => g.Key, g => g.Count());
@@ -88,35 +88,22 @@ public class RiskManagementTools(
     [Description("Riskleri filtreli olarak listeler. Durum (proposed/approved/controlled vb.), risk seviyesi (low/medium/high/critical), kategori veya arama metni ile filtrelenebilir. Her risk için temel bilgiler ve son değerlendirme skoru döndürülür.")]
     public string ListRisks(
         [Description("Risk durumu filtresi: proposed, under_review, approved, strategy_set, controlled, residual_evaluated, action_planned, rejected")] string? status = null,
-        [Description("Risk seviyesi filtresi: low, medium, high, critical")] string? riskLevel = null,
+        [Description("Risk seviyesi filtresi — son değerlendirme RiskLevel alanı")] string? riskLevel = null,
         [Description("Kategori filtresi (örn: 'Operasyonel', 'Mali')")] string? category = null,
-        [Description("Başlık veya açıklamada arama metni")] string? search = null,
+        [Description("Başlık veya kodda arama metni")] string? search = null,
         [Description("Maksimum sonuç sayısı (varsayılan: 50)")] int limit = 50)
     {
-        List<Risk> risks;
-        if (ctx.IsFullAccess)
-        {
-            var query = db.Risks.AsNoTracking()
-                .Include(r => r.Evaluations).Include(r => r.Department)
-                .Include(r => r.Organization).Include(r => r.Owner)
-                .AsQueryable();
-            if (!string.IsNullOrEmpty(status))   query = query.Where(r => r.Status == status);
-            if (!string.IsNullOrEmpty(category)) query = query.Where(r => r.Category != null && r.Category.Contains(category));
-            if (!string.IsNullOrEmpty(search))   query = query.Where(r => r.Title.Contains(search) || (r.Description != null && r.Description.Contains(search)));
-            risks = query.OrderByDescending(r => r.ProposedAt).Take(limit).ToList();
-        }
-        else
-        {
-            risks = riskSvc.GetForUser(ctx.ScopeUser!, category, status, search)
-                           .Take(limit).ToList();
-        }
+        // Servis katmanı — filtreleme ve yetki mantığı devrede
+        var risks = ctx.IsFullAccess
+            ? riskSvc.GetAll(category, status, search).Take(limit).ToList()
+            : riskSvc.GetForUser(ctx.ScopeUser!, category, status, search).Take(limit).ToList();
 
         if (!string.IsNullOrEmpty(riskLevel))
         {
             risks = risks.Where(r =>
             {
                 var lastEval = r.Evaluations.OrderByDescending(e => e.EvaluatedAt).FirstOrDefault();
-                return lastEval?.RiskLevel?.ToLower() == riskLevel.ToLower();
+                return string.Equals(lastEval?.RiskLevel, riskLevel, StringComparison.OrdinalIgnoreCase);
             }).ToList();
         }
 
@@ -155,26 +142,10 @@ public class RiskManagementTools(
     public string GetRiskDetail(
         [Description("Risk ID numarası")] int riskId)
     {
-        Risk? risk;
-        if (ctx.IsFullAccess)
-        {
-            risk = db.Risks.AsNoTracking()
-                .Include(r => r.Evaluations).ThenInclude(e => e.EvaluatedBy)
-                .Include(r => r.Controls).ThenInclude(c => c.EnteredBy)
-                .Include(r => r.Controls).ThenInclude(c => c.OwnerDept)
-                .Include(r => r.ActionPlans).ThenInclude(a => a.CreatedBy)
-                .Include(r => r.ActionPlans).ThenInclude(a => a.OwnerDept)
-                .Include(r => r.Reviews).ThenInclude(rv => rv.CreatedBy)
-                .Include(r => r.Department)
-                .Include(r => r.Organization)
-                .Include(r => r.Owner)
-                .Include(r => r.ProposedBy)
-                .FirstOrDefault(r => r.Id == riskId);
-        }
-        else
-        {
-            risk = riskSvc.GetByIdForUser(riskId, ctx.ScopeUser!);
-        }
+        // Servis Query() — tüm Include'lar devrede, erişim kontrolü mevcut
+        var risk = ctx.IsFullAccess
+            ? riskSvc.GetById(riskId)
+            : riskSvc.GetByIdForUser(riskId, ctx.ScopeUser!);
 
         if (risk is null)
             return JsonSerializer.Serialize(new { error = "Risk bulunamadı veya erişim yetkiniz yok." }, _json);
@@ -269,6 +240,7 @@ public class RiskManagementTools(
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
 
+        // ActionPlan için doğrudan DB sorgusu — servis katmanında karşılık yok
         var query = db.ActionPlans.AsNoTracking()
             .Include(a => a.Risk)
             .Include(a => a.CreatedBy)
@@ -327,20 +299,23 @@ public class RiskManagementTools(
     [McpServerTool(Name = "list_findings")]
     [Description("Denetim bulgularını listeler. Açık, kapalı, gecikmiş bulgular filtrelenebilir. Her bulgu için öncelik, kategori ve aksiyon durumu döndürülür.")]
     public string ListFindings(
-        [Description("Durum filtresi: open, in_progress, closed, overdue")] string? status = null,
-        [Description("Ciddiyet filtresi: critical, major, minor, observation")] string? severity = null,
+        [Description("Durum filtresi: open, closure_requested, closed")] string? status = null,
+        [Description("Ciddiyet filtresi")] string? severity = null,
         [Description("Kategori filtresi")] string? category = null,
         [Description("Başlık veya açıklamada arama")] string? search = null,
         [Description("Maksimum sonuç sayısı (varsayılan: 50)")] int limit = 50)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
 
+        // Servis katmanı — filtreleme ve yetki mantığı devrede
         var findings = ctx.IsFullAccess
-            ? auditSvc.GetFindings(category, severity, search)
-            : auditSvc.GetFindingsForUser(ctx.ScopeUser!, category, severity, search);
+            ? auditSvc.GetFindings(category, severity, status)
+            : auditSvc.GetFindingsForUser(ctx.ScopeUser!, category, severity, status);
 
-        if (!string.IsNullOrEmpty(status))
-            findings = findings.Where(f => f.Status == status).ToList();
+        if (!string.IsNullOrEmpty(search))
+            findings = findings.Where(f =>
+                f.Title.Contains(search, StringComparison.OrdinalIgnoreCase) ||
+                (f.Description != null && f.Description.Contains(search, StringComparison.OrdinalIgnoreCase))).ToList();
 
         var result = findings.Take(limit).Select(f => new
         {
@@ -377,24 +352,10 @@ public class RiskManagementTools(
 
         if (scope is "risks" or "all")
         {
-            List<Risk> risks;
-            if (ctx.IsFullAccess)
-            {
-                risks = db.Risks.AsNoTracking()
-                    .Include(r => r.Evaluations)
-                    .Where(r => r.Title.Contains(query) ||
-                                (r.Description != null && r.Description.Contains(query)) ||
-                                (r.Category != null && r.Category.Contains(query)) ||
-                                r.Code.Contains(query))
-                    .OrderByDescending(r => r.ProposedAt)
-                    .Take(limit)
-                    .ToList();
-            }
-            else
-            {
-                risks = riskSvc.GetForUser(ctx.ScopeUser!, search: query)
-                               .Take(limit).ToList();
-            }
+            // Servis katmanı üzerinden arama
+            var risks = ctx.IsFullAccess
+                ? riskSvc.GetAll(search: query).Take(limit).ToList()
+                : riskSvc.GetForUser(ctx.ScopeUser!, search: query).Take(limit).ToList();
 
             results["risks"] = risks.Select(r =>
             {
@@ -405,26 +366,15 @@ public class RiskManagementTools(
 
         if (scope is "findings" or "all")
         {
-            List<AuditFinding> findings;
-            if (ctx.IsFullAccess)
-            {
-                findings = db.AuditFindings.AsNoTracking()
-                    .Where(f => f.Title.Contains(query) ||
-                                (f.Description != null && f.Description.Contains(query)) ||
-                                (f.Category != null && f.Category.Contains(query)) ||
-                                f.Code.Contains(query))
-                    .Take(limit)
-                    .ToList();
-            }
-            else
-            {
-                findings = auditSvc.GetFindingsForUser(ctx.ScopeUser!)
-                    .Where(f => f.Title.Contains(query) ||
-                                (f.Description != null && f.Description.Contains(query)) ||
-                                (f.Category != null && f.Category.Contains(query)) ||
-                                f.Code.Contains(query))
-                    .Take(limit).ToList();
-            }
+            var findings = ctx.IsFullAccess
+                ? auditSvc.GetFindings()
+                : auditSvc.GetFindingsForUser(ctx.ScopeUser!);
+
+            findings = findings.Where(f =>
+                f.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                (f.Description != null && f.Description.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
+                (f.Category != null && f.Category.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
+                f.Code.Contains(query, StringComparison.OrdinalIgnoreCase)).Take(limit).ToList();
 
             results["findings"] = findings.Select(f => new
             {
@@ -443,8 +393,7 @@ public class RiskManagementTools(
                                 (a.Standard != null && a.Standard.Contains(query)) ||
                                 (a.Notes != null && a.Notes.Contains(query)) ||
                                 a.Code.Contains(query))
-                    .Take(limit)
-                    .ToList();
+                    .Take(limit).ToList();
             }
             else
             {
@@ -469,11 +418,10 @@ public class RiskManagementTools(
             // Scoped key'ler ethics raporlarına erişemez — anonimlik ve veri izolasyonu
             if (ctx.IsFullAccess)
             {
-                var ethics = db.EthicsReports.AsNoTracking()
-                    .Where(r => (r.ReportCategory != null && r.ReportCategory.Contains(query)) ||
-                                r.Code.Contains(query))
-                    .Take(limit)
-                    .ToList();
+                var ethics = ethicsSvc.GetAll()
+                    .Where(r => (r.ReportCategory != null && r.ReportCategory.Contains(query, StringComparison.OrdinalIgnoreCase)) ||
+                                r.Code.Contains(query, StringComparison.OrdinalIgnoreCase))
+                    .Take(limit).ToList();
 
                 results["ethics"] = ethics.Select(r => new
                 {
@@ -496,12 +444,9 @@ public class RiskManagementTools(
     [Description("Detaylı risk istatistikleri döndürür. Kategori bazlı dağılım, departman bazlı risk sayıları ve risk seviyesi trend analizi içerir.")]
     public string GetRiskStatistics()
     {
+        // Servis katmanı üzerinden — Query() tüm include'ları yükler
         var risks = ctx.IsFullAccess
-            ? db.Risks.AsNoTracking()
-                .Include(r => r.Evaluations)
-                .Include(r => r.Department)
-                .Include(r => r.Organization)
-                .ToList()
+            ? riskSvc.GetAll()
             : riskSvc.GetForUser(ctx.ScopeUser!);
 
         var byCategory = risks
@@ -572,6 +517,7 @@ public class RiskManagementTools(
         List<ExternalAudit> audits;
         if (ctx.IsFullAccess)
         {
+            // ExternalAuditService admin erişim metodu bulunmuyor — doğrudan sorgu kullanılır
             var query = db.ExternalAudits.AsNoTracking()
                 .Include(a => a.ResponsibleDept).Include(a => a.ResponsibleUser).Include(a => a.Findings)
                 .AsQueryable();
@@ -582,7 +528,6 @@ public class RiskManagementTools(
         }
         else
         {
-            // extSvc.List kullanıcının erişebildiği kurumları filtreler
             audits = extSvc.List(ctx.ScopeUser!, auditingBody, status)
                            .Where(a => !fromYear.HasValue || a.AuditDate.Year >= fromYear.Value)
                            .Take(limit).ToList();
@@ -628,12 +573,10 @@ public class RiskManagementTools(
         }
         else
         {
-            // extSvc.Get() kullanıcının denetim kurumu erişimini kontrol eder
             var bare = extSvc.Get(auditId, ctx.ScopeUser!);
             if (bare is null) { audit = null; }
             else
             {
-                // AuditQuery() Findings include etmez; scoped path için ayrıca yüklenir
                 audit = db.ExternalAudits.AsNoTracking()
                     .Include(a => a.ResponsibleDept)
                     .Include(a => a.ResponsibleUser)
@@ -699,11 +642,12 @@ public class RiskManagementTools(
         if (!ctx.IsFullAccess && (ctx.ScopeUser is null || !authSvc.HasPermission(ctx.ScopeUser, "ethics.read")))
             return JsonSerializer.Serialize(new { error = "Bu API anahtarının etik bildirimlerine erişim yetkisi yok." }, _json);
 
+        // Servis katmanı üzerinden
         var reports = ethicsSvc.GetAll(status);
 
         if (!string.IsNullOrEmpty(category))
             reports = reports.Where(r => r.ReportCategory != null &&
-                                         r.ReportCategory.Contains(category)).ToList();
+                                         r.ReportCategory.Contains(category, StringComparison.OrdinalIgnoreCase)).ToList();
 
         reports = reports.Take(limit).ToList();
 
@@ -736,7 +680,8 @@ public class RiskManagementTools(
         if (!ctx.IsFullAccess && (ctx.ScopeUser is null || !authSvc.HasPermission(ctx.ScopeUser, "ethics.read")))
             return JsonSerializer.Serialize(new { error = "Bu API anahtarının etik bildirimlerine erişim yetkisi yok." }, _json);
 
-        var reports = db.EthicsReports.AsNoTracking().ToList();
+        // Servis katmanı üzerinden
+        var reports = ethicsSvc.GetAll();
 
         var reviewed = reports.Where(r => r.AuditReviewedAt.HasValue).ToList();
         var avgReviewDays = reviewed.Any()

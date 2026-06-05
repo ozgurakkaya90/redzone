@@ -6,7 +6,6 @@
 @inject EthicsService EthicsSvc
 @inject ConfigService CfgSvc
 @inject TaskService TaskSvc
-@inject AppDbContext Db
 @inject AuthService Auth
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
@@ -88,9 +87,18 @@
                 <option value="category">Kategori</option>
                 <option value="title">Başlık</option>
             </select>
-            <button class="btn btn-outline btn-sm" style="padding:3px 8px;min-height:28px"
-                    @onclick="() => _sortAsc = !_sortAsc">
-                @(_sortAsc ? "↑" : "↓")
+            <button class="btn btn-outline btn-sm"
+                    @onclick="() => _sortAsc = !_sortAsc"
+                    aria-label="@(_sortAsc ? "Azalan sırala" : "Artan sırala")"
+                    title="@(_sortAsc ? "Azalan sırala" : "Artan sırala")">
+                @if (_sortAsc)
+                {
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 5 5 12"/></svg>
+                }
+                else
+                {
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/></svg>
+                }
             </button>
         </div>
     </div>
@@ -324,7 +332,7 @@
             {
                 _canSeeExternal = ExtAuditSvc.IsAdmin(_user) ||
                     _user.HasAnyRole("auditor", "audit_manager") ||
-                    Db.UserExternalAuditBodies.Any(b => b.UserId == _user.Id);
+                    ExtAuditSvc.UserHasAnyBody(_user.Id);
                 if (_canSeeExternal)
                 {
                     var extStats = ExtAuditSvc.GetStats(_user);

@@ -65,6 +65,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         mb.Entity<Risk>()
             .HasOne(r => r.Department).WithMany().HasForeignKey(r => r.DepartmentId)
             .OnDelete(DeleteBehavior.SetNull);
+        // Pasife alınmamış (mevcut) tüm riskler aktif kabul edilir — DB default true.
+        mb.Entity<Risk>().Property(r => r.IsActive).HasDefaultValue(true);
         mb.Entity<RiskReview>()
             .HasOne(rv => rv.Risk).WithMany(r => r.Reviews).HasForeignKey(rv => rv.RiskId)
             .OnDelete(DeleteBehavior.Cascade);

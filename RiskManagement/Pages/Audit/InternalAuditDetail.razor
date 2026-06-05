@@ -285,22 +285,22 @@ else
         if (_audit == null) { Nav.NavigateTo("/audit/internal"); return; }
     }
 
-    private void UpdateStatus(string status)
+    private async Task UpdateStatus(string status)
     {
         if (_audit == null) return;
-        AuditSvc.UpdateAudit(Id, _audit.Title, _audit.AuditType, _audit.AuditedUnit,
+        await AuditSvc.UpdateAuditAsync(Id, _audit.Title, _audit.AuditType, _audit.AuditedUnit,
             _audit.Scope, _audit.Period, _audit.StartDate, _audit.EndDate, status);
         _success = "Durum güncellendi."; _error = "";
         Load();
     }
 
-    private void SaveEdit()
+    private async Task SaveEdit()
     {
         if (string.IsNullOrWhiteSpace(_editTitle)) { _error = "Başlık zorunludur."; return; }
         if (string.IsNullOrWhiteSpace(_editPeriod)) { _error = "Dönem zorunludur."; return; }
         var start = _editStart.HasValue ? DateOnly.FromDateTime(_editStart.Value) : (DateOnly?)null;
         var end   = _editEnd.HasValue   ? DateOnly.FromDateTime(_editEnd.Value)   : (DateOnly?)null;
-        AuditSvc.UpdateAudit(Id, _editTitle, _editType,
+        await AuditSvc.UpdateAuditAsync(Id, _editTitle, _editType,
             string.IsNullOrEmpty(_editUnit) ? null : _editUnit,
             _editScope, _editPeriod, start, end, _audit!.Status);
         _success = "Denetim güncellendi."; _error = "";

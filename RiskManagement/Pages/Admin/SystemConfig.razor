@@ -2540,161 +2540,6 @@
 @code {
     private string _tab = "theme";
 
-    // ── Yapay Zeka Ayarları ───────────────────────────────────────────────
-    private AiSettings _aiSettings = new();
-    private string _aiProvider = "disabled";
-    private string _aiApiKey   = "";
-    private string _aiModel    = "";
-    private string _aiBaseUrl  = "";
-    private bool   _aiSaving, _aiTesting;
-    private bool   _aiSaveError, _aiTestOk;
-    private string _aiSaveMsg    = "";
-    private string _aiTestResult = "";
-
-    // Örnek sağlayıcı tablosu için veri
-    private record ProviderPreset(string Name, string BaseUrl, string Model, string KeyHint, string KeyUrl);
-    private bool _showProviderTable;
-    private readonly ProviderPreset[] _knownProviders =
-    [
-        new("OpenAI",      "https://api.openai.com/v1",                               "gpt-4o-mini",          "platform.openai.com",   "https://platform.openai.com/api-keys"),
-        new("DeepSeek",    "https://api.deepseek.com/v1",                             "deepseek-chat",         "platform.deepseek.com", "https://platform.deepseek.com"),
-        new("Google Gemini","https://generativelanguage.googleapis.com/v1beta/openai","gemini-2.0-flash",      "aistudio.google.com",   "https://aistudio.google.com"),
-        new("xAI Grok",    "https://api.x.ai/v1",                                    "grok-3-mini",           "console.x.ai",          "https://console.x.ai"),
-        new("Groq",        "https://api.groq.com/openai/v1",                          "llama-3.3-70b-versatile","console.groq.com",     "https://console.groq.com"),
-        new("OpenRouter",  "https://openrouter.ai/api/v1",                            "openai/gpt-4o-mini",    "openrouter.ai",         "https://openrouter.ai/keys"),
-        new("Mistral",     "https://api.mistral.ai/v1",                               "mistral-small-latest",  "console.mistral.ai",    "https://console.mistral.ai"),
-        new("Together AI", "https://api.together.xyz/v1",                             "meta-llama/Llama-3-8b-chat-hf","together.ai",   "https://api.together.ai"),
-        new("Ollama (Yerel)","http://localhost:11434/v1",                             "llama3.2",              "— (gerekmez)",          "https://ollama.com"),
-    ];
-
-    private void FillProvider(ProviderPreset p)
-    {
-        _aiBaseUrl = p.BaseUrl;
-        _aiModel   = p.Model;
-        _aiApiKey  = "";          // kullanıcı kendi anahtarını girer
-        _showProviderTable = false;
-    }
-
-    private void LoadAiSettings()
-    {
-        _aiSettings  = CfgSvc.GetAiSettings();
-        _aiProvider  = _aiSettings.Provider;
-        _aiApiKey    = _aiSettings.ApiKey;
-        _aiModel     = _aiSettings.Model;
-        _aiBaseUrl   = _aiSettings.BaseUrl;
-        _aiSaveMsg   = "";
-        _aiTestResult = "";
-    }
-
-    private void OnProviderChanged()
-    {
-        _aiModel    = "";
-        _aiBaseUrl  = "";
-        _aiTestResult = "";
-    }
-
-    private void SaveAiSettings()
-    {
-        _aiSaving  = true;
-        _aiSaveMsg = "";
-        try
-        {
-            var settings = new AiSettings(_aiProvider, _aiApiKey.Trim(), _aiModel.Trim(), _aiBaseUrl.Trim());
-            CfgSvc.SetAiSettings(settings);
-            _aiSettings = settings;
-            _aiSaveMsg  = "Ayarlar kaydedildi.";
-            _aiSaveError = false;
-        }
-        catch (Exception ex)
-        {
-            _aiSaveMsg   = $"Kayıt hatası: {ex.Message}";
-            _aiSaveError = true;
-        }
-        finally { _aiSaving = false; }
-    }
-
-    private async Task TestAiConnection()
-    {
-        _aiTesting    = true;
-        _aiTestResult = "";
-        try
-        {
-            // Geçici ayarlarla test — kaydedilmeden önce de çalışsın
-            var testResult = await AiDraftSvc.TestConnectionAsync(
-                _aiProvider, _aiApiKey.Trim(), _aiModel.Trim(), _aiBaseUrl.Trim());
-            _aiTestOk     = true;
-            _aiTestResult = $"✓ Bağlantı başarılı — {testResult}";
-        }
-        catch (Exception ex)
-        {
-            _aiTestOk     = false;
-            _aiTestResult = $"✗ {ex.Message}";
-        }
-        finally { _aiTesting = false; }
-    }
-
-    // ── MCP API Anahtarları ────────────────────────────────────────────────
-    private List<McpApiKeyListItem> _mcpKeys = [];
-    private List<UserChoice> _mcpUserChoices = [];
-    private bool _mcpShowCreate;
-    private string _mcpCreateName = "";
-    private string _mcpCreateScopeUserId = "";
-    private string? _mcpNewKey;
-    private string? _mcpError;
-    private string _mcpBaseUrl = "";
-    private int _mcpCurrentUserId;
-
-    private void McpLoadKeys()
-    {
-        try { _mcpKeys = McpKeySvc.GetAll(); }
-        catch (Exception ex) { _mcpError = $"API anahtarları yüklenemedi: {ex.Message}"; }
-        try { _mcpUserChoices = McpKeySvc.GetUserChoices(); }
-        catch (Exception ex) { _mcpError = (_mcpError is null ? "" : _mcpError + " | ") + $"Kullanıcılar yüklenemedi: {ex.Message}"; }
-    }
-
-    private void McpCreateKey()
-    {
-        if (string.IsNullOrWhiteSpace(_mcpCreateName))
-        { _mcpError = "Anahtar adı zorunludur."; return; }
-        if (_mcpCurrentUserId == 0)
-        { _mcpError = "Oturum bilgisi alınamadı. Sayfayı yenileyip tekrar deneyin."; return; }
-        try
-        {
-            int? scopeUserId = int.TryParse(_mcpCreateScopeUserId, out var sid) ? sid : null;
-            var (_, plain) = McpKeySvc.Create(_mcpCreateName.Trim(), _mcpCurrentUserId, scopeUserId);
-            _mcpNewKey = plain;
-            _mcpShowCreate = false;
-            _mcpCreateName = "";
-            _mcpCreateScopeUserId = "";
-            _mcpError = null;
-            _mcpKeys = McpKeySvc.GetAll();
-        }
-        catch (Exception ex)
-        {
-            var inner = ex.InnerException?.InnerException?.Message ?? ex.InnerException?.Message ?? ex.Message;
-            _mcpError = $"Anahtar oluşturulamadı: {inner}";
-        }
-    }
-
-    private void McpRevoke(int id) { McpKeySvc.Revoke(id); _mcpKeys = McpKeySvc.GetAll(); }
-    private void McpDelete(int id) { McpKeySvc.Delete(id); _mcpKeys = McpKeySvc.GetAll(); }
-
-    private string GetMcpClaudeConfig()
-    {
-        var key = _mcpNewKey ?? "<API_KEY>";
-        return "{\n" +
-               "  \"mcpServers\": {\n" +
-               "    \"redzone\": {\n" +
-               "      \"type\": \"http\",\n" +
-               "      \"url\": \"" + _mcpBaseUrl + "/mcp\",\n" +
-               "      \"headers\": {\n" +
-               "        \"X-Api-Key\": \"" + key + "\"\n" +
-               "      }\n" +
-               "    }\n" +
-               "  }\n" +
-               "}";
-    }
-
     // ── E-posta Kuyruğu Monitor ────────────────────────────────────────────
     private IReadOnlyList<EmailLogEntry> _emailLog = [];
 
@@ -3198,10 +3043,11 @@
     private Dictionary<string, bool> _riskDetailFields = [];
     private static readonly (string key, string label, string hint)[] _riskDetailFieldDefs =
     [
-        ("source_type",          "Kaynak Türü",               "İç kaynak / Dış kaynak seçimi"),
-        ("source",               "Kaynak",                    "Riskin hangi kaynaktan geldiği"),
+        ("source_type",          "Kaynak Sınıflandırması",    "İç faktör / Dış faktör seçimi"),
+        ("source",               "Kaynak Türü",               "Riskin kaynak türü"),
         ("hazard",               "Tehlike",                   "Tehlike / tehdit tanımı"),
         ("possible_impact",      "Olası Etki",                "Risk gerçekleşirse doğacak sonuçlar"),
+        ("activity_area",        "Faaliyet Alanı",            "Riskin ilgili olduğu faaliyet alanı (serbest metin)"),
         ("affected_persons",     "Etkilenecek Kişiler",       "Risk kapsamındaki paydaş grupları"),
         ("relevant_legislation", "İlgili Mevzuat / Doküman",  "Yasal düzenlemeler ve iç dokümanlar"),
     ];

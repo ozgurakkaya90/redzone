@@ -3,7 +3,7 @@
 @inject RiskService RiskSvc
 @inject ConfigService CfgSvc
 @inject IRiskCalculator RiskCalc
-@inject AppDbContext Db
+@inject OrgService OrgSvc
 @inject AuthService Auth
 @inject IHttpContextAccessor HttpCtx
 @inject NavigationManager Nav
@@ -26,11 +26,14 @@
         </div>
     </div>
     <div class="page-toolbar-actions">
-        <div class="export-dropdown">
-            <button class="btn btn-outline btn-sm export-btn">Dışa Aktar</button>
-            <div class="export-menu">
-                <a href="/export/risks/excel" class="export-item">Excel (.xlsx)</a>
-                <a href="/export/risks/pdf" class="export-item">PDF</a>
+        <div class="export-dropdown @(_exportOpen ? "export-open" : "")">
+            <button class="btn btn-outline btn-sm export-btn"
+                    @onclick="() => _exportOpen = !_exportOpen"
+                    aria-expanded="@_exportOpen.ToString().ToLower()"
+                    aria-haspopup="menu">Dışa Aktar</button>
+            <div class="export-menu" role="menu">
+                <a href="/export/risks/excel" class="export-item" role="menuitem" @onclick="() => _exportOpen = false">Excel (.xlsx)</a>
+                <a href="/export/risks/pdf" class="export-item" role="menuitem" @onclick="() => _exportOpen = false">PDF</a>
             </div>
         </div>
         <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">İçe Aktar</button>
@@ -44,12 +47,13 @@
 @* ── Preset hızlı filtreler ── *@
 <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">
     @{
-        var criticalCount = _risks.Count(r =>
+        var criticalCount = _risks.Count(r => r.IsActive &&
             r.Evaluations.FirstOrDefault(e => e.EvalType == "initial")?.RiskLevel
             is "Çok Yüksek Risk" or "Yüksek Risk");
-        var reviewCount   = _risks.Count(r => r.Status is "under_review" or "awaiting_approval");
-        var mineCount     = _risks.Count(r => r.OwnerId == UserId || r.ProposedById == UserId);
-        var actionCount   = _risks.Count(r => r.ActionPlans.Any(a => a.Status is "planned" or "in_progress"));
+        var reviewCount   = _risks.Count(r => r.IsActive && r.Status is "under_review" or "awaiting_approval");
+        var mineCount     = _risks.Count(r => r.IsActive && (r.OwnerId == UserId || r.ProposedById == UserId));
+        var actionCount   = _risks.Count(r => r.IsActive && r.ActionPlans.Any(a => a.Status is "planned" or "in_progress"));
+        var passiveCount  = _risks.Count(r => !r.IsActive);
     }
     @foreach (var (label, preset, count, cls) in new[]{
         ("Tümü",           "",          0,            ""),
@@ -57,6 +61,7 @@
         ("İncelemede",     "inreview",  reviewCount,  ""),
         ("Aksiyon Gerekiyor","action",  actionCount,  ""),
         ("Benim Risklerim","mine",      mineCount,    ""),
+        ("Pasif",          "passive",   passiveCount, ""),
     })
     {
         var p = preset; var isActive = _riskPreset == p;
@@ -146,18 +151,18 @@ else
     <table class="table table-sticky">
         <thead>
             <tr>
-                <th style="width:100px">
+                <th style="width:100px" aria-sort="@AriaSortAttr("code")">
                     <button class="sort-btn" @onclick='() => SetSort("code")'>Kod @SortIcon("code")</button>
                 </th>
-                <th>
+                <th aria-sort="@AriaSortAttr("title")">
                     <button class="sort-btn" @onclick='() => SetSort("title")'>Başlık @SortIcon("title")</button>
                 </th>
                 <th style="width:130px">Kategori</th>
                 <th style="width:140px">Departman / Org.</th>
-                <th style="width:130px">
+                <th style="width:130px" aria-sort="@AriaSortAttr("status")">
                     <button class="sort-btn" @onclick='() => SetSort("status")'>Durum @SortIcon("status")</button>
                 </th>
-                <th style="width:130px">
+                <th style="width:130px" aria-sort="@AriaSortAttr("score")">
                     <button class="sort-btn" @onclick='() => SetSort("score")'>
                         <span class="th-tip">
                             İlk Risk
@@ -166,7 +171,7 @@ else
                         @SortIcon("score")
                     </button>
                 </th>
-                <th style="width:120px">
+                <th style="width:120px" aria-sort="@AriaSortAttr("residual")">
                     <button class="sort-btn" @onclick='() => SetSort("residual")'>
                         <span class="th-tip">
                             Kalıntı
@@ -175,7 +180,7 @@ else
                         @SortIcon("residual")
                     </button>
                 </th>
-                <th style="width:130px">
+                <th style="width:130px" aria-sort="@AriaSortAttr("date")">
                     <button class="sort-btn" @onclick='() => SetSort("date")'>Tarih @SortIcon("date")</button>
                 </th>
             </tr>
@@ -358,6 +363,7 @@ else
     private string[] _categories = [];
     private List<Organization> _organizations = [];
     private bool _showImport;
+    private bool _exportOpen;
     private bool _loading = true;
 
     private string _filterCat = "", _filterStatus = "", _filterLevel = "", _search = "";
@@ -384,7 +390,7 @@ else
         _user          = Auth.ActiveUserFromPrincipal(HttpCtx.HttpContext?.User);
         _risks         = _user is not null ? RiskSvc.GetForUser(_user) : [];
         _categories    = CfgSvc.GetList("risk_categories");
-        _organizations = [.. Db.Organizations.Include(o => o.Company).OrderBy(o => o.Name)];
+        _organizations = OrgSvc.GetOrganizations();
 
         // URL query parametrelerinden filtre değerlerini oku
         var uri   = new Uri(Nav.Uri);
@@ -427,6 +433,9 @@ else
                 "action"   => q.Where(r => r.ActionPlans.Any(a => a.Status is "planned" or "in_progress")),
                 _          => q
             };
+
+            // Pasif riskler yalnızca "Pasif" preset'inde gösterilir; diğer tüm görünümlerde gizlenir.
+            q = _riskPreset == "passive" ? q.Where(r => !r.IsActive) : q.Where(r => r.IsActive);
 
             if (!string.IsNullOrEmpty(_filterCat))    q = q.Where(r => r.Category == _filterCat);
             if (!string.IsNullOrEmpty(_filterStatus)) q = q.Where(r => r.Status == _filterStatus);
@@ -474,7 +483,16 @@ else
         _page = 1;
     }
 
-    string SortIcon(string col) => _sortCol != col ? "↕" : _sortDir == "asc" ? "↑" : "↓";
+    MarkupString SortIcon(string col)
+    {
+        if (_sortCol != col)
+            return new MarkupString("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='12' viewBox='0 0 10 12' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M5 1v10M2 4l3-3 3 3M2 8l3 3 3-3'/></svg>");
+        if (_sortDir == "asc")
+            return new MarkupString("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='12' viewBox='0 0 10 12' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M5 1v10M2 4l3-3 3 3'/></svg>");
+        return new MarkupString("<svg xmlns='http://www.w3.org/2000/svg' width='10' height='12' viewBox='0 0 10 12' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M5 1v10M2 8l3 3 3-3'/></svg>");
+    }
+
+    string AriaSortAttr(string col) => _sortCol != col ? "none" : _sortDir == "asc" ? "ascending" : "descending";
 
     IEnumerable<(string label, int count, string color, string bg)> StatCards
     {

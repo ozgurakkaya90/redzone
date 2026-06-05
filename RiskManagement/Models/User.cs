@@ -14,9 +14,6 @@ public class User
     [Required, MaxLength(200)]
     public string FullName { get; set; } = "";
 
-    [MaxLength(200)]
-    public string Department { get; set; } = "";  // legacy display string
-
     public int? DepartmentId { get; set; }
     public int? OrganizationId { get; set; }
     public int? CompanyId { get; set; }

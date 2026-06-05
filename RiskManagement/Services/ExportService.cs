@@ -10,19 +10,30 @@ public class ExportService
 {
     // ── Excel ────────────────────────────────────────────────────────────────
 
+    // Risk envanteri sütun düzeni — Şablon, İçe Aktarma ve Dışa Aktarma'da aynı sırayla
+    // kullanılır. İlk 14 sütun düzenlenebilir/içe aktarılabilir; 15+ salt-okunur bilgi sütunlarıdır.
+    // Böylece "dışa aktar → düzenle → tekrar içe aktar" (Kod ile eşleşme) sorunsuz çalışır.
+    internal static readonly string[] RiskEditableHeaders =
+    [
+        "Kod (boşsa yeni kayıt)", "Başlık*", "Açıklama", "Kategori",
+        "Kaynak Sınıflandırması (İç Faktör/Dış Faktör)", "Kaynak Türü", "Tehlike", "Olası Etki",
+        "Faaliyet Alanı", "Etkilenecek Kişiler (virgülle ayırın)", "İlgili Mevzuat / Doküman",
+        "Risk Stratejisi", "Mevcut Durum", "Aktif/Pasif"
+    ];
+
+    private static readonly string[] RiskReadonlyHeaders =
+    [
+        "İş Akışı Durumu", "Öneren", "Sorumlu", "Departman", "Organizasyon",
+        "Önerilme Tarihi", "Son Değerlendirme",
+        "Başlangıç Skoru", "Başlangıç Seviyesi", "Artık Skor", "Artık Seviye"
+    ];
+
     public byte[] ExportRisksToExcel(IEnumerable<Risk> risks)
     {
         using var wb = new XLWorkbook();
         var ws = wb.AddWorksheet("Risk Kaydı");
 
-        string[] headers =
-        [
-            "Kod", "Başlık", "Kategori", "Durum", "Kaynak Türü", "Öneren",
-            "Sorumlu", "Departman", "Organizasyon", "Önerilme Tarihi",
-            "Son Değerlendirme", "Başlangıç Skoru", "Başlangıç Seviyesi",
-            "Artık Skor", "Artık Seviye", "Risk Stratejisi"
-        ];
-
+        var headers = RiskEditableHeaders.Concat(RiskReadonlyHeaders).ToArray();
         for (int i = 0; i < headers.Length; i++)
         {
             var cell = ws.Cell(1, i + 1);
@@ -31,6 +42,9 @@ public class ExportService
             cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E3A5F");
             cell.Style.Font.FontColor = XLColor.White;
         }
+        // Salt-okunur sütunları görsel olarak ayırt et
+        for (int i = RiskEditableHeaders.Length; i < headers.Length; i++)
+            ws.Cell(1, i + 1).Style.Fill.BackgroundColor = XLColor.FromHtml("#64748B");
 
         int row = 2;
         foreach (var r in risks)
@@ -38,22 +52,33 @@ public class ExportService
             var initial  = r.Evaluations.LastOrDefault(e => e.EvalType == "initial");
             var residual = r.Evaluations.LastOrDefault(e => e.EvalType == "residual");
 
+            // Düzenlenebilir sütunlar (1-14)
             ws.Cell(row, 1).Value  = SafeCell(r.Code);
             ws.Cell(row, 2).Value  = SafeCell(r.Title);
-            ws.Cell(row, 3).Value  = SafeCell(r.Category);
-            ws.Cell(row, 4).Value  = StatusLabel(r.Status);
-            ws.Cell(row, 5).Value  = r.SourceType == "internal" ? "İç" : "Dış";
-            ws.Cell(row, 6).Value  = SafeCell(r.ProposedBy?.FullName ?? r.ProposerName);
-            ws.Cell(row, 7).Value  = SafeCell(r.Owner?.FullName);
-            ws.Cell(row, 8).Value  = SafeCell(r.Department?.Name);
-            ws.Cell(row, 9).Value  = SafeCell(r.Organization?.Name);
-            ws.Cell(row, 10).Value = r.ProposedAt.ToString("dd.MM.yyyy");
-            ws.Cell(row, 11).Value = r.LastReviewedAt?.ToString("dd.MM.yyyy") ?? "";
-            ws.Cell(row, 12).Value = initial?.Score.ToString("F1") ?? "";
-            ws.Cell(row, 13).Value = SafeCell(initial?.RiskLevel);
-            ws.Cell(row, 14).Value = residual?.Score.ToString("F1") ?? "";
-            ws.Cell(row, 15).Value = SafeCell(residual?.RiskLevel);
-            ws.Cell(row, 16).Value = SafeCell(r.RiskStrategy);
+            ws.Cell(row, 3).Value  = SafeCell(r.Description);
+            ws.Cell(row, 4).Value  = SafeCell(r.Category);
+            ws.Cell(row, 5).Value  = r.SourceType == "external" ? "Dış Faktör" : "İç Faktör";
+            ws.Cell(row, 6).Value  = SafeCell(r.Source);
+            ws.Cell(row, 7).Value  = SafeCell(r.Hazard);
+            ws.Cell(row, 8).Value  = SafeCell(r.PossibleImpact);
+            ws.Cell(row, 9).Value  = SafeCell(r.ActivityArea);
+            ws.Cell(row, 10).Value = SafeCell(string.Join(", ", r.GetAffectedPersonsList()));
+            ws.Cell(row, 11).Value = SafeCell(r.RelevantLegislation);
+            ws.Cell(row, 12).Value = SafeCell(r.RiskStrategy);
+            ws.Cell(row, 13).Value = SafeCell(r.CurrentStatus);
+            ws.Cell(row, 14).Value = r.IsActive ? "Aktif" : "Pasif";
+            // Salt-okunur bilgi sütunları (15+)
+            ws.Cell(row, 15).Value = StatusLabel(r.Status);
+            ws.Cell(row, 16).Value = SafeCell(r.ProposedBy?.FullName ?? r.ProposerName);
+            ws.Cell(row, 17).Value = SafeCell(r.Owner?.FullName);
+            ws.Cell(row, 18).Value = SafeCell(r.Department?.Name);
+            ws.Cell(row, 19).Value = SafeCell(r.Organization?.Name);
+            ws.Cell(row, 20).Value = r.ProposedAt.ToString("dd.MM.yyyy");
+            ws.Cell(row, 21).Value = r.LastReviewedAt?.ToString("dd.MM.yyyy") ?? "";
+            ws.Cell(row, 22).Value = initial?.Score.ToString("F1") ?? "";
+            ws.Cell(row, 23).Value = SafeCell(initial?.RiskLevel);
+            ws.Cell(row, 24).Value = residual?.Score.ToString("F1") ?? "";
+            ws.Cell(row, 25).Value = SafeCell(residual?.RiskLevel);
             row++;
         }
 
@@ -738,14 +763,156 @@ public class ExportService
         }).GeneratePdf();
     }
 
+    // ── Dış Denetim Aksiyon Planları ─────────────────────────────────────────
+
+    public byte[] ExportExternalAuditActionsToExcel(IEnumerable<AuditFindingAction> actions)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("Dış Denetim Aksiyonları");
+
+        string[] headers =
+        [
+            "Kurum", "Denetim Kodu", "Denetim Konusu",
+            "Bulgu Kodu", "Bulgu Başlığı", "Majör/Minör",
+            "Aksiyon Açıklaması", "Sorumlu Birim", "Termin", "Durum",
+            "Durum Notu", "Oluşturulma"
+        ];
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = headers[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E3A5F");
+            cell.Style.Font.FontColor = XLColor.White;
+        }
+
+        int row = 2;
+        foreach (var a in actions)
+        {
+            var f  = a.Finding;
+            var ea = f?.ExternalAudit;
+            ws.Cell(row, 1).Value  = SafeCell(ea?.AuditingBody);
+            ws.Cell(row, 2).Value  = SafeCell(ea?.Code);
+            ws.Cell(row, 3).Value  = SafeCell(ea?.Subject);
+            ws.Cell(row, 4).Value  = SafeCell(f?.Code);
+            ws.Cell(row, 5).Value  = SafeCell(f?.Title);
+            ws.Cell(row, 6).Value  = SafeCell(f?.Severity);
+            ws.Cell(row, 7).Value  = SafeCell(a.Description);
+            ws.Cell(row, 8).Value  = SafeCell(a.Responsible);
+            ws.Cell(row, 9).Value  = a.DueDate?.ToString("dd.MM.yyyy") ?? "";
+            ws.Cell(row, 10).Value = ActionStatusLabel(a.Status);
+            ws.Cell(row, 11).Value = SafeCell(a.ClosureNote);
+            ws.Cell(row, 12).Value = a.CreatedAt.ToString("dd.MM.yyyy");
+            row++;
+        }
+
+        ws.Columns().AdjustToContents();
+        ws.SheetView.FreezeRows(1);
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    // ── Dış Denetim Uygunsuzluk Aksiyon Planı ────────────────────────────────
+
+    // 15 sütunluk resmi format — import şablonuyla birebir eşleşir
+    private static readonly string[] NonconformityHeaders =
+    [
+        "Geçirilen Denetim Adı", "Denetim Tarihi", "Denetim Türü",
+        "İlgili Mevzuat/Rehber/Standart", "İlgili Mevzuat Maddesi (Varsa)",
+        "İlgili Denetim Listesi Adı (Varsa)", "Uygunsuzluk Tespit Edildi mi? (Evet/Hayır)",
+        "Uygunsuzluk Adedi", "Uygunsuzluğa Konu Olan Standart Maddesi (Varsa)",
+        "Uygunsuzluk Detay Açıklama", "Majör/Minör",
+        "Uygunsuzluğu Gidermek İçin Alınan Aksiyon",
+        "Sorumlu Departman", "Termin", "Durum"
+    ];
+
+    public byte[] ExportExternalAuditNonconformitiesToExcel(
+        IEnumerable<AuditFinding> findings)
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("Uygunsuzluk Aksiyon Planı");
+
+        for (int i = 0; i < NonconformityHeaders.Length; i++)
+        {
+            var cell = ws.Cell(1, i + 1);
+            cell.Value = NonconformityHeaders[i];
+            cell.Style.Font.Bold = true;
+            cell.Style.Fill.BackgroundColor = XLColor.FromHtml("#1E3A5F");
+            cell.Style.Font.FontColor = XLColor.White;
+        }
+
+        int row = 2;
+        foreach (var f in findings)
+        {
+            var audit = f.ExternalAudit;
+            var action = f.Actions.OrderByDescending(a => a.CreatedAt).FirstOrDefault();
+
+            ws.Cell(row, 1).Value  = SafeCell(audit?.Subject ?? f.InternalAudit?.Title);
+            ws.Cell(row, 2).Value  = audit?.AuditDate.ToString("dd.MM.yyyy") ?? "";
+            ws.Cell(row, 3).Value  = SafeCell(audit?.AuditType);
+            ws.Cell(row, 4).Value  = SafeCell(audit?.Standard ?? audit?.AuditingBody);
+            ws.Cell(row, 5).Value  = SafeCell(f.StandardArticle);
+            ws.Cell(row, 6).Value  = SafeCell(audit?.ChecklistName);
+            ws.Cell(row, 7).Value  = "Evet";
+            ws.Cell(row, 8).Value  = f.NonconformityCount.HasValue ? f.NonconformityCount.Value.ToString() : "";
+            ws.Cell(row, 9).Value  = SafeCell(f.StandardClause);
+            ws.Cell(row, 10).Value = SafeCell(f.Description ?? f.Title);
+            ws.Cell(row, 11).Value = SafeCell(f.Severity);
+            ws.Cell(row, 12).Value = SafeCell(action?.Description);
+            ws.Cell(row, 13).Value = SafeCell(action?.Responsible);
+            ws.Cell(row, 14).Value = (action?.DueDate ?? f.DueDate)?.ToString("dd.MM.yyyy") ?? "";
+            ws.Cell(row, 15).Value = NonconformityStatusLabel(f.Status, action?.Status);
+            row++;
+        }
+
+        ws.Columns().AdjustToContents();
+        ws.SheetView.FreezeRows(1);
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
+    public byte[] GetExternalAuditNonconformityTemplate()
+    {
+        using var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("Uygunsuzluk Şablonu");
+        AddTemplateHeaders(ws, NonconformityHeaders);
+        // İkinci örnek satır (salt rehber)
+        ws.Cell(3, 1).Value  = "JCI Denetimi";
+        ws.Cell(3, 2).Value  = "25.01.2014";
+        ws.Cell(3, 3).Value  = "Uluslararası Akreditasyon";
+        ws.Cell(3, 4).Value  = "JCI";
+        ws.Cell(3, 5).Value  = "IPSG.1";
+        ws.Cell(3, 6).Value  = "JCI 2014 Nihai Karar Raporu";
+        ws.Cell(3, 7).Value  = "Evet";
+        ws.Cell(3, 8).Value  = "1";
+        ws.Cell(3, 9).Value  = "Hasta kimlik doğrulama maddesi";
+        ws.Cell(3, 10).Value = "Hasta barkodlarındaki bilgiler politikadan fazla...";
+        ws.Cell(3, 11).Value = "Minör";
+        ws.Cell(3, 12).Value = "Barkot puntosu büyütüldü, renk standardize edildi.";
+        ws.Cell(3, 13).Value = "Hasta Hizmetleri";
+        ws.Cell(3, 14).Value = "31.03.2014";
+        ws.Cell(3, 15).Value = "Tamamlandı";
+        for (int c = 1; c <= NonconformityHeaders.Length; c++)
+        {
+            var cell = ws.Cell(3, c);
+            cell.Style.Font.Italic = true;
+            cell.Style.Font.FontColor = XLColor.Gray;
+        }
+        ws.Columns().AdjustToContents();
+        using var ms = new MemoryStream();
+        wb.SaveAs(ms);
+        return ms.ToArray();
+    }
+
     // ── İçe Aktarma Şablonları ───────────────────────────────────────────────
 
     public byte[] GetRiskImportTemplate()
     {
         using var wb = new XLWorkbook();
         var ws = wb.AddWorksheet("Risk Şablonu");
-        string[] headers = ["Başlık*", "Açıklama", "Kategori", "Kaynak Türü (İç/Dış)", "Risk Stratejisi", "Tehlike/Kaynak", "Olası Etki"];
-        AddTemplateHeaders(ws, headers);
+        AddTemplateHeaders(ws, RiskEditableHeaders);
         ws.Columns().AdjustToContents();
         using var ms = new MemoryStream();
         wb.SaveAs(ms);
@@ -870,6 +1037,18 @@ public class ExportService
         "cancelled"   => "İptal",
         _             => status
     };
+
+    private static string NonconformityStatusLabel(string findingStatus, string? actionStatus)
+    {
+        var effective = actionStatus ?? findingStatus;
+        return effective switch
+        {
+            "completed" or "closed"  => "Tamamlandı",
+            "in_progress"            => "Devam Ediyor",
+            "planned"                => "Açık",
+            _                        => findingStatus is "closed" ? "Kapalı" : "Açık"
+        };
+    }
 
     private static string EthicsStatusLabel(string status) => status switch
     {

@@ -346,7 +346,6 @@
                 FullName     = _editUser.FullName,
                 Email        = string.IsNullOrWhiteSpace(_editUser.Email) ? null : _editUser.Email.Trim(),
                 Role         = primaryRole,
-                Department   = primaryDeptName,
                 IsActive     = _editUser.IsActive,
                 PasswordHash = Auth.HashPassword(_newPassword),
                 DepartmentId   = _selectedDeptIds.Count > 0 ? _selectedDeptIds.First() : null,
@@ -366,7 +365,6 @@
             existing.Email         = string.IsNullOrWhiteSpace(_editUser.Email) ? null : _editUser.Email.Trim();
             existing.Role          = primaryRole;
             existing.IsActive      = _editUser.IsActive;
-            existing.Department    = primaryDeptName;
             existing.DepartmentId   = _selectedDeptIds.Count > 0 ? _selectedDeptIds.First() : null;
             existing.OrganizationId = _selectedOrgIds.Count > 0 ? _selectedOrgIds.First() : null;
             existing.CompanyId      = _selectedCompanyIds.Count > 0 ? _selectedCompanyIds.First() : null;

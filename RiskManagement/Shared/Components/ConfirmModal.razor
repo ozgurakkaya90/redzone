@@ -1,24 +1,27 @@
 @if (Visible)
 {
-    <div class="confirm-overlay" @onclick="Cancel">
-        <div class="confirm-dialog" @onclick:stopPropagation>
-            <div class="confirm-icon">
+    <div class="confirm-overlay" @onclick="Cancel" role="presentation">
+        <div class="confirm-dialog" id="confirm-dialog" @onclick:stopPropagation
+             role="dialog" aria-modal="true" aria-labelledby="confirm-title-text">
+            <div class="confirm-icon" aria-hidden="true">
                 <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none"
                      stroke="#f59e0b" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
                     <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
                 </svg>
             </div>
-            <div class="confirm-title">@Title</div>
+            <div class="confirm-title" id="confirm-title-text">@Title</div>
             @if (!string.IsNullOrEmpty(Message))
             { <div class="confirm-msg">@Message</div> }
             <div class="confirm-actions">
-                <button class="btn btn-outline" @onclick="Cancel">Vazgeç</button>
+                <button class="btn btn-outline" @onclick="Cancel" autofocus>Vazgeç</button>
                 <button class="btn @DangerClass" @onclick="Confirm">@ConfirmLabel</button>
             </div>
         </div>
     </div>
 }
+
+@inject IJSRuntime JS
 
 @code {
     [Parameter] public bool    Visible       { get; set; }
@@ -30,7 +33,18 @@
     [Parameter] public EventCallback OnConfirm { get; set; }
     [Parameter] public EventCallback OnCancel  { get; set; }
 
+    private bool _wasVisible;
+
     private string DangerClass => Danger ? "btn-danger" : "btn-primary";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Visible && !_wasVisible)
+            await JS.InvokeVoidAsync("trapFocus", "confirm-dialog");
+        else if (!Visible && _wasVisible)
+            await JS.InvokeVoidAsync("releaseFocus", "confirm-dialog");
+        _wasVisible = Visible;
+    }
 
     private async Task Confirm() => await OnConfirm.InvokeAsync();
     private async Task Cancel()  => await OnCancel.InvokeAsync();

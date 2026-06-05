@@ -41,6 +41,8 @@ else
                     <div class="detail-header-badges">
                         <code style="font-size:11px;background:var(--gray-100);padding:2px 8px;border-radius:4px;color:var(--text-3)">@_risk.Code</code>
                         <span class="badge @StatusBadge(_risk.Status)">@StatusLabel(_risk.Status)</span>
+                        @if (!_risk.IsActive)
+                        { <span class="badge" style="background:#6b7280;color:#fff">Pasif</span> }
                         @if (_risk.Category != null) { <span class="tag">@_risk.Category</span> }
                     </div>
                     <h2 class="detail-header-title">@_risk.Title</h2>
@@ -48,15 +50,41 @@ else
                 <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
                     <div class="detail-nav">
                         @if (_prevId.HasValue)
-                        { <a href="/risk/@_prevId" class="detail-nav-btn" title="Önceki risk">&#8249;</a> }
+                        {
+                            <a href="/risk/@_prevId" class="detail-nav-btn" aria-label="Önceki risk">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                            </a>
+                        }
                         else
-                        { <span class="detail-nav-btn disabled">&#8249;</span> }
+                        {
+                            <span class="detail-nav-btn disabled" aria-hidden="true">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                            </span>
+                        }
                         @if (_nextId.HasValue)
-                        { <a href="/risk/@_nextId" class="detail-nav-btn" title="Sonraki risk">&#8250;</a> }
+                        {
+                            <a href="/risk/@_nextId" class="detail-nav-btn" aria-label="Sonraki risk">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 18 15 12 9 6"/></svg>
+                            </a>
+                        }
                         else
-                        { <span class="detail-nav-btn disabled">&#8250;</span> }
+                        {
+                            <span class="detail-nav-btn disabled" aria-hidden="true">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                            </span>
+                        }
                     </div>
-                    <a href="/risk" class="btn btn-outline btn-sm">&#8592; Liste</a>
+                    <a href="/risk" class="btn btn-outline btn-sm">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+                        Liste
+                    </a>
+                    @if (IsRiskManager)
+                    {
+                        @if (_risk.IsActive)
+                        { <button class="btn btn-outline btn-sm" style="color:#b45309;border-color:#fcd34d" @onclick="AskSetPassive" disabled="@_loading" title="Riski pasife al">Pasife Al</button> }
+                        else
+                        { <button class="btn btn-outline btn-sm" style="color:#15803d;border-color:#86efac" @onclick="SetActive" disabled="@_loading" title="Riski yeniden aktifleştir">Aktifleştir</button> }
+                    }
                 </div>
             </div>
             <div class="detail-header-meta">
@@ -252,36 +280,41 @@ else
                             { <option value="@c">@c</option> }
                         </select>
                     </div>
-                    @if (_fieldVisible["source_type"]) {
+                    @if (FieldVisible("source_type")) {
                     <div>
-                        <label class="form-label">Kaynak Türü</label>
+                        <label class="form-label">Kaynak Sınıflandırması</label>
                         <select class="form-control" @bind="_fSourceType">
-                            <option value="internal">İç Kaynak</option>
-                            <option value="external">Dış Kaynak</option>
+                            <option value="internal">İç Faktör</option>
+                            <option value="external">Dış Faktör</option>
                         </select>
                     </div> }
-                    @if (_fieldVisible["source"]) {
+                    @if (FieldVisible("source")) {
                     <div>
-                        <label class="form-label">Kaynak</label>
-                        <input class="form-control" @bind="_fSource" placeholder="Riskin kaynağı…" />
+                        <label class="form-label">Kaynak Türü</label>
+                        <input class="form-control" @bind="_fSource" placeholder="Riskin kaynak türü…" />
                     </div> }
-                    @if (_fieldVisible["hazard"]) {
+                    @if (FieldVisible("hazard")) {
                     <div>
                         <label class="form-label">Tehlike</label>
                         <input class="form-control" @bind="_fHazard" placeholder="Tehlike tanımı…" />
                     </div> }
-                    @if (_fieldVisible["possible_impact"]) {
+                    @if (FieldVisible("possible_impact")) {
                     <div>
                         <label class="form-label">Olası Etki</label>
                         <input class="form-control" @bind="_fPossibleImpact" placeholder="Gerçekleşirse ne olur?" />
                     </div> }
-                    @if (_fieldVisible["relevant_legislation"]) {
+                    @if (FieldVisible("activity_area")) {
+                    <div style="grid-column:span 2">
+                        <label class="form-label">Faaliyet Alanı</label>
+                        <textarea class="form-control" rows="2" @bind="_fActivityArea" placeholder="Riskin ilgili olduğu faaliyet alanı…"></textarea>
+                    </div> }
+                    @if (FieldVisible("relevant_legislation")) {
                     <div style="grid-column:span 2">
                         <label class="form-label">İlgili Mevzuat / Doküman</label>
                         <input class="form-control" @bind="_fLegislation" placeholder="Yasal düzenlemeler, standartlar, iç dokümanlar…" />
                     </div> }
                 </div>
-                @if (_fieldVisible["affected_persons"]) {
+                @if (FieldVisible("affected_persons")) {
                 <div style="margin-bottom:14px">
                     <label class="form-label">Riskten Etkilenecek Kişiler</label>
                     <div style="display:flex;flex-wrap:wrap;gap:10px;padding:10px;background:#f8fafc;border-radius:8px;border:1px solid var(--border)">
@@ -309,36 +342,42 @@ else
                         @if (!string.IsNullOrEmpty(_risk.Category)) { <span class="tag">@_risk.Category</span> }
                         else { <span class="empty-val">—</span> }
                     </div>
-                    @if (_fieldVisible["source_type"]) {
+                    @if (FieldVisible("source_type")) {
+                    <div>
+                        <div class="fl">Kaynak Sınıflandırması</div>
+                        <span class="tag">@(_risk.SourceType == "external" ? "Dış Faktör" : "İç Faktör")</span>
+                    </div> }
+                    @if (FieldVisible("source")) {
                     <div>
                         <div class="fl">Kaynak Türü</div>
-                        <span class="tag">@(_risk.SourceType == "external" ? "Dış Kaynak" : "İç Kaynak")</span>
-                    </div> }
-                    @if (_fieldVisible["source"]) {
-                    <div>
-                        <div class="fl">Kaynak</div>
                         @if (!string.IsNullOrEmpty(_risk.Source)) { <div style="font-size:13px">@_risk.Source</div> }
                         else { <span class="empty-val">—</span> }
                     </div> }
-                    @if (_fieldVisible["hazard"]) {
+                    @if (FieldVisible("hazard")) {
                     <div>
                         <div class="fl">Tehlike</div>
                         @if (!string.IsNullOrEmpty(_risk.Hazard)) { <div style="font-size:13px">@_risk.Hazard</div> }
                         else { <span class="empty-val">—</span> }
                     </div> }
-                    @if (_fieldVisible["possible_impact"]) {
+                    @if (FieldVisible("possible_impact")) {
                     <div>
                         <div class="fl">Olası Etki</div>
                         @if (!string.IsNullOrEmpty(_risk.PossibleImpact)) { <div style="font-size:13px">@_risk.PossibleImpact</div> }
                         else { <span class="empty-val">—</span> }
                     </div> }
-                    @if (_fieldVisible["relevant_legislation"]) {
+                    @if (FieldVisible("activity_area")) {
+                    <div style="grid-column:span 2">
+                        <div class="fl">Faaliyet Alanı</div>
+                        @if (!string.IsNullOrEmpty(_risk.ActivityArea)) { <div style="font-size:13px">@_risk.ActivityArea</div> }
+                        else { <span class="empty-val">—</span> }
+                    </div> }
+                    @if (FieldVisible("relevant_legislation")) {
                     <div style="grid-column:span 2">
                         <div class="fl">İlgili Mevzuat / Doküman</div>
                         @if (!string.IsNullOrEmpty(_risk.RelevantLegislation)) { <div style="font-size:13px">@_risk.RelevantLegislation</div> }
                         else { <span class="empty-val">—</span> }
                     </div> }
-                    @if (_fieldVisible["affected_persons"]) {
+                    @if (FieldVisible("affected_persons")) {
                     <div style="grid-column:span 2">
                         <div class="fl">Etkilenecek Kişiler</div>
                         @{ var persons = _risk.GetAffectedPersonsList(); }
@@ -448,7 +487,7 @@ else
                             <select class="form-control" @bind="_metaOwnerId">
                                 <option value="0">— Seçiniz —</option>
                                 @foreach (var u in _allUsers)
-                                { <option value="@u.Id">@u.FullName (@u.Department)</option> }
+                                { <option value="@u.Id">@u.FullName (@(u.DepartmentNav?.Name ?? ""))</option> }
                             </select>
                         </div>
                     </div>
@@ -837,12 +876,26 @@ else
                                @onchange="e => _reviewMeetingDate = string.IsNullOrEmpty(e.Value?.ToString()) ? null : (DateTime?)DateTime.Parse(e.Value.ToString()!)" />
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Komite Kararı *</label>
-                        <textarea class="form-control" rows="5" @bind="_reviewDecision"
-                                  placeholder="Riskin Erken Tespiti Komitesi'nin toplantı kararını buraya yazın…"></textarea>
+                        <label class="form-label">Komite Kararları * <span style="font-weight:400;color:var(--text-3);font-size:11px">(aynı toplantıda alınan kararları madde madde ekleyin)</span></label>
+                        @for (int i = 0; i < _reviewItems.Count; i++)
+                        {
+                            var idx = i;
+                            <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px">
+                                <span style="font-weight:700;font-size:13px;padding-top:9px;min-width:24px;color:var(--text-3)">@(idx + 1).</span>
+                                <textarea class="form-control" rows="2" style="flex:1"
+                                          placeholder="Karar maddesi…"
+                                          @bind="_reviewItems[idx]"></textarea>
+                                @if (_reviewItems.Count > 1)
+                                {
+                                    <button type="button" class="btn btn-ghost-danger btn-sm" style="padding:6px 10px"
+                                            @onclick="() => RemoveReviewItem(idx)" title="Maddeyi sil">✕</button>
+                                }
+                            </div>
+                        }
+                        <button type="button" class="btn btn-outline btn-sm" @onclick="AddReviewItem">+ Madde Ekle</button>
                     </div>
                     <button class="btn btn-success btn-sm" @onclick="SaveReviewAsync"
-                            disabled="@(_reviewMeetingDate == null || string.IsNullOrWhiteSpace(_reviewDecision) || _savingReview)">
+                            disabled="@(_reviewMeetingDate == null || !_reviewItems.Any(s => !string.IsNullOrWhiteSpace(s)) || _savingReview)">
                         @(_savingReview ? "Kaydediliyor…" : "Kaydet")
                     </button>
                 </div>
@@ -864,10 +917,21 @@ else
                                 <div style="font-size:11px;color:var(--text-3);margin-top:4px">Kaydeden: @rv.CreatedBy?.FullName</div>
                             </div>
                             <div>
-                                @if (!string.IsNullOrEmpty(rv.Decision))
+                                @{ var decisionItems = rv.GetDecisionItemsList(); }
+                                @if (decisionItems.Count > 0)
                                 {
-                                    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3);margin-bottom:4px">Karar</div>
-                                    <div style="font-size:13px;font-weight:600;margin-bottom:8px">@rv.Decision</div>
+                                    <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--text-3);margin-bottom:4px">@(decisionItems.Count > 1 ? "Kararlar" : "Karar")</div>
+                                    @if (decisionItems.Count == 1)
+                                    {
+                                        <div style="font-size:13px;font-weight:600;margin-bottom:8px">@decisionItems[0]</div>
+                                    }
+                                    else
+                                    {
+                                        <ol style="font-size:13px;font-weight:600;margin:0 0 8px 0;padding-left:20px">
+                                            @foreach (var item in decisionItems)
+                                            { <li style="margin-bottom:4px">@item</li> }
+                                        </ol>
+                                    }
                                 }
                                 <div style="display:flex;gap:8px;flex-wrap:wrap">
                                     @if (rvInit != null)
@@ -1040,15 +1104,21 @@ else
     // Detay alanları
     private static readonly string[] _allAffected = ["Hasta","Çalışanlar","Üst Yönetim","Sermayedarlar","Tedarikçiler","Paydaşlar"];
     private HashSet<string> _selectedAffected = [];
-    private string _fCategory = "", _fSourceType = "internal", _fSource = "", _fHazard = "", _fPossibleImpact = "", _fLegislation = "";
+    private string _fCategory = "", _fSourceType = "internal", _fSource = "", _fHazard = "", _fPossibleImpact = "", _fLegislation = "", _fActivityArea = "";
 
     // Accordion (index 0-9: kartlar 1-8 → 0-7, kart 9 → 8, kart 10 → 9)
     private bool[] _expanded = new bool[10]; // Clone pattern ile güncelleniyor — Blazor değişimi algılasın
 
     // Gözden geçirme
     private DateTime? _reviewMeetingDate;
-    private string _reviewDecision = "";
+    private List<string> _reviewItems = [""];
     private bool _savingReview;
+
+    private void AddReviewItem() => _reviewItems.Add("");
+    private void RemoveReviewItem(int idx) { if (idx >= 0 && idx < _reviewItems.Count) _reviewItems.RemoveAt(idx); if (_reviewItems.Count == 0) _reviewItems.Add(""); }
+
+    // Risk detay alanı görünürlüğü — eksik anahtarlarda KeyNotFoundException atmaması için varsayılan görünür.
+    private bool FieldVisible(string key) => !_fieldVisible.TryGetValue(key, out var v) || v;
 
     private List<Department> _departments = [];
     private List<Organization> _organizations = [];
@@ -1116,13 +1186,13 @@ else
     }
 
     private bool HasRiskDetailData => _risk != null &&
-        (_risk.Source != null || _risk.Hazard != null || _risk.PossibleImpact != null);
+        (_risk.Source != null || _risk.Hazard != null || _risk.PossibleImpact != null || _risk.ActivityArea != null);
 
     // Kart tamamlanma durumu: 2=complete(yeşil), 1=warning(sarı), 0=neutral(gri)
     private int CardStatus(int i) => i switch
     {
         0 => _risk!.Status != "proposed" ? 2 : 0,
-        1 => _risk!.Source != null || _risk.Hazard != null || _risk.PossibleImpact != null ? 2 : 0,
+        1 => _risk!.Source != null || _risk.Hazard != null || _risk.PossibleImpact != null || _risk.ActivityArea != null ? 2 : 0,
         2 => _initial != null ? 2 : 0,
         3 => HasMeta ? 2 : 0,
         4 => _risk!.Controls.Any() ? 2 : 0,
@@ -1216,6 +1286,7 @@ else
         _fSource         = _risk.Source ?? "";
         _fHazard         = _risk.Hazard ?? "";
         _fPossibleImpact = _risk.PossibleImpact ?? "";
+        _fActivityArea   = _risk.ActivityArea ?? "";
         _fLegislation    = _risk.RelevantLegislation ?? "";
         InitExpanded();
         _selectedAffected = [.. _risk.GetAffectedPersonsList()];
@@ -1265,7 +1336,7 @@ else
             NullIfBlank(_fSource), NullIfBlank(_fHazard), NullIfBlank(_fPossibleImpact),
             Risk.SerializePersonsList(_selectedAffected),
             NullIfBlank(_fLegislation), null, null, null, _risk?.CurrentStatus, UserId,
-            category: NullIfBlank(_fCategory));
+            category: NullIfBlank(_fCategory), activityArea: NullIfBlank(_fActivityArea));
         _showFields = false; Notify("Risk detayları güncellendi."); Load();
     }
 
@@ -1339,6 +1410,30 @@ else
         _confirmedAction = null;
     }
 
+    private void AskSetPassive()
+    {
+        _confirmTitle    = "Riski pasife al";
+        _confirmMessage  = "Risk pasife alınacak ve envanter listesinde varsayılan olarak gizlenecek. Daha sonra yeniden aktifleştirebilirsiniz.";
+        _confirmedAction = SetPassive;
+        _confirmVisible  = true;
+    }
+
+    private async Task SetPassive()
+    {
+        _loading = true;
+        if (await RiskSvc.SetActiveAsync(Id, false, UserId)) Notify("Risk pasife alındı.");
+        _loading = false;
+        Load();
+    }
+
+    private async Task SetActive()
+    {
+        _loading = true;
+        if (await RiskSvc.SetActiveAsync(Id, true, UserId)) Notify("Risk yeniden aktifleştirildi.");
+        _loading = false;
+        Load();
+    }
+
     private async Task AcceptRisk()
     {
         _loading = true;
@@ -1389,7 +1484,8 @@ else
 
     private async Task SaveReviewAsync()
     {
-        if (_reviewMeetingDate == null || string.IsNullOrWhiteSpace(_reviewDecision)) return;
+        var items = _reviewItems.Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s.Trim()).ToList();
+        if (_reviewMeetingDate == null || items.Count == 0) return;
         if (_savingReview) return;
         _savingReview = true;
         StateHasChanged();
@@ -1401,10 +1497,10 @@ else
                 Notify("Oturum bilgisi alınamadı, lütfen sayfayı yenileyin.", true);
                 return;
             }
-            await RiskSvc.AddReviewAsync(Id, _reviewMeetingDate.Value, _reviewDecision, null, uid);
+            await RiskSvc.AddReviewAsync(Id, _reviewMeetingDate.Value, null, null, uid, items);
             _showReview = false;
             _reviewMeetingDate = null;
-            _reviewDecision = "";
+            _reviewItems = [""];
             Notify("Gözden geçirme kaydedildi.");
         }
         catch (Microsoft.AspNetCore.Components.NavigationException)
