@@ -17,4 +17,7 @@ public interface INotificationService
     // ── Etik ──────────────────────────────────────────────────────────────────
     Task NotifyEthicsSubmittedAsync(string ethicsCode, string subject);
     Task NotifyEthicsReviewedAsync(string ethicsCode, string subject, string stage);
+
+    // ── Test ──────────────────────────────────────────────────────────────────
+    Task SendTestAsync(string toAddress, string toName);
 }

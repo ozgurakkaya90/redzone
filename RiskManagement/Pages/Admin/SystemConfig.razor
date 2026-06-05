@@ -2,7 +2,7 @@
 @attribute [Authorize(Roles = "admin")]
 @inject ConfigService CfgSvc
 @inject AppDbContext Db
-@inject SmtpNotificationService EmailSvc
+@inject INotificationService EmailSvc
 @inject IWebHostEnvironment Env
 @inject IConfiguration AppConfig
 @using System.Text.Json
