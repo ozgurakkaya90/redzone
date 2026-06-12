@@ -217,5 +217,14 @@ public class RiskStatusAuthorizationTests
         (ok, err) = await svc.AcceptRiskAsync(risk.Id, "Kabul gerekçesi", mgr.Id);
         Assert.True(ok);
         Assert.Equal("risk_accepted", db.Risks.Find(risk.Id)!.Status);
+
+        // Kabul gerekçesi hem kayda hem denetim izine doğru alanla yazılmalı (regresyon: log
+        // önceden RejectionReason'ı geçiriyordu → denetim izinde gerekçe boş/yanlış görünüyordu).
+        Assert.Equal("Kabul gerekçesi", db.Risks.Find(risk.Id)!.AcceptanceReason);
+        var acceptLog = db.RiskAuditLogs
+            .Where(l => l.RiskId == risk.Id && l.Action == "Kalıntı Risk Kabul Edildi")
+            .OrderByDescending(l => l.Id)
+            .First();
+        Assert.Equal("Kabul gerekçesi", acceptLog.NewValue);
     }
 }

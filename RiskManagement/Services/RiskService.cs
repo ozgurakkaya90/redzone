@@ -331,7 +331,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         risk.AcceptanceReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
 
         Log(riskId, userId > 0 ? userId : null, "Kalıntı Risk Kabul Edildi",
-            newVal: risk.RejectionReason);
+            newVal: risk.AcceptanceReason);
 
         await db.SaveChangesAsync();
 
