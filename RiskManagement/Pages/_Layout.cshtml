@@ -116,13 +116,17 @@
             // <… class="form-control"></div>. Görünür etiketler vardı ama for/id bağı yoktu;
             // bu yardımcı her form-group'ta label↔kontrol bağını kurar (idempotent) ve Blazor
             // yeniden render ettikçe MutationObserver ile yeniden uygular.
+            // Markup deseni tutarlı: <div class="form-group"><label class="form-label">…</label>
+            // <… class="form-control"></div>. Blazor Server'ın render/hydration zamanlamasına
+            // (ve sonradan açılan modal/SPA geçişlerine) dayanıklı olması için MutationObserver+rAF
+            // yerine hafif, idempotent bir interval kullanılır — geçerli bir for→id bağı varsa atlar,
+            // form-group sayısı düşük olduğundan maliyeti ihmal edilebilir.
             (function () {
                 let seq = 0;
                 function associate() {
                     document.querySelectorAll('.form-group').forEach(function (g) {
                         const label = g.querySelector(':scope > .form-label');
                         if (!label) return;
-                        // Zaten geçerli bir bağ varsa (hedef element mevcut) dokunma.
                         const forVal = label.getAttribute('for');
                         if (forVal && document.getElementById(forVal)) return;
                         const ctrl = g.querySelector('input:not([type=hidden]), select, textarea');
@@ -131,20 +135,8 @@
                         label.setAttribute('for', ctrl.id);
                     });
                 }
-                let scheduled = false;
-                function schedule() {
-                    if (scheduled) return;
-                    scheduled = true;
-                    requestAnimationFrame(function () { scheduled = false; associate(); });
-                }
-                // Blazor Server hydration, prerender sonrası id/for özniteliklerini sıyırabilir
-                // (öznitelik mutasyonu); bu yüzden childList'in yanında attributes da izlenir.
-                // associate() idempotenttir (geçerli bağ varsa atlar) → sonsuz döngü olmaz.
-                schedule();
-                new MutationObserver(schedule).observe(document.body, {
-                    childList: true, subtree: true, attributes: true,
-                    attributeFilter: ['id', 'for', 'class']
-                });
+                associate();
+                setInterval(associate, 600);
             })();
         })();
     </script>
