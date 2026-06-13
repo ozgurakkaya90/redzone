@@ -318,8 +318,19 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
     }
 
     /// <summary>Kalıntı riski kabul eder; iş akışı geçişini ve loglama dahil tüm mantığı içerir.</summary>
-    public async Task<(bool Ok, string? Error)> AcceptRiskAsync(int riskId, string? reason, int userId)
+    public async Task<(bool Ok, string? Error)> AcceptRiskAsync(int riskId, string? reason, User currentUser)
     {
+        // Kalıntı risk kabulü terminal (risk_accepted) bir yönetişim kararıdır; yalnızca
+        // risk.manage yetkisi olanlar (komite, risk yöneticisi, denetim müdürü, admin) yapabilir.
+        // UI'daki IsRiskManager kestirmesi risk sahibini de kapsadığından, gerçek yetki kapısı
+        // burada olmalı — aksi halde salt risk sahibi komite onayını atlayabiliyordu.
+        if (!authSvc.HasPermission(currentUser, "risk.manage"))
+        {
+            logger?.LogWarning("Kalıntı risk kabul reddi — RiskId: {RiskId}, Kullanıcı: {User} (yetki: risk.manage yok)",
+                riskId, currentUser?.Username);
+            return (false, "Bu işlem için yetkiniz yok.");
+        }
+
         var risk = await db.Risks.FindAsync(riskId);
         if (risk == null) return (false, "Risk bulunamadı.");
 
@@ -330,7 +341,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         risk.Status = RiskStatus.RiskAccepted;
         risk.AcceptanceReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
 
-        Log(riskId, userId > 0 ? userId : null, "Kalıntı Risk Kabul Edildi",
+        Log(riskId, currentUser.Id > 0 ? currentUser.Id : null, "Kalıntı Risk Kabul Edildi",
             newVal: risk.AcceptanceReason);
 
         await db.SaveChangesAsync();

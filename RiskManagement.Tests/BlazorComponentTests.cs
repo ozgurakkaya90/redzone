@@ -206,7 +206,7 @@ public class RiskStatusAuthorizationTests
         var risk = new Risk { Code = "R-AUTH-002", Title = "Accept Test", Status = "approved" };
         db.Risks.Add(risk); db.SaveChanges();
 
-        var (ok, err) = await svc.AcceptRiskAsync(risk.Id, "Kabul gerekçesi", mgr.Id);
+        var (ok, err) = await svc.AcceptRiskAsync(risk.Id, "Kabul gerekçesi", mgr);
         Assert.False(ok);
         Assert.NotNull(err);
 
@@ -214,7 +214,7 @@ public class RiskStatusAuthorizationTests
         risk.Status = "residual_evaluated";
         db.SaveChanges();
 
-        (ok, err) = await svc.AcceptRiskAsync(risk.Id, "Kabul gerekçesi", mgr.Id);
+        (ok, err) = await svc.AcceptRiskAsync(risk.Id, "Kabul gerekçesi", mgr);
         Assert.True(ok);
         Assert.Equal("risk_accepted", db.Risks.Find(risk.Id)!.Status);
 
@@ -226,5 +226,27 @@ public class RiskStatusAuthorizationTests
             .OrderByDescending(l => l.Id)
             .First();
         Assert.Equal("Kabul gerekçesi", acceptLog.NewValue);
+    }
+
+    [Fact]
+    public async Task AcceptRisk_DeniedFor_PlainRiskOwner_WithoutManagePermission()
+    {
+        var (db, svc) = Build();
+        // Salt risk sahibi: risk.manage yetkisi YOK (risk_owner varsayılan izinlerinde yok).
+        var owner = new User { Username = "owner1", FullName = "Owner", Role = "risk_owner" };
+        db.Users.Add(owner); db.SaveChanges();
+        db.UserRoles.Add(new UserRole { UserId = owner.Id, RoleName = "risk_owner" });
+        db.SaveChanges();
+
+        // Geçiş durumu uygun (residual_evaluated) ve kullanıcı bu riskin sahibi.
+        var risk = new Risk { Code = "R-AUTH-003", Title = "Owner Bypass Test",
+            Status = "residual_evaluated", OwnerId = owner.Id };
+        db.Risks.Add(risk); db.SaveChanges();
+
+        // UI kestirmesi (IsThisRiskOwner) butonu gösterse de servis yetki kapısı reddetmeli.
+        var (ok, err) = await svc.AcceptRiskAsync(risk.Id, "Sahip kabulü", owner);
+        Assert.False(ok);
+        Assert.NotNull(err);
+        Assert.Equal("residual_evaluated", db.Risks.Find(risk.Id)!.Status); // durum değişmedi
     }
 }

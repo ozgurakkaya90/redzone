@@ -42,7 +42,7 @@ public class ImportService(AppDbContext db)
             var year = DateTime.UtcNow.Year;
 
             var existingByCode = db.Risks.ToDictionary(r => r.Code, r => r, StringComparer.OrdinalIgnoreCase);
-            var newCount = 0;
+            var newRisks = new List<Risk>();
             var updCount = 0;
 
             foreach (var row in ws.RowsUsed().Skip(1))
@@ -87,9 +87,12 @@ public class ImportService(AppDbContext db)
                     }
                     else
                     {
-                        var risk = new Risk
+                        // Kod ataması ve Add döngü DIŞINA alındı. CounterHelper.GetNext, ortak
+                        // DbContext'in ChangeTracker'ını Clear() ettiğinden, döngü-içi çağrı o ana
+                        // dek biriken ekleme/güncellemeleri koparıp sessiz veri kaybına yol açıyordu
+                        // (yalnızca son satır kaydediliyordu). Önce topla; sonra üret+yaz.
+                        newRisks.Add(new Risk
                         {
-                            Code                = $"R-{year}-{CounterHelper.GetNext(db, $"risk-{year}"):D3}",
                             Title               = title,
                             Description         = description,
                             Category            = category,
@@ -106,9 +109,7 @@ public class ImportService(AppDbContext db)
                             Status              = "proposed",
                             ProposedById        = importedById,
                             ProposedAt          = DateTime.UtcNow,
-                        };
-                        db.Risks.Add(risk);
-                        newCount++;
+                        });
                     }
                 }
                 catch (Exception ex)
@@ -117,12 +118,23 @@ public class ImportService(AppDbContext db)
                 }
             }
 
-            if (newCount > 0 || updCount > 0)
+            // 1) Önce güncellemeleri kalıcı yaz — ardından gelecek GetNext.Clear() bunları silmesin.
+            if (updCount > 0) db.SaveChanges();
+
+            // 2) Yeni riskler için kodları üret. Entity'ler henüz takip edilmediğinden (Add yok)
+            //    GetNext'in ChangeTracker.Clear()'ı zararsızdır.
+            foreach (var risk in newRisks)
+                risk.Code = $"R-{year}-{CounterHelper.GetNext(db, $"risk-{year}"):D3}";
+
+            // 3) Tüm yeni riskleri tek seferde yaz.
+            if (newRisks.Count > 0)
             {
-                db.SaveChanges(); // tek transaction
-                result.Imported = newCount;
-                result.Updated  = updCount;
+                db.Risks.AddRange(newRisks);
+                db.SaveChanges();
             }
+
+            result.Imported = newRisks.Count;
+            result.Updated  = updCount;
         }
         catch (Exception ex)
         {

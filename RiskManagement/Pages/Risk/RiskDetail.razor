@@ -1439,7 +1439,8 @@ else
         _loading = true;
         try
         {
-            var (ok, error) = await RiskSvc.AcceptRiskAsync(Id, _acceptReason, UserId);
+            if (_user is null) { Notify("Oturum doğrulanamadı.", true); return; }
+            var (ok, error) = await RiskSvc.AcceptRiskAsync(Id, _acceptReason, _user);
             if (ok)
             {
                 Notify("Kalıntı risk kabul edildi.");
