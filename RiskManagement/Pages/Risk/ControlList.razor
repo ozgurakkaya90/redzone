@@ -17,13 +17,13 @@
     <h1>Kontrol Envanteri</h1>
     <div style="display:flex;gap:8px;align-items:center">
         <div class="export-dropdown">
-            <button class="btn btn-outline btn-sm export-btn">⬇ Dışa Aktar</button>
+            <button class="btn btn-outline btn-sm export-btn"><Icon Name="download" Size="14" /> Dışa Aktar</button>
             <div class="export-menu">
                 <a href="/export/controls/excel" class="export-item">Excel (.xlsx)</a>
                 <a href="/export/controls/pdf" class="export-item">PDF</a>
             </div>
         </div>
-        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
+        <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)"><Icon Name="upload" Size="14" /> İçe Aktar</button>
         @if (IsCommitteeOrOwner)
         {
             <button class="btn btn-primary" @onclick="() => _showForm = !_showForm">

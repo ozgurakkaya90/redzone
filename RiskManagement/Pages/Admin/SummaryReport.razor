@@ -71,10 +71,10 @@
 <div class="card" style="margin-bottom:20px">
     <div style="font-weight:700;font-size:14px;margin-bottom:12px;color:var(--text-1)">Son 30 Gün</div>
     <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px">
-        @foreach (var (label, val, icon) in _recentActivity)
+        @foreach (var (label, val, color) in _recentActivity)
         {
             <div style="padding:12px 14px;background:var(--surface);border:1px solid var(--border);border-radius:10px">
-                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px">@icon @label</div>
+                <div style="font-size:11px;color:var(--text-3);margin-bottom:4px;display:flex;align-items:center;gap:6px"><span class="status-dot" style="background:@color"></span> @label</div>
                 <div style="font-size:22px;font-weight:700;color:var(--text-1)">@val</div>
             </div>
         }
@@ -124,7 +124,7 @@
     private (string Label, int Val, string Color)[] _riskStats = [];
     private (string Label, int Val, string Color)[] _actionStats = [];
     private (string Label, int Val, string Color)[] _findingStats = [];
-    private (string Label, int Val, string Icon)[] _recentActivity = [];
+    private (string Label, int Val, string Color)[] _recentActivity = [];
     private List<(string Name, string Role, int Count)> _topUsers = [];
     private int _overdueActions, _overdueFindings;
 
@@ -176,10 +176,10 @@
         var closedRisks = Db.RiskAuditLogs.Count(l => l.Timestamp >= cutoff && l.Action.Contains("Tamamlandı"));
         _recentActivity =
         [
-            ("Yeni Risk",          newRisks,    "🔵"),
-            ("Yeni Aksiyon",       newActions,  "🟡"),
-            ("Yeni Bulgu",         newFindings, "🟠"),
-            ("Kapatılan Risk",     closedRisks, "🟢"),
+            ("Yeni Risk",          newRisks,    "#3b82f6"),
+            ("Yeni Aksiyon",       newActions,  "#f59e0b"),
+            ("Yeni Bulgu",         newFindings, "#f97316"),
+            ("Kapatılan Risk",     closedRisks, "#16a34a"),
         ];
 
         // ── En Aktif Kullanıcılar ─────────────────────────────────────────────

@@ -30,7 +30,7 @@
         @if (AiSvc.IsAvailable)
         {
             <button class="btn btn-primary btn-sm" @onclick="OpenAiModal">
-                ✨ AI ile Risk Taslağı
+                <Icon Name="sparkles" Size="14" /> AI ile Risk Taslağı
             </button>
         }
         @if (IsAdmin)
@@ -255,13 +255,13 @@ else
         
         <div style="display:flex;align-items:center;justify-content:space-between;
                     padding:18px 20px 16px;border-bottom:1px solid #e5e7eb;flex-shrink:0">
-            <h3 style="margin:0;font-size:16px;font-weight:700;color:#111827">
-                ✨ AI ile Risk Taslağı Oluştur
+            <h3 style="margin:0;font-size:16px;font-weight:700;color:#111827;display:flex;align-items:center;gap:8px">
+                <Icon Name="sparkles" Size="16" /> AI ile Risk Taslağı Oluştur
             </h3>
             <button @onclick="CloseAiModal" @onclick:stopPropagation="true"
-                    style="border:none;background:none;cursor:pointer;font-size:18px;
+                    style="border:none;background:none;cursor:pointer;
                            color:#6b7280;line-height:1;padding:4px 8px;border-radius:6px"
-                    title="Kapat">✕</button>
+                    title="Kapat" aria-label="Kapat"><Icon Name="close" Size="18" /></button>
         </div>
 
         
@@ -278,15 +278,15 @@ else
                 @if (!string.IsNullOrEmpty(_aiError))
                 {
                     <div style="margin-top:12px;padding:12px 14px;background:#fef2f2;border:1px solid #fca5a5;
-                                border-radius:8px;font-size:13px;color:#991b1b">
-                        ⚠️ @_aiError
+                                border-radius:8px;font-size:13px;color:#991b1b;display:flex;align-items:center;gap:8px">
+                        <Icon Name="warning" Size="15" /> @_aiError
                     </div>
                 }
             }
             else if (_aiLoading)
             {
                 <div style="text-align:center;padding:48px 20px">
-                    <div style="font-size:32px;margin-bottom:14px">🤖</div>
+                    <div style="margin-bottom:14px;color:#6b7280"><Icon Name="robot" Size="32" /></div>
                     <div style="font-size:14px;color:#6b7280">Analiz ediliyor…</div>
                 </div>
             }
@@ -323,8 +323,8 @@ else
                 @if (!string.IsNullOrEmpty(_aiError))
                 {
                     <div style="margin-top:12px;padding:12px 14px;background:#fef2f2;border:1px solid #fca5a5;
-                                border-radius:8px;font-size:13px;color:#991b1b">
-                        ⚠️ @_aiError
+                                border-radius:8px;font-size:13px;color:#991b1b;display:flex;align-items:center;gap:8px">
+                        <Icon Name="warning" Size="15" /> @_aiError
                     </div>
                 }
             }

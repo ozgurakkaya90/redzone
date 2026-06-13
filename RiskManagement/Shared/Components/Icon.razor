@@ -1,0 +1,34 @@
+@* Tutarlı inline SVG ikon seti (Lucide tarzı, stroke=currentColor).
+   Emoji yerine kullanılır — OS'ler arası tutarlı render + token'lanabilir renk.
+   Dekoratif olduğundan aria-hidden; anlam buton metni/aria-label ile taşınır. *@
+<span class="icon @CssClass" aria-hidden="true">@((MarkupString)Svg)</span>
+
+@code {
+    [Parameter] public string Name { get; set; } = "";
+    [Parameter] public int Size { get; set; } = 16;
+    [Parameter] public string? CssClass { get; set; }
+
+    private string Svg => Build(Name, Size);
+
+    private static string Build(string name, int s)
+    {
+        var head = $"<svg width=\"{s}\" height=\"{s}\" viewBox=\"0 0 24 24\" fill=\"none\" " +
+                   "stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\">";
+        var body = name switch
+        {
+            "download"  => "<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><path d=\"m7 10 5 5 5-5\"/><path d=\"M12 15V3\"/>",
+            "upload"    => "<path d=\"M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4\"/><path d=\"m7 9 5-5 5 5\"/><path d=\"M12 4v12\"/>",
+            "close"     => "<path d=\"M18 6 6 18M6 6l12 12\"/>",
+            "warning"   => "<path d=\"M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z\"/><path d=\"M12 9v4\"/><path d=\"M12 17h.01\"/>",
+            "lightbulb" => "<path d=\"M9 18h6\"/><path d=\"M10 22h4\"/><path d=\"M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5.76.76 1.23 1.52 1.41 2.5\"/>",
+            "bolt"      => "<path d=\"M13 2 3 14h9l-1 8 10-12h-9l1-8z\"/>",
+            "robot"     => "<rect x=\"3\" y=\"11\" width=\"18\" height=\"10\" rx=\"2\"/><circle cx=\"12\" cy=\"5\" r=\"2\"/><path d=\"M12 7v4\"/><path d=\"M8 16h.01M16 16h.01\"/>",
+            "sparkles"  => "<path d=\"M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z\"/>",
+            "clipboard" => "<rect x=\"8\" y=\"2\" width=\"8\" height=\"4\" rx=\"1\"/><path d=\"M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2\"/>",
+            "check"     => "<path d=\"M20 6 9 17l-5-5\"/>",
+            "x"         => "<path d=\"M18 6 6 18M6 6l12 12\"/>",
+            _           => "<circle cx=\"12\" cy=\"12\" r=\"9\"/>",
+        };
+        return head + body + "</svg>";
+    }
+}

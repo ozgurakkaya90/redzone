@@ -888,7 +888,7 @@ else
                                 @if (_reviewItems.Count > 1)
                                 {
                                     <button type="button" class="btn btn-ghost-danger btn-sm" style="padding:6px 10px"
-                                            @onclick="() => RemoveReviewItem(idx)" title="Maddeyi sil">✕</button>
+                                            @onclick="() => RemoveReviewItem(idx)" title="Maddeyi sil" aria-label="Maddeyi sil"><Icon Name="close" Size="14" /></button>
                                 }
                             </div>
                         }
@@ -1206,9 +1206,12 @@ else
     {
         var cs = CardStatus(i);
         b.OpenElement(0, "span");
-        if (cs == 2) b.AddAttribute(1, "style", "color:#16a34a;font-size:15px;font-weight:800;line-height:1");
-        else         b.AddAttribute(1, "style", "color:#94a3b8;font-size:13px;line-height:1");
-        b.AddContent(2, cs == 2 ? "✓" : "○");
+        b.AddAttribute(1, "class", "icon");
+        b.AddAttribute(2, "style", cs == 2 ? "color:#16a34a" : "color:#94a3b8");
+        b.AddAttribute(3, "aria-hidden", "true");
+        b.AddMarkupContent(4, cs == 2
+            ? "<svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"3\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M20 6 9 17l-5-5\"/></svg>"
+            : "<svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><circle cx=\"12\" cy=\"12\" r=\"9\"/></svg>");
         b.CloseElement();
     };
 

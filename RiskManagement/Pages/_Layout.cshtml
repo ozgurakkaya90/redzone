@@ -12,10 +12,10 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous" />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="css/tokens.css?v=5" />
-    <link rel="stylesheet" href="css/layout.css?v=5" />
-    <link rel="stylesheet" href="css/components.css?v=5" />
-    <link rel="stylesheet" href="css/domain.css?v=5" />
+    <link rel="stylesheet" href="css/tokens.css?v=6" />
+    <link rel="stylesheet" href="css/layout.css?v=6" />
+    <link rel="stylesheet" href="css/components.css?v=6" />
+    <link rel="stylesheet" href="css/domain.css?v=6" />
     <link rel="stylesheet" href="RiskManagement.styles.css" />
     <component type="typeof(HeadOutlet)" render-mode="ServerPrerendered" />
 </head>
@@ -36,7 +36,7 @@
     <div id="blazor-error-ui">
         <span>Bağlantı kesildi.</span>
         <a href="" class="reload">Sayfayı Yenile</a>
-        <a class="dismiss">✕</a>
+        <a class="dismiss" aria-label="Kapat"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" /></svg></a>
     </div>
 
     <script src="_framework/blazor.server.js"></script>
@@ -110,6 +110,33 @@
                 const btn = form.querySelector('button.btn-primary:not([disabled])');
                 if (btn) { e.preventDefault(); btn.click(); }
             });
+
+            // Form etiketlerini ilgili kontrolle programatik olarak eşleştir (ekran okuyucu için).
+            // Markup deseni tutarlı: <div class="form-group"><label class="form-label">…</label>
+            // <… class="form-control"></div>. Görünür etiketler vardı ama for/id bağı yoktu;
+            // bu yardımcı her form-group'ta label↔kontrol bağını kurar (idempotent) ve Blazor
+            // yeniden render ettikçe MutationObserver ile yeniden uygular.
+            (function () {
+                let seq = 0;
+                function associate() {
+                    document.querySelectorAll('.form-group').forEach(function (g) {
+                        const label = g.querySelector(':scope > .form-label');
+                        if (!label || label.getAttribute('for')) return;
+                        const ctrl = g.querySelector('input:not([type=hidden]), select, textarea');
+                        if (!ctrl) return;
+                        if (!ctrl.id) ctrl.id = 'fld-' + (++seq);
+                        label.setAttribute('for', ctrl.id);
+                    });
+                }
+                let scheduled = false;
+                function schedule() {
+                    if (scheduled) return;
+                    scheduled = true;
+                    requestAnimationFrame(function () { scheduled = false; associate(); });
+                }
+                schedule();
+                new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+            })();
         })();
     </script>
 </body>

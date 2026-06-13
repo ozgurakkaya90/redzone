@@ -17,7 +17,7 @@
     <h1>Denetim Bulguları</h1>
     <div style="display:flex;gap:8px;align-items:center">
         <div class="export-dropdown">
-            <button class="btn btn-outline btn-sm">⬇ Dışa Aktar</button>
+            <button class="btn btn-outline btn-sm"><Icon Name="download" Size="14" /> Dışa Aktar</button>
             <div class="export-menu">
                 <a href="/export/findings/excel" class="export-item"> Excel (.xlsx)</a>
                 <a href="/export/findings/pdf" class="export-item"> PDF</a>
@@ -25,7 +25,7 @@
         </div>
         @if (HasPerm("audit.write"))
         {
-            <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)">⬆ İçe Aktar</button>
+            <button class="btn btn-outline btn-sm" @onclick="@(() => _showImport = true)"><Icon Name="upload" Size="14" /> İçe Aktar</button>
             <a href="/audit/findings/new" class="btn btn-primary">+ Bulgu Gir</a>
         }
     </div>

@@ -1160,3 +1160,23 @@ code {
 .breadcrumb-back:hover { color: var(--text-1); }
 .breadcrumb-sep { color: var(--gray-300); }
 .breadcrumb-current { color: var(--text-2); font-weight: 600; }
+
+/* ── Icon bileşeni (emoji yerine inline SVG) ─────────────────────── */
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: -0.125em;
+  line-height: 0;
+  flex: none;
+}
+
+/* Durum noktası — emoji renkli daireleri (🔵🟡🟠🟢) yerine token'lı işaret */
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: none;
+  vertical-align: -1px;
+}
