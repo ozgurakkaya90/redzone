@@ -121,7 +121,10 @@
                 function associate() {
                     document.querySelectorAll('.form-group').forEach(function (g) {
                         const label = g.querySelector(':scope > .form-label');
-                        if (!label || label.getAttribute('for')) return;
+                        if (!label) return;
+                        // Zaten geçerli bir bağ varsa (hedef element mevcut) dokunma.
+                        const forVal = label.getAttribute('for');
+                        if (forVal && document.getElementById(forVal)) return;
                         const ctrl = g.querySelector('input:not([type=hidden]), select, textarea');
                         if (!ctrl) return;
                         if (!ctrl.id) ctrl.id = 'fld-' + (++seq);
@@ -134,8 +137,14 @@
                     scheduled = true;
                     requestAnimationFrame(function () { scheduled = false; associate(); });
                 }
+                // Blazor Server hydration, prerender sonrası id/for özniteliklerini sıyırabilir
+                // (öznitelik mutasyonu); bu yüzden childList'in yanında attributes da izlenir.
+                // associate() idempotenttir (geçerli bağ varsa atlar) → sonsuz döngü olmaz.
                 schedule();
-                new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+                new MutationObserver(schedule).observe(document.body, {
+                    childList: true, subtree: true, attributes: true,
+                    attributeFilter: ['id', 'for', 'class']
+                });
             })();
         })();
     </script>
