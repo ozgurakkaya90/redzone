@@ -84,6 +84,20 @@ docker compose up -d
 
 Uygulama `http://localhost:8080` adresinde çalışmaya başlar.
 
+### Hazır imaj (GHCR) ile hızlı deneme
+
+Kaynaktan derlemeden, yayımlanan Docker imajıyla SQLite + demo modda denemek için:
+
+```bash
+docker run -p 8080:8080 \
+  -e AppSettings__UseSqlite=true \
+  -e AppSettings__DemoMode=true \
+  -e Jwt__Key="en-az-32-karakter-rastgele-anahtar-girin" \
+  ghcr.io/ozgurakkaya90/redzone:1.1.0
+```
+
+> Üretim için MySQL bağlantısı ve güçlü `Jwt__Key` ile çalıştırın (yukarıdaki `docker compose` yöntemi önerilir).
+
 **Varsayılan yönetici hesabı** (demo modda):
 - Kullanıcı adı: `admin`
 - Şifre: `Admin123!` *(ilk girişte değiştirin)*
