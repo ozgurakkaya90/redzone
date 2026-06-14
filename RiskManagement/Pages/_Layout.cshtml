@@ -163,6 +163,16 @@
                         const fl = findFlLabel(ctrl);
                         if (fl) { const t = labelText(fl); if (t) ctrl.setAttribute('aria-label', t); }
                     });
+                    // 3) Son çare: hâlâ adsız kontroller (etiketsiz filtre select'leri gibi) —
+                    //    select için ilk option metni, diğerleri için placeholder aria-label olur.
+                    //    Hiçbir kontrol ekran okuyucuda adsız kalmasın.
+                    document.querySelectorAll('input:not([type=hidden]), select, textarea').forEach(function (ctrl) {
+                        if (hasName(ctrl)) return;
+                        let name = '';
+                        if (ctrl.tagName === 'SELECT' && ctrl.options.length) name = (ctrl.options[0].textContent || '').trim();
+                        if (!name) name = (ctrl.getAttribute('placeholder') || '').trim();
+                        if (name) ctrl.setAttribute('aria-label', name);
+                    });
                 }
                 associate();
                 setInterval(associate, 600);
