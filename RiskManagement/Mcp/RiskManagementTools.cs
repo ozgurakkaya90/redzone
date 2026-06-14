@@ -699,8 +699,8 @@ public class RiskManagementTools(
             byStatus = reports.GroupBy(r => r.Status)
                 .ToDictionary(g => g.Key, g => g.Count()),
             byCategory,
-            pendingAuditReview = reports.Count(r => r.Status == "pending"),
-            pendingEthicsReview = reports.Count(r => r.Status == "audit_reviewed"),
+            pendingAuditReview = reports.Count(r => r.Status == EthicsStatus.Pending),
+            pendingEthicsReview = reports.Count(r => r.Status == EthicsStatus.EthicsBoardNotified),
             avgAuditReviewDays = avgReviewDays.HasValue ? Math.Round(avgReviewDays.Value, 1) : (double?)null,
             thisYear = reports.Count(r => r.SubmittedAt.Year == DateTime.UtcNow.Year),
             lastMonth = reports.Count(r => r.SubmittedAt >= DateTime.UtcNow.AddDays(-30))

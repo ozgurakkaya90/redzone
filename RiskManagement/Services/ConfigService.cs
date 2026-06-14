@@ -166,6 +166,18 @@ public class ConfigService(AppDbContext db, ILogger<ConfigService> logger,
 
     public string[] GetList(string key) => Get<string[]>(key) ?? [];
 
+    /// <summary>
+    /// Verilen değerin config listesinde (ör. risk_categories, risk_strategies) olup olmadığını döner.
+    /// Boş/null değer geçerli sayılır; liste tanımsızsa (boş) doğrulama yapılmaz. UI dropdown kullansa da
+    /// import gibi serbest-metin girişlerinde sözlük-dışı değerleri yakalamak için kullanılır.
+    /// </summary>
+    public bool IsValidOption(string listKey, string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return true;
+        var list = GetList(listKey);
+        return list.Length == 0 || list.Contains(value, StringComparer.OrdinalIgnoreCase);
+    }
+
     public bool IsModuleActive(string module) => Get<bool>($"module_{module}");
 
     public bool IsRiskFieldVisible(string fieldKey)
@@ -183,6 +195,27 @@ public class ConfigService(AppDbContext db, ILogger<ConfigService> logger,
     /// <summary>Fine-Kinney ilk değerlendirmede otomatik onay için skor eşiği (varsayılan: 70).</summary>
     public int GetAutoApproveScoreThreshold() =>
         Get<int>("auto_approve_score_threshold") is var t && t > 0 ? t : 70;
+
+    /// <summary>
+    /// Fine-Kinney P/E/C değerlerinin admin-tanımlı skalada olduğunu doğrular.
+    /// UI seçim yaptırsa da servis/MCP/import yollarından keyfi değer girilmesini engeller.
+    /// Geçersizse hata mesajı, geçerliyse null döner.
+    /// </summary>
+    public string? ValidateFineKinney(double probability, double exposure, double consequence)
+    {
+        string? Check(string key, double val, string label)
+        {
+            if (val <= 0) return $"{label} değeri seçilmelidir.";
+            var opts = Get<ScoredOption[]>(key);
+            if (opts is null || opts.Length == 0) return null; // skala tanımsızsa engelleme
+            return opts.Any(o => Math.Abs(o.Value - val) < 0.001)
+                ? null
+                : $"{label} değeri ({val:0.##}) tanımlı Fine-Kinney skalasında değil.";
+        }
+        return Check("fk_probability", probability, "Olasılık (P)")
+            ?? Check("fk_exposure",   exposure,    "Maruziyet (E)")
+            ?? Check("fk_consequence", consequence, "Sonuç (C)");
+    }
 
     public int  GetDefaultActionDueDays() => Get<int>("default_action_due_days") is var d && d > 0 ? d : 30;
     public int  GetDefaultListPageSize()  => Get<int>("default_list_page_size")  is var p && p > 0 ? p : 25;

@@ -834,8 +834,13 @@ else
                     {
                         <div style="margin-top:10px;background:#f0fdf4;padding:12px;border-radius:8px;border:1px solid #bbf7d0">
                             <div class="form-group">
-                                <label class="form-label">Kabul Gerekçesi</label>
+                                <label class="form-label">Kabul Gerekçesi <span style="color:#dc2626">*</span></label>
                                 <textarea class="form-control" rows="3" @bind="_acceptReason" placeholder="Kalıntı riski kabul etme gerekçenizi yazın…"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Yeniden Gözden Geçirme Tarihi</label>
+                                <input type="date" class="form-control" @bind="_acceptReviewDate" />
+                                <div class="field-info">Kabul edilen risk süresiz değildir; bu tarihte yeniden değerlendirilir.</div>
                             </div>
                             <div style="display:flex;gap:8px">
                                 <button class="btn btn-success btn-sm" @onclick="AcceptRisk">Onayla ve Kapat</button>
@@ -1443,7 +1448,10 @@ else
         try
         {
             if (_user is null) { Notify("Oturum doğrulanamadı.", true); return; }
-            var (ok, error) = await RiskSvc.AcceptRiskAsync(Id, _acceptReason, _user);
+            if (string.IsNullOrWhiteSpace(_acceptReason)) { Notify("Kabul gerekçesi zorunludur.", true); return; }
+            var reviewUtc = _acceptReviewDate.HasValue
+                ? DateTime.SpecifyKind(_acceptReviewDate.Value, DateTimeKind.Utc) : (DateTime?)null;
+            var (ok, error) = await RiskSvc.AcceptRiskAsync(Id, _acceptReason, _user, reviewUtc);
             if (ok)
             {
                 Notify("Kalıntı risk kabul edildi.");

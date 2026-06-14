@@ -249,4 +249,54 @@ public class RiskStatusAuthorizationTests
         Assert.NotNull(err);
         Assert.Equal("residual_evaluated", db.Risks.Find(risk.Id)!.Status); // durum değişmedi
     }
+
+    [Fact]
+    public async Task AcceptRisk_RequiresNonEmptyReason()
+    {
+        var (db, svc) = Build();
+        var mgr = new User { Username = "mgr3", FullName = "Mgr", Role = "risk_manager" };
+        db.Users.Add(mgr); db.SaveChanges();
+        db.UserRoles.Add(new UserRole { UserId = mgr.Id, RoleName = "risk_manager" });
+        db.SaveChanges();
+
+        var risk = new Risk { Code = "R-ACC-001", Title = "Reason Required", Status = "residual_evaluated" };
+        db.Risks.Add(risk); db.SaveChanges();
+
+        // Boş gerekçe — yönetişim kaydı için reddedilmeli, durum değişmemeli.
+        var (ok, err) = await svc.AcceptRiskAsync(risk.Id, "   ", mgr);
+        Assert.False(ok);
+        Assert.NotNull(err);
+        Assert.Equal("residual_evaluated", db.Risks.Find(risk.Id)!.Status);
+
+        // Geçerli gerekçe + gözden geçirme tarihi → kabul edilir ve alanlar dolar.
+        var review = new DateTime(2027, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        (ok, err) = await svc.AcceptRiskAsync(risk.Id, "Kalan risk kabul edilebilir düzeyde.", mgr, review);
+        Assert.True(ok);
+        var saved = db.Risks.Find(risk.Id)!;
+        Assert.Equal("risk_accepted", saved.Status);
+        Assert.Equal(mgr.Id, saved.AcceptedById);
+        Assert.NotNull(saved.AcceptedAt);
+        Assert.Equal(review, saved.AcceptanceReviewDate);
+    }
+
+    [Fact]
+    public async Task AddEvaluation_RejectsOutOfScaleFineKinneyValues()
+    {
+        var db   = TestDb.Create();
+        var cfg  = TestDb.CreateConfigService(db);
+        var calc = new RiskCalculator(cfg);
+        var auth = new AuthService(db, new MemoryCache(new MemoryCacheOptions()));
+        var svc  = new RiskService(db, calc, auth, config: cfg); // config bağlı → skala doğrulanır
+
+        var risk = new Risk { Code = "R-FK-001", Title = "FK Validate", Status = "proposed" };
+        db.Risks.Add(risk); db.SaveChanges();
+
+        // 0.15 standart fk_probability skalasında yok (min 0.2) → reddedilmeli.
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            svc.AddEvaluationAsync(risk.Id, "initial", 0.15, 6, 15, null, 1));
+
+        // Skala içi değerler → kabul edilir.
+        var eval = await svc.AddEvaluationAsync(risk.Id, "initial", 3, 6, 15, null, 1);
+        Assert.Equal(270, eval.Score);
+    }
 }

@@ -12,6 +12,7 @@ public partial class RiskDetail
     private int       _actOwnerId;
     private DateTime? _actDue;
     private string    _acceptReason = "";
+    private DateTime? _acceptReviewDate;
 
     // ── Aksiyon düzenleme state ──────────────────────────────────────────────
     private int       _editActionId;

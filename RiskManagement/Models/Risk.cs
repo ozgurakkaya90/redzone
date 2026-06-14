@@ -92,9 +92,16 @@ public class Risk
     [MaxLength(1000)]
     public string? RejectionReason { get; set; }
 
-    /// <summary>Kalıntı risk kabul gerekçesi — risk_accepted durumunda doldurulur.</summary>
+    /// <summary>Kalıntı risk kabul gerekçesi — risk_accepted durumunda doldurulur (zorunlu).</summary>
     [MaxLength(1000)]
     public string? AcceptanceReason { get; set; }
+
+    /// <summary>Kalıntı riski kabul eden (karar sahibi) kullanıcı.</summary>
+    public int? AcceptedById { get; set; }
+    /// <summary>Kabul kararının tarihi.</summary>
+    public DateTime? AcceptedAt { get; set; }
+    /// <summary>Kabul edilen riskin yeniden değerlendirileceği gözden geçirme tarihi (yönetişim).</summary>
+    public DateTime? AcceptanceReviewDate { get; set; }
 
     public User? ProposedBy { get; set; }
     public User? Owner { get; set; }

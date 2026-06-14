@@ -318,7 +318,8 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
     }
 
     /// <summary>Kalıntı riski kabul eder; iş akışı geçişini ve loglama dahil tüm mantığı içerir.</summary>
-    public async Task<(bool Ok, string? Error)> AcceptRiskAsync(int riskId, string? reason, User currentUser)
+    public async Task<(bool Ok, string? Error)> AcceptRiskAsync(int riskId, string? reason, User currentUser,
+        DateTime? reviewDate = null)
     {
         // Kalıntı risk kabulü terminal (risk_accepted) bir yönetişim kararıdır; yalnızca
         // risk.manage yetkisi olanlar (komite, risk yöneticisi, denetim müdürü, admin) yapabilir.
@@ -331,6 +332,11 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
             return (false, "Bu işlem için yetkiniz yok.");
         }
 
+        // Gerekçe zorunlu — kalıntı risk kabulü kim, neden, ne zaman izlenebilir olmalı (yönetişim).
+        var cleanReason = reason?.Trim();
+        if (string.IsNullOrWhiteSpace(cleanReason))
+            return (false, "Kalıntı risk kabulü için gerekçe zorunludur.");
+
         var risk = await db.Risks.FindAsync(riskId);
         if (risk == null) return (false, "Risk bulunamadı.");
 
@@ -339,7 +345,10 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
 
         var oldStatus = risk.Status;
         risk.Status = RiskStatus.RiskAccepted;
-        risk.AcceptanceReason = string.IsNullOrWhiteSpace(reason) ? null : reason.Trim();
+        risk.AcceptanceReason     = cleanReason;
+        risk.AcceptedById         = currentUser.Id > 0 ? currentUser.Id : null;
+        risk.AcceptedAt           = DateTime.UtcNow;
+        risk.AcceptanceReviewDate = reviewDate;
 
         Log(riskId, currentUser.Id > 0 ? currentUser.Id : null, "Kalıntı Risk Kabul Edildi",
             newVal: risk.AcceptanceReason);
@@ -387,8 +396,8 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         risk.DepartmentId   = departmentId;
         if (riskStrategy != null) risk.RiskStrategy = string.IsNullOrEmpty(riskStrategy) ? null : riskStrategy;
         // Status geçişi yalnızca bu çağrıda strateji aktif olarak atanıyorsa tetiklenmeli
-        if (!string.IsNullOrEmpty(riskStrategy) && risk.Status == "approved")
-            risk.Status = "strategy_set";
+        if (!string.IsNullOrEmpty(riskStrategy) && risk.Status == RiskStatus.Approved)
+            ApplyTransition(risk, RiskStatus.StrategySet, userId);
 
         Log(id, userId, "Sorumluluk & Strateji Güncellendi", "Organizasyon", oldOrg, orgName);
         if (deptName != null)
@@ -459,10 +468,36 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         return true;
     }
 
+    // ── Durum geçişi için tek kapı ───────────────────────────────────────────
+    /// <summary>
+    /// Tüm örtük (veri-tetiklemeli) durum geçişleri buradan geçer; RiskWorkflow kuralını
+    /// doğrular. Geçiş geçersizse durumu değiştirmez ve false döner. Domain aksiyonu
+    /// (ör. "Kontrol Eklendi") çağıran tarafça loglanmaya devam eder.
+    /// </summary>
+    private bool ApplyTransition(Risk risk, string newStatus, int? userId, bool logTransition = false)
+    {
+        if (risk.Status == newStatus) return false;
+        if (!RiskWorkflow.CanTransition(risk.Status, newStatus))
+        {
+            logger?.LogWarning("Geçersiz örtük durum geçişi engellendi — RiskId: {RiskId}, {From} → {To}",
+                risk.Id, risk.Status, newStatus);
+            return false;
+        }
+        var old = risk.Status;
+        risk.Status = newStatus;
+        if (logTransition)
+            Log(risk.Id, userId, "Durum Değişikliği", "Durum", StatusLabel(old), StatusLabel(newStatus));
+        return true;
+    }
+
     // ── Değerlendirme ────────────────────────────────────────────────────────
     public async Task<Evaluation> AddEvaluationAsync(int riskId, string evalType,
         double probability, double exposure, double consequence, string? notes, int evaluatedById)
     {
+        // Fine-Kinney değerleri admin-tanımlı skalada olmalı (UI dışı yollar için savunma).
+        var fkError = config?.ValidateFineKinney(probability, exposure, consequence);
+        if (fkError != null) throw new InvalidOperationException(fkError);
+
         var existing = await db.Evaluations.Where(e => e.RiskId == riskId && e.EvalType == evalType).ToListAsync();
         db.Evaluations.RemoveRange(existing);
 
@@ -482,7 +517,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
             if (risk.Status == RiskStatus.Proposed)
             {
                 // Henüz incelemeye alınmamış — skordan bağımsız olarak önce under_review'a al.
-                risk.Status = RiskStatus.UnderReview;
+                ApplyTransition(risk, RiskStatus.UnderReview, evaluatedById);
             }
             else if (risk.Status == RiskStatus.UnderReview)
             {
@@ -490,12 +525,12 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
                 // Yüksek riskler manuel olarak awaiting_approval'a taşınır.
                 var threshold = config?.GetAutoApproveScoreThreshold() ?? 70;
                 if (score < threshold)
-                    risk.Status = RiskStatus.Approved;
+                    ApplyTransition(risk, RiskStatus.Approved, evaluatedById);
             }
         }
 
         if (risk != null && evalType == EvalType.Residual && risk.Status == RiskStatus.Controlled)
-            risk.Status = RiskStatus.ResidualEvaluated;
+            ApplyTransition(risk, RiskStatus.ResidualEvaluated, evaluatedById);
 
         Log(riskId, evaluatedById,
             evalType == EvalType.Initial ? "İlk Değerlendirme Yapıldı" : "Kalan Risk Değerlendirmesi Yapıldı",
@@ -517,7 +552,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         db.Controls.Add(ctrl);
 
         var risk = await db.Risks.FindAsync(riskId);
-        if (risk != null && risk.Status == RiskStatus.StrategySet) risk.Status = RiskStatus.Controlled;
+        if (risk != null && risk.Status == RiskStatus.StrategySet) ApplyTransition(risk, RiskStatus.Controlled, enteredById);
 
         Log(riskId, enteredById, "Kontrol Eklendi", "Açıklama", null, description);
         await db.SaveChangesAsync();
@@ -567,7 +602,7 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         db.ActionPlans.Add(action);
 
         var risk = await db.Risks.FindAsync(riskId);
-        if (risk != null && risk.Status == RiskStatus.ResidualEvaluated) risk.Status = RiskStatus.ActionPlanned;
+        if (risk != null && risk.Status == RiskStatus.ResidualEvaluated) ApplyTransition(risk, RiskStatus.ActionPlanned, createdById);
 
         Log(riskId, createdById, "Aksiyon Eklendi", "Açıklama", null, description);
         await db.SaveChangesAsync();
@@ -614,9 +649,9 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         if (allDone && newStatus == ActionStatus.Completed)
         {
             var risk = await db.Risks.FindAsync(riskId);
-            if (risk?.Status == RiskStatus.ActionPlanned)
+            if (risk != null && risk.Status == RiskStatus.ActionPlanned
+                && ApplyTransition(risk, RiskStatus.ResidualEvaluated, userId))
             {
-                risk.Status = RiskStatus.ResidualEvaluated;
                 Log(riskId, userId, "Tüm Aksiyonlar Tamamlandı — Kalan Risk Yeniden Değerlendirilmeli",
                     "Durum", "Aksiyon Planlandı", "Kalan Risk");
                 await db.SaveChangesAsync();

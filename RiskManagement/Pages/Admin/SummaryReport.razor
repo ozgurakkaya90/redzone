@@ -140,7 +140,7 @@
             ("Toplam Risk",    risks.Count,                                       "var(--text-1)"),
             ("Öneri",         risks.Count(r => r.Status == "proposed"),           "#ca8a04"),
             ("Onaylı",        risks.Count(r => r.Status == "approved"),           "#2563eb"),
-            ("Tamamlandı",    risks.Count(r => r.Status == "completed"),          "#16a34a"),
+            ("Kontrol Altında", risks.Count(r => r.Status is "strategy_set" or "controlled" or "residual_evaluated" or "action_planned"), "#16a34a"),
             ("Kabul Edildi",  risks.Count(r => r.Status == "risk_accepted"),      "#6b7280"),
         ];
 

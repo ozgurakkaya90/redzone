@@ -21,7 +21,7 @@ public class ImportResult
         Errors.Add($"Satır {rowNumber}: {message}");
 }
 
-public class ImportService(AppDbContext db)
+public class ImportService(AppDbContext db, ConfigService? config = null)
 {
     // ── Risk Envanteri ────────────────────────────────────────────────────────
 
@@ -66,6 +66,15 @@ public class ImportService(AppDbContext db)
                     var strategy       = row.Cell(12).GetString().Trim().NullIfEmpty();
                     var currentStatus  = row.Cell(13).GetString().Trim().NullIfEmpty();
                     var isActive       = ParseActive(row.Cell(14).GetString());
+
+                    // Sözlük-dışı kategori/strateji uyarısı (satır yine içe aktarılır) — raporlama tutarlılığı.
+                    if (config != null)
+                    {
+                        if (!config.IsValidOption("risk_categories", category))
+                            result.Errors.Add($"Satır {rowNum}: [Uyarı] '{category}' tanımlı kategori listesinde yok — yine de içe aktarıldı.");
+                        if (!config.IsValidOption("risk_strategies", strategy))
+                            result.Errors.Add($"Satır {rowNum}: [Uyarı] '{strategy}' tanımlı strateji listesinde yok — yine de içe aktarıldı.");
+                    }
 
                     if (!string.IsNullOrWhiteSpace(code) && existingByCode.TryGetValue(code, out var existing))
                     {
