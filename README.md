@@ -33,6 +33,28 @@ KOBİ'ler için kurumsal risk yönetimi, iç denetim ve etik raporlamayı tek pl
 
 ---
 
+## Ekran Görüntüleri
+
+> Görseller [`docs/screenshots/`](docs/screenshots/) klasöründen gelir. Henüz eklenmediyse
+> demo uygulamadan (`demo` / `demo2024`) yakalayıp aynı adlarla koyabilirsiniz.
+
+**Ana Panel** — KPI kartları, dikkat gerektiren öğeler, görev listesi
+![Ana Panel](docs/screenshots/dashboard.png)
+
+**Risk Envanteri** — filtreler, sıralanabilir tablo, renk + şekil + metin skor rozetleri
+![Risk Envanteri](docs/screenshots/risk-envanteri.png)
+
+**Risk Detayı** — Fine-Kinney yaşam döngüsü (öneri → değerlendirme → kontrol → kalan risk → aksiyon)
+![Risk Detayı](docs/screenshots/risk-detay.png)
+
+**Risk Analitiği** — kategori bazlı içsel/kalan risk ve azaltım yüzdesi
+![Risk Analitiği](docs/screenshots/risk-analitik.png)
+
+**Dış Denetim Planı** — yıllık Gantt zaman çizelgesi (kurum bazlı)
+![Dış Denetim Planı](docs/screenshots/dis-denetim-gantt.png)
+
+---
+
 ## Hızlı Başlangıç — Docker (Önerilen)
 
 ### Ön Koşullar

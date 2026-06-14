@@ -4,7 +4,32 @@ Bu dosya [Anlamlı Sürümleme](https://semver.org/lang/tr/) (SemVer) kuralları
 
 ---
 
-## [Yayımlanmamış]
+## [1.1.0] — 2026-06-14
+
+### Önemli — PDF kütüphanesi & lisans temizliği
+- PDF üretimi QuestPDF'ten (Community lisans kısıtı) tamamen permissif **MigraDocCore/PdfSharpCore** (MIT) + gömülü Lato (OFL) font resolver'a taşındı. Artık tüm bağımlılıklar ticari kullanıma sınırsız serbest — bkz. `THIRD-PARTY-LICENSES.md`.
+
+### Eklendi
+- **KVKK/GDPR "unutulma hakkı"**: kullanıcı yönetiminde anonimleştirme eylemi (iki adımlı onay, son-admin koruması)
+- Kalıntı risk kabulünde gerekçe zorunluluğu + karar sahibi/tarih + yeniden gözden geçirme tarihi
+- Fine-Kinney P/E/C değerleri için sunucu-tarafı skala doğrulaması (MCP/import/API savunması)
+- OSS dosyaları: `CODE_OF_CONDUCT.md`, `ROADMAP.md`, `THIRD-PARTY-LICENSES.md`, issue/PR şablonları, Dependabot
+
+### Güvenlik
+- Kalıntı risk kabulü artık `risk.manage` yetkisi zorunlu kılıyor (yetki-atlama kapatıldı)
+- Tüm risk durum geçişleri tek kapıdan (`RiskWorkflow.CanTransition`) doğrulanıyor
+- Güvenlik testleri: MCP kapsam izolasyonu, import yetki-sınırı, MCP API anahtarı doğrulaması
+
+### Düzeltildi
+- Özet rapordaki ölü "Tamamlandı" KPI'ı (hiç var olmayan durumu sayıyordu) gerçek metrikle değiştirildi
+- MCP etik özeti yanlış durum sabitiyle "kurul incelemesi bekleyen" sayısı üretiyordu
+- Risk import'unda sessiz veri kaybı (CounterHelper `ChangeTracker.Clear()` döngü-içi) giderildi
+- Kabul gerekçesi denetim iznine yanlış alanla (`RejectionReason`) yazılıyordu
+
+### İç temizlik
+- 14 çağrılmayan metot + kullanılmayan `UpdateCheckService` kaldırıldı
+- Form etiketleri ekran okuyucuya programatik bağlandı; emoji ikonlar tutarlı SVG'ye taşındı
+- EF design-time snapshot'ı MySQL sağlayıcısına hizalandı (migration kirliliği giderildi)
 
 ### Güvenlik — Sağlamlaştırma Turu 2
 - Hesap kilitleme mesajı artık kullanıcı varlığını sızdırmıyor; generic mesaj gösteriliyor
