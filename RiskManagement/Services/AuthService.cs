@@ -297,8 +297,6 @@ public class AuthService(AppDbContext db, IMemoryCache cache)
         return RoleLabels.GetValueOrDefault(roleName, roleName);
     }
 
-    public bool IsSystemRole(string roleName) => Roles.All.Contains(roleName);
-
     /// Yeni özel rol oluştur. Slug otomatik türetilir.
     public CustomRole CreateRole(string label)
     {

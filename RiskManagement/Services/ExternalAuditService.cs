@@ -62,8 +62,6 @@ public class ExternalAuditService(AppDbContext db, AuthService auth)
             .Where(b => includeInactive || b.IsActive)
             .OrderBy(b => b.SortOrder).ThenBy(b => b.Name)];
 
-    public ExternalAuditBody? GetBody(int id) => db.ExternalAuditBodies.Find(id);
-
     public ExternalAuditBody AddBody(string name, string? description = null)
     {
         var existing = db.ExternalAuditBodies.FirstOrDefault(b => b.Name == name);
@@ -78,12 +76,6 @@ public class ExternalAuditService(AppDbContext db, AuthService auth)
         db.ExternalAuditBodies.Add(b);
         db.SaveChanges();
         return b;
-    }
-
-    public void UpdateBody(ExternalAuditBody body)
-    {
-        db.ExternalAuditBodies.Update(body);
-        db.SaveChanges();
     }
 
     /// <summary>Soft-delete: kurum pasif işaretlenir, eski denetim kayıtları korunur.</summary>
@@ -104,9 +96,6 @@ public class ExternalAuditService(AppDbContext db, AuthService auth)
     }
 
     // ─── Yetki Atamaları ─────────────────────────────────────────────────────
-    public List<UserExternalAuditBody> GetUserBodies(int userId) =>
-        [.. db.UserExternalAuditBodies.Where(u => u.UserId == userId).OrderBy(u => u.AuditingBody)];
-
     public List<UserExternalAuditBody> GetBodyUsers(string body) =>
         [.. db.UserExternalAuditBodies
             .Include(u => u.User)
@@ -230,20 +219,6 @@ public class ExternalAuditService(AppDbContext db, AuthService auth)
         db.AuditFindings.Add(f);
         db.SaveChanges();
         return f;
-    }
-
-    public void UpdateFinding(AuditFinding f)
-    {
-        db.AuditFindings.Update(f);
-        db.SaveChanges();
-    }
-
-    public void DeleteFinding(int findingId)
-    {
-        var f = db.AuditFindings.Find(findingId);
-        if (f is null) return;
-        db.AuditFindings.Remove(f);
-        db.SaveChanges();
     }
 
     // ─── Dashboard istatistik ────────────────────────────────────────────────

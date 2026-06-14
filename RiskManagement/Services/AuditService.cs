@@ -22,9 +22,6 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
                         .ThenInclude(o => o!.Company)
             .FirstOrDefault(p => p.Year == year);
 
-    public List<int> GetPlanYears() =>
-        [.. db.AuditPlans.Select(p => p.Year).Distinct().OrderByDescending(y => y)];
-
     public async Task<AuditPlan> EnsurePlanAsync(int year, string title, int userId)
     {
         var plan = db.AuditPlans.FirstOrDefault(p => p.Year == year);
@@ -264,10 +261,6 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
 
         await db.SaveChangesAsync();
     }
-
-    /// <summary>Plan maddesine bağlı InternalAudit'i döner (yoksa null).</summary>
-    public InternalAudit? GetAuditByPlanItem(int planItemId) =>
-        AuditQuery().FirstOrDefault(a => a.AuditPlanItemId == planItemId);
 
     public Dictionary<int, InternalAudit> GetAuditsByPlanItems(IEnumerable<int> planItemIds)
     {

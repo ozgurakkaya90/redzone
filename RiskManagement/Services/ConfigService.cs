@@ -180,14 +180,6 @@ public class ConfigService(AppDbContext db, ILogger<ConfigService> logger,
 
     public bool IsModuleActive(string module) => Get<bool>($"module_{module}");
 
-    public bool IsRiskFieldVisible(string fieldKey)
-    {
-        var fields = Get<Dictionary<string, bool>>("risk_detail_fields");
-        if (fields is not null && fields.TryGetValue(fieldKey, out var visible))
-            return visible;
-        return true;
-    }
-
     public Dictionary<string, bool> GetRiskDetailFields() =>
         Get<Dictionary<string, bool>>("risk_detail_fields")
         ?? new Dictionary<string, bool>();

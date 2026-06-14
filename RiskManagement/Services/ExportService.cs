@@ -1,13 +1,120 @@
 using ClosedXML.Excel;
-using QuestPDF.Fluent;
-using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
+using MigraDocCore.DocumentObjectModel;
+using MigraDocCore.DocumentObjectModel.Tables;
+using MigraDocCore.Rendering;
+using PdfSharpCore.Fonts;
 using RiskManagement.Models;
 
 namespace RiskManagement.Services;
 
 public class ExportService
 {
+    // ── PDF altyapısı (MigraDoc + PdfSharpCore, MIT) ──────────────────────────
+    private static readonly object _fontLock = new();
+    private static bool _fontReady;
+    private static readonly Color Navy  = new(30, 58, 95);    // #1E3A5F
+    private static readonly Color AltBg = new(248, 250, 252); // #F8FAFC
+    private static readonly Color Muted = new(100, 116, 139); // #64748B
+
+    private static void EnsureFonts()
+    {
+        if (_fontReady) return;
+        lock (_fontLock)
+        {
+            if (_fontReady) return;
+            // Gömülü Lato resolver'ı global olarak bir kez ayarla (idempotent).
+            try { GlobalFontSettings.FontResolver = LatoFontResolver.Instance; }
+            catch { /* zaten ayarlıysa yut */ }
+            _fontReady = true;
+        }
+    }
+
+    /// <summary>
+    /// Tüm liste-PDF raporları için ortak şablon: başlık + şirket/tarih + sayım + renkli
+    /// başlıklı tablo + sayfa numaralı altbilgi. A4 yatay.
+    /// </summary>
+    private static byte[] BuildTablePdf(string title, string countLabel, string companyName,
+        (string Label, double Weight)[] columns, IReadOnlyList<string?[]> rows)
+    {
+        EnsureFonts();
+
+        var doc = new Document();
+        var normal = doc.Styles["Normal"];
+        normal.Font.Name = "Lato";
+        normal.Font.Size = 9;
+
+        var sec = doc.AddSection();
+        sec.PageSetup.Orientation = Orientation.Landscape;
+        sec.PageSetup.PageFormat  = PageFormat.A4;
+        sec.PageSetup.TopMargin = sec.PageSetup.BottomMargin = Unit.FromCentimeter(1.3);
+        sec.PageSetup.LeftMargin = sec.PageSetup.RightMargin = Unit.FromCentimeter(1.3);
+
+        // ── Başlık satırı ──
+        var head = sec.AddParagraph();
+        head.AddFormattedText(title, new Font { Size = 14, Bold = true, Color = Navy });
+        if (!string.IsNullOrEmpty(companyName))
+        {
+            head.AddTab();
+            head.AddFormattedText(companyName, new Font { Size = 9, Color = Muted });
+        }
+        var dateP = sec.AddParagraph();
+        dateP.AddFormattedText(
+            DateTime.Now.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("tr-TR")),
+            new Font { Size = 9, Color = Muted });
+        dateP.AddFormattedText("   ·   " + countLabel, new Font { Size = 9, Color = Muted });
+        sec.AddParagraph().Format.SpaceAfter = Unit.FromPoint(4);
+
+        // ── Tablo ──
+        var table = sec.AddTable();
+        table.Borders.Color = new Color(226, 232, 240); // #E2E8F0
+        table.Borders.Width = 0.25;
+
+        const double availableCm = 26.5; // A4 yatay - kenar boşlukları
+        var totalWeight = columns.Sum(c => c.Weight);
+        foreach (var c in columns)
+            table.AddColumn(Unit.FromCentimeter(c.Weight / totalWeight * availableCm));
+
+        var header = table.AddRow();
+        header.Shading.Color = Navy;
+        header.Format.Font.Bold = true;
+        header.Format.Font.Color = Colors.White;
+        header.Format.Font.Size = 8;
+        for (var i = 0; i < columns.Length; i++)
+        {
+            var p = header.Cells[i].AddParagraph(columns[i].Label);
+            p.Format.Font.Bold = true;
+            header.Cells[i].VerticalAlignment = VerticalAlignment.Center;
+            header.Cells[i].Format.Font.Color = Colors.White;
+        }
+
+        var alt = false;
+        foreach (var row in rows)
+        {
+            var r = table.AddRow();
+            r.Format.Font.Size = 8;
+            if (alt) r.Shading.Color = AltBg;
+            alt = !alt;
+            for (var i = 0; i < columns.Length && i < row.Length; i++)
+                r.Cells[i].AddParagraph(row[i] ?? "—");
+        }
+
+        // ── Altbilgi: sayfa no ──
+        var footer = sec.Footers.Primary.AddParagraph();
+        footer.Format.Alignment = ParagraphAlignment.Center;
+        footer.Format.Font.Size = 8;
+        footer.Format.Font.Color = new Color(148, 163, 184); // #94A3B8
+        footer.AddText("Sayfa ");
+        footer.AddPageField();
+        footer.AddText(" / ");
+        footer.AddNumPagesField();
+
+        var renderer = new PdfDocumentRenderer { Document = doc };
+        renderer.RenderDocument();
+        using var ms = new MemoryStream();
+        renderer.PdfDocument.Save(ms);
+        return ms.ToArray();
+    }
+
     // ── Excel ────────────────────────────────────────────────────────────────
 
     // Risk envanteri sütun düzeni — Şablon, İçe Aktarma ve Dışa Aktarma'da aynı sırayla
@@ -141,181 +248,38 @@ public class ExportService
 
     public byte[] ExportRisksToPdf(IEnumerable<Risk> risks, string companyName = "")
     {
-        QuestPDF.Settings.License = LicenseType.Community;
-
-        var riskList = risks.ToList();
-
-        return Document.Create(container =>
+        var list = risks.ToList();
+        var rows = list.Select(r =>
         {
-            container.Page(page =>
+            var initial = r.Evaluations.FirstOrDefault(e => e.EvalType == "initial");
+            return new string?[]
             {
-                page.Size(PageSizes.A4.Landscape());
-                page.Margin(1.5f, Unit.Centimetre);
-                page.DefaultTextStyle(t => t.FontSize(9).FontFamily("Arial"));
+                r.Code, r.Title, r.Category, StatusLabel(r.Status),
+                initial?.Score.ToString("F1"), initial?.RiskLevel,
+                r.Owner?.FullName, r.Department?.Name,
+            };
+        }).ToList();
 
-                page.Header().Column(col =>
-                {
-                    col.Item().Row(row =>
-                    {
-                        row.RelativeItem().Text(t =>
-                        {
-                            t.Span("RİSK KAYDI RAPORU").Bold().FontSize(14).FontColor("#1E3A5F");
-                        });
-                        row.ConstantItem(150).AlignRight().Text(t =>
-                        {
-                            if (!string.IsNullOrEmpty(companyName))
-                                t.Line(companyName).FontSize(9).FontColor("#64748B");
-                            t.Line(DateTime.Now.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("tr-TR")))
-                             .FontSize(9).FontColor("#64748B");
-                        });
-                    });
-                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor("#1E3A5F");
-                    col.Item().PaddingBottom(4).Text($"Toplam {riskList.Count} risk kaydı").FontSize(8).FontColor("#64748B");
-                });
-
-                page.Content().Table(table =>
-                {
-                    table.ColumnsDefinition(cols =>
-                    {
-                        cols.ConstantColumn(55);  // Kod
-                        cols.RelativeColumn(3);   // Başlık
-                        cols.RelativeColumn(1.5f);// Kategori
-                        cols.RelativeColumn(1.5f);// Durum
-                        cols.ConstantColumn(45);  // Skor
-                        cols.RelativeColumn(1.5f);// Seviye
-                        cols.RelativeColumn(2);   // Sorumlu
-                        cols.RelativeColumn(1.5f);// Departman
-                    });
-
-                    // Başlık satırı
-                    static IContainer HeaderCell(IContainer c) => c
-                        .Background("#1E3A5F").Padding(5);
-
-                    table.Header(h =>
-                    {
-                        foreach (var label in new[] { "Kod", "Başlık", "Kategori", "Durum", "Skor", "Seviye", "Sorumlu", "Departman" })
-                            h.Cell().Element(HeaderCell).Text(label).Bold().FontColor(Colors.White).FontSize(8);
-                    });
-
-                    // Veri satırları
-                    bool alt = false;
-                    foreach (var r in riskList)
-                    {
-                        var initial = r.Evaluations.FirstOrDefault(e => e.EvalType == "initial");
-                        var bg = alt ? "#F8FAFC" : "#FFFFFF";
-                        alt = !alt;
-
-                        IContainer DataCell(IContainer c) => c.Background(bg).BorderBottom(1).BorderColor("#E2E8F0").Padding(4);
-
-                        table.Cell().Element(DataCell).Text(r.Code).FontSize(8);
-                        table.Cell().Element(DataCell).Text(r.Title).FontSize(8);
-                        table.Cell().Element(DataCell).Text(r.Category ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(StatusLabel(r.Status)).FontSize(8);
-                        table.Cell().Element(DataCell).Text(initial?.Score.ToString("F1") ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(initial?.RiskLevel ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(r.Owner?.FullName ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(r.Department?.Name ?? "—").FontSize(8);
-                    }
-                });
-
-                page.Footer().AlignCenter()
-                    .Text(t =>
-                    {
-                        t.Span("Sayfa ").FontSize(8).FontColor("#94A3B8");
-                        t.CurrentPageNumber().FontSize(8).FontColor("#94A3B8");
-                        t.Span(" / ").FontSize(8).FontColor("#94A3B8");
-                        t.TotalPages().FontSize(8).FontColor("#94A3B8");
-                    });
-            });
-        }).GeneratePdf();
+        return BuildTablePdf("RİSK KAYDI RAPORU", $"Toplam {list.Count} risk kaydı", companyName,
+            new[] { ("Kod", 1.2), ("Başlık", 3.0), ("Kategori", 1.5), ("Durum", 1.5),
+                    ("Skor", 1.0), ("Seviye", 1.5), ("Sorumlu", 2.0), ("Departman", 1.5) },
+            rows);
     }
 
     public byte[] ExportFindingsToPdf(IEnumerable<AuditFinding> findings, string companyName = "")
     {
-        QuestPDF.Settings.License = LicenseType.Community;
-
         var list = findings.ToList();
-
-        return Document.Create(container =>
+        var rows = list.Select(f => new string?[]
         {
-            container.Page(page =>
-            {
-                page.Size(PageSizes.A4.Landscape());
-                page.Margin(1.5f, Unit.Centimetre);
-                page.DefaultTextStyle(t => t.FontSize(9).FontFamily("Arial"));
+            f.Code, f.Title, f.Severity, FindingStatusLabel(f.Status),
+            f.Auditor?.FullName, f.Owner?.FullName, f.Department?.Name,
+            f.DueDate?.ToString("dd.MM.yyyy"),
+        }).ToList();
 
-                page.Header().Column(col =>
-                {
-                    col.Item().Row(row =>
-                    {
-                        row.RelativeItem().Text(t =>
-                        {
-                            t.Span("İÇ DENETİM BULGULARI RAPORU").Bold().FontSize(14).FontColor("#1E3A5F");
-                        });
-                        row.ConstantItem(150).AlignRight().Text(t =>
-                        {
-                            if (!string.IsNullOrEmpty(companyName))
-                                t.Line(companyName).FontSize(9).FontColor("#64748B");
-                            t.Line(DateTime.Now.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("tr-TR")))
-                             .FontSize(9).FontColor("#64748B");
-                        });
-                    });
-                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor("#1E3A5F");
-                    col.Item().PaddingBottom(4).Text($"Toplam {list.Count} bulgu").FontSize(8).FontColor("#64748B");
-                });
-
-                page.Content().Table(table =>
-                {
-                    table.ColumnsDefinition(cols =>
-                    {
-                        cols.ConstantColumn(55);  // Kod
-                        cols.RelativeColumn(3);   // Başlık
-                        cols.RelativeColumn(1.5f);// Ciddiyet
-                        cols.RelativeColumn(1.5f);// Durum
-                        cols.RelativeColumn(2);   // Denetçi
-                        cols.RelativeColumn(2);   // Bulgu Sahibi
-                        cols.RelativeColumn(1.5f);// Departman
-                        cols.ConstantColumn(60);  // Bitiş Tarihi
-                    });
-
-                    static IContainer HeaderCell(IContainer c) => c
-                        .Background("#1E3A5F").Padding(5);
-
-                    table.Header(h =>
-                    {
-                        foreach (var label in new[] { "Kod", "Başlık", "Ciddiyet", "Durum", "Denetçi", "Bulgu Sahibi", "Departman", "Bitiş Tarihi" })
-                            h.Cell().Element(HeaderCell).Text(label).Bold().FontColor(Colors.White).FontSize(8);
-                    });
-
-                    bool alt = false;
-                    foreach (var f in list)
-                    {
-                        var bg = alt ? "#F8FAFC" : "#FFFFFF";
-                        alt = !alt;
-
-                        IContainer DataCell(IContainer c) => c.Background(bg).BorderBottom(1).BorderColor("#E2E8F0").Padding(4);
-
-                        table.Cell().Element(DataCell).Text(f.Code).FontSize(8);
-                        table.Cell().Element(DataCell).Text(f.Title).FontSize(8);
-                        table.Cell().Element(DataCell).Text(f.Severity ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(FindingStatusLabel(f.Status)).FontSize(8);
-                        table.Cell().Element(DataCell).Text(f.Auditor?.FullName ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(f.Owner?.FullName ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(f.Department?.Name ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(f.DueDate?.ToString("dd.MM.yyyy") ?? "—").FontSize(8);
-                    }
-                });
-
-                page.Footer().AlignCenter()
-                    .Text(t =>
-                    {
-                        t.Span("Sayfa ").FontSize(8).FontColor("#94A3B8");
-                        t.CurrentPageNumber().FontSize(8).FontColor("#94A3B8");
-                        t.Span(" / ").FontSize(8).FontColor("#94A3B8");
-                        t.TotalPages().FontSize(8).FontColor("#94A3B8");
-                    });
-            });
-        }).GeneratePdf();
+        return BuildTablePdf("İÇ DENETİM BULGULARI RAPORU", $"Toplam {list.Count} bulgu", companyName,
+            new[] { ("Kod", 1.2), ("Başlık", 3.0), ("Ciddiyet", 1.5), ("Durum", 1.5),
+                    ("Denetçi", 2.0), ("Bulgu Sahibi", 2.0), ("Departman", 1.5), ("Bitiş Tarihi", 1.3) },
+            rows);
     }
 
     // ── Kontrol Planı ─────────────────────────────────────────────────────────
@@ -359,76 +323,16 @@ public class ExportService
 
     public byte[] ExportControlsToPdf(IEnumerable<Control> controls, string companyName = "")
     {
-        QuestPDF.Settings.License = LicenseType.Community;
         var list = controls.ToList();
-
-        return Document.Create(container =>
+        var rows = list.Select(c => new string?[]
         {
-            container.Page(page =>
-            {
-                page.Size(PageSizes.A4.Landscape());
-                page.Margin(1.5f, Unit.Centimetre);
-                page.DefaultTextStyle(t => t.FontSize(9).FontFamily("Arial"));
+            c.Risk?.Code, c.Description, c.ControlType, c.Effectiveness, c.Frequency, c.OwnerDept?.Name,
+        }).ToList();
 
-                page.Header().Column(col =>
-                {
-                    col.Item().Row(row =>
-                    {
-                        row.RelativeItem().Text(t => t.Span("KONTROL PLANI RAPORU").Bold().FontSize(14).FontColor("#1E3A5F"));
-                        row.ConstantItem(150).AlignRight().Text(t =>
-                        {
-                            if (!string.IsNullOrEmpty(companyName)) t.Line(companyName).FontSize(9).FontColor("#64748B");
-                            t.Line(DateTime.Now.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("tr-TR"))).FontSize(9).FontColor("#64748B");
-                        });
-                    });
-                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor("#1E3A5F");
-                    col.Item().PaddingBottom(4).Text($"Toplam {list.Count} kontrol kaydı").FontSize(8).FontColor("#64748B");
-                });
-
-                page.Content().Table(table =>
-                {
-                    table.ColumnsDefinition(cols =>
-                    {
-                        cols.ConstantColumn(55);
-                        cols.RelativeColumn(3);
-                        cols.RelativeColumn(1.5f);
-                        cols.RelativeColumn(1.5f);
-                        cols.RelativeColumn(1.5f);
-                        cols.RelativeColumn(2);
-                    });
-
-                    static IContainer HeaderCell(IContainer c) => c.Background("#1E3A5F").Padding(5);
-
-                    table.Header(h =>
-                    {
-                        foreach (var label in new[] { "Risk Kodu", "Kontrol Açıklaması", "Tür", "Etkinlik", "Sıklık", "Sahibi" })
-                            h.Cell().Element(HeaderCell).Text(label).Bold().FontColor(Colors.White).FontSize(8);
-                    });
-
-                    bool alt = false;
-                    foreach (var c in list)
-                    {
-                        var bg = alt ? "#F8FAFC" : "#FFFFFF";
-                        alt = !alt;
-                        IContainer DataCell(IContainer x) => x.Background(bg).BorderBottom(1).BorderColor("#E2E8F0").Padding(4);
-                        table.Cell().Element(DataCell).Text(c.Risk?.Code ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(c.Description).FontSize(8);
-                        table.Cell().Element(DataCell).Text(c.ControlType).FontSize(8);
-                        table.Cell().Element(DataCell).Text(c.Effectiveness ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(c.Frequency ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(c.OwnerDept?.Name ?? "—").FontSize(8);
-                    }
-                });
-
-                page.Footer().AlignCenter().Text(t =>
-                {
-                    t.Span("Sayfa ").FontSize(8).FontColor("#94A3B8");
-                    t.CurrentPageNumber().FontSize(8).FontColor("#94A3B8");
-                    t.Span(" / ").FontSize(8).FontColor("#94A3B8");
-                    t.TotalPages().FontSize(8).FontColor("#94A3B8");
-                });
-            });
-        }).GeneratePdf();
+        return BuildTablePdf("KONTROL PLANI RAPORU", $"Toplam {list.Count} kontrol kaydı", companyName,
+            new[] { ("Risk Kodu", 1.2), ("Kontrol Açıklaması", 3.0), ("Tür", 1.5),
+                    ("Etkinlik", 1.5), ("Sıklık", 1.5), ("Sahibi", 2.0) },
+            rows);
     }
 
     // ── Risk Aksiyon Planları ─────────────────────────────────────────────────
@@ -472,76 +376,17 @@ public class ExportService
 
     public byte[] ExportActionPlansToPdf(IEnumerable<ActionPlan> plans, string companyName = "")
     {
-        QuestPDF.Settings.License = LicenseType.Community;
         var list = plans.ToList();
-
-        return Document.Create(container =>
+        var rows = list.Select(a => new string?[]
         {
-            container.Page(page =>
-            {
-                page.Size(PageSizes.A4.Landscape());
-                page.Margin(1.5f, Unit.Centimetre);
-                page.DefaultTextStyle(t => t.FontSize(9).FontFamily("Arial"));
+            a.Risk?.Code, a.Description, a.Responsible, a.OwnerDept?.Name,
+            a.DueDate?.ToString("dd.MM.yyyy"), ActionStatusLabel(a.Status),
+        }).ToList();
 
-                page.Header().Column(col =>
-                {
-                    col.Item().Row(row =>
-                    {
-                        row.RelativeItem().Text(t => t.Span("RİSK AKSİYON PLANLARI RAPORU").Bold().FontSize(14).FontColor("#1E3A5F"));
-                        row.ConstantItem(150).AlignRight().Text(t =>
-                        {
-                            if (!string.IsNullOrEmpty(companyName)) t.Line(companyName).FontSize(9).FontColor("#64748B");
-                            t.Line(DateTime.Now.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("tr-TR"))).FontSize(9).FontColor("#64748B");
-                        });
-                    });
-                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor("#1E3A5F");
-                    col.Item().PaddingBottom(4).Text($"Toplam {list.Count} aksiyon kaydı").FontSize(8).FontColor("#64748B");
-                });
-
-                page.Content().Table(table =>
-                {
-                    table.ColumnsDefinition(cols =>
-                    {
-                        cols.ConstantColumn(55);
-                        cols.RelativeColumn(3);
-                        cols.RelativeColumn(2);
-                        cols.RelativeColumn(1.5f);
-                        cols.ConstantColumn(70);
-                        cols.RelativeColumn(1.5f);
-                    });
-
-                    static IContainer HeaderCell(IContainer c) => c.Background("#1E3A5F").Padding(5);
-
-                    table.Header(h =>
-                    {
-                        foreach (var label in new[] { "Risk Kodu", "Aksiyon", "Sorumlu", "Departman", "Hedef Tarih", "Durum" })
-                            h.Cell().Element(HeaderCell).Text(label).Bold().FontColor(Colors.White).FontSize(8);
-                    });
-
-                    bool alt = false;
-                    foreach (var a in list)
-                    {
-                        var bg = alt ? "#F8FAFC" : "#FFFFFF";
-                        alt = !alt;
-                        IContainer DataCell(IContainer x) => x.Background(bg).BorderBottom(1).BorderColor("#E2E8F0").Padding(4);
-                        table.Cell().Element(DataCell).Text(a.Risk?.Code ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(a.Description).FontSize(8);
-                        table.Cell().Element(DataCell).Text(a.Responsible).FontSize(8);
-                        table.Cell().Element(DataCell).Text(a.OwnerDept?.Name ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(a.DueDate?.ToString("dd.MM.yyyy") ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(ActionStatusLabel(a.Status)).FontSize(8);
-                    }
-                });
-
-                page.Footer().AlignCenter().Text(t =>
-                {
-                    t.Span("Sayfa ").FontSize(8).FontColor("#94A3B8");
-                    t.CurrentPageNumber().FontSize(8).FontColor("#94A3B8");
-                    t.Span(" / ").FontSize(8).FontColor("#94A3B8");
-                    t.TotalPages().FontSize(8).FontColor("#94A3B8");
-                });
-            });
-        }).GeneratePdf();
+        return BuildTablePdf("RİSK AKSİYON PLANLARI RAPORU", $"Toplam {list.Count} aksiyon kaydı", companyName,
+            new[] { ("Risk Kodu", 1.2), ("Aksiyon", 3.0), ("Sorumlu", 2.0),
+                    ("Departman", 1.5), ("Hedef Tarih", 1.3), ("Durum", 1.5) },
+            rows);
     }
 
     // ── Denetim Aksiyon Planları ──────────────────────────────────────────────
@@ -584,74 +429,17 @@ public class ExportService
 
     public byte[] ExportAuditActionsToPdf(IEnumerable<AuditFindingAction> actions, string companyName = "")
     {
-        QuestPDF.Settings.License = LicenseType.Community;
         var list = actions.ToList();
-
-        return Document.Create(container =>
+        var rows = list.Select(a => new string?[]
         {
-            container.Page(page =>
-            {
-                page.Size(PageSizes.A4.Landscape());
-                page.Margin(1.5f, Unit.Centimetre);
-                page.DefaultTextStyle(t => t.FontSize(9).FontFamily("Arial"));
+            a.Finding?.Code, a.Description, a.Responsible,
+            a.DueDate?.ToString("dd.MM.yyyy"), ActionStatusLabel(a.Status),
+        }).ToList();
 
-                page.Header().Column(col =>
-                {
-                    col.Item().Row(row =>
-                    {
-                        row.RelativeItem().Text(t => t.Span("DENETİM AKSİYON PLANLARI RAPORU").Bold().FontSize(14).FontColor("#1E3A5F"));
-                        row.ConstantItem(150).AlignRight().Text(t =>
-                        {
-                            if (!string.IsNullOrEmpty(companyName)) t.Line(companyName).FontSize(9).FontColor("#64748B");
-                            t.Line(DateTime.Now.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("tr-TR"))).FontSize(9).FontColor("#64748B");
-                        });
-                    });
-                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor("#1E3A5F");
-                    col.Item().PaddingBottom(4).Text($"Toplam {list.Count} aksiyon kaydı").FontSize(8).FontColor("#64748B");
-                });
-
-                page.Content().Table(table =>
-                {
-                    table.ColumnsDefinition(cols =>
-                    {
-                        cols.ConstantColumn(55);
-                        cols.RelativeColumn(3);
-                        cols.RelativeColumn(2);
-                        cols.ConstantColumn(70);
-                        cols.RelativeColumn(1.5f);
-                    });
-
-                    static IContainer HeaderCell(IContainer c) => c.Background("#1E3A5F").Padding(5);
-
-                    table.Header(h =>
-                    {
-                        foreach (var label in new[] { "Bulgu Kodu", "Aksiyon", "Sorumlu", "Hedef Tarih", "Durum" })
-                            h.Cell().Element(HeaderCell).Text(label).Bold().FontColor(Colors.White).FontSize(8);
-                    });
-
-                    bool alt = false;
-                    foreach (var a in list)
-                    {
-                        var bg = alt ? "#F8FAFC" : "#FFFFFF";
-                        alt = !alt;
-                        IContainer DataCell(IContainer x) => x.Background(bg).BorderBottom(1).BorderColor("#E2E8F0").Padding(4);
-                        table.Cell().Element(DataCell).Text(a.Finding?.Code ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(a.Description).FontSize(8);
-                        table.Cell().Element(DataCell).Text(a.Responsible ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(a.DueDate?.ToString("dd.MM.yyyy") ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(ActionStatusLabel(a.Status)).FontSize(8);
-                    }
-                });
-
-                page.Footer().AlignCenter().Text(t =>
-                {
-                    t.Span("Sayfa ").FontSize(8).FontColor("#94A3B8");
-                    t.CurrentPageNumber().FontSize(8).FontColor("#94A3B8");
-                    t.Span(" / ").FontSize(8).FontColor("#94A3B8");
-                    t.TotalPages().FontSize(8).FontColor("#94A3B8");
-                });
-            });
-        }).GeneratePdf();
+        return BuildTablePdf("DENETİM AKSİYON PLANLARI RAPORU", $"Toplam {list.Count} aksiyon kaydı", companyName,
+            new[] { ("Bulgu Kodu", 1.2), ("Aksiyon", 3.0), ("Sorumlu", 2.0),
+                    ("Hedef Tarih", 1.3), ("Durum", 1.5) },
+            rows);
     }
 
     // ── Etik Bildirimler ──────────────────────────────────────────────────────
@@ -693,74 +481,16 @@ public class ExportService
 
     public byte[] ExportEthicsToPdf(IEnumerable<EthicsReport> reports, string companyName = "")
     {
-        QuestPDF.Settings.License = LicenseType.Community;
         var list = reports.ToList();
-
-        return Document.Create(container =>
+        var rows = list.Select(r => new string?[]
         {
-            container.Page(page =>
-            {
-                page.Size(PageSizes.A4.Landscape());
-                page.Margin(1.5f, Unit.Centimetre);
-                page.DefaultTextStyle(t => t.FontSize(9).FontFamily("Arial"));
+            r.Code, r.Subject, r.ReportCategory, EthicsStatusLabel(r.Status),
+            r.SubmittedAt.ToString("dd.MM.yyyy"),
+        }).ToList();
 
-                page.Header().Column(col =>
-                {
-                    col.Item().Row(row =>
-                    {
-                        row.RelativeItem().Text(t => t.Span("ETİK BİLDİRİMLER RAPORU").Bold().FontSize(14).FontColor("#1E3A5F"));
-                        row.ConstantItem(150).AlignRight().Text(t =>
-                        {
-                            if (!string.IsNullOrEmpty(companyName)) t.Line(companyName).FontSize(9).FontColor("#64748B");
-                            t.Line(DateTime.Now.ToString("dd MMMM yyyy", new System.Globalization.CultureInfo("tr-TR"))).FontSize(9).FontColor("#64748B");
-                        });
-                    });
-                    col.Item().PaddingTop(4).LineHorizontal(1).LineColor("#1E3A5F");
-                    col.Item().PaddingBottom(4).Text($"Toplam {list.Count} etik bildirim").FontSize(8).FontColor("#64748B");
-                });
-
-                page.Content().Table(table =>
-                {
-                    table.ColumnsDefinition(cols =>
-                    {
-                        cols.ConstantColumn(55);
-                        cols.RelativeColumn(3);
-                        cols.RelativeColumn(1.5f);
-                        cols.RelativeColumn(1.5f);
-                        cols.ConstantColumn(70);
-                    });
-
-                    static IContainer HeaderCell(IContainer c) => c.Background("#1E3A5F").Padding(5);
-
-                    table.Header(h =>
-                    {
-                        foreach (var label in new[] { "Kod", "Konu", "Kategori", "Durum", "Tarih" })
-                            h.Cell().Element(HeaderCell).Text(label).Bold().FontColor(Colors.White).FontSize(8);
-                    });
-
-                    bool alt = false;
-                    foreach (var r in list)
-                    {
-                        var bg = alt ? "#F8FAFC" : "#FFFFFF";
-                        alt = !alt;
-                        IContainer DataCell(IContainer x) => x.Background(bg).BorderBottom(1).BorderColor("#E2E8F0").Padding(4);
-                        table.Cell().Element(DataCell).Text(r.Code).FontSize(8);
-                        table.Cell().Element(DataCell).Text(r.Subject).FontSize(8);
-                        table.Cell().Element(DataCell).Text(r.ReportCategory ?? "—").FontSize(8);
-                        table.Cell().Element(DataCell).Text(EthicsStatusLabel(r.Status)).FontSize(8);
-                        table.Cell().Element(DataCell).Text(r.SubmittedAt.ToString("dd.MM.yyyy")).FontSize(8);
-                    }
-                });
-
-                page.Footer().AlignCenter().Text(t =>
-                {
-                    t.Span("Sayfa ").FontSize(8).FontColor("#94A3B8");
-                    t.CurrentPageNumber().FontSize(8).FontColor("#94A3B8");
-                    t.Span(" / ").FontSize(8).FontColor("#94A3B8");
-                    t.TotalPages().FontSize(8).FontColor("#94A3B8");
-                });
-            });
-        }).GeneratePdf();
+        return BuildTablePdf("ETİK BİLDİRİMLER RAPORU", $"Toplam {list.Count} etik bildirim", companyName,
+            new[] { ("Kod", 1.2), ("Konu", 3.0), ("Kategori", 1.5), ("Durum", 1.5), ("Tarih", 1.3) },
+            rows);
     }
 
     // ── Dış Denetim Aksiyon Planları ─────────────────────────────────────────

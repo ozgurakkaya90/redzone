@@ -63,9 +63,19 @@
                                 @(u.IsActive ? "Aktif" : "Pasif")
                             </span>
                         </td>
-                        <td style="display:flex;gap:6px">
-                            <button class="btn btn-outline btn-sm" @onclick="() => StartEdit(u)">Düzenle</button>
-                            <button class="btn btn-ghost-danger btn-sm" @onclick="() => DeleteUser(uid)">Sil</button>
+                        <td style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+                            @if (_anonConfirmId == uid)
+                            {
+                                <span style="font-size:12px;color:var(--color-danger-fg)">KVKK gereği kişisel veriler kalıcı silinecek (denetim izi korunur). Emin misiniz?</span>
+                                <button class="btn btn-danger btn-sm" @onclick="() => AnonymizeUser(uid)">Onayla</button>
+                                <button class="btn btn-outline btn-sm" @onclick="() => _anonConfirmId = null">Vazgeç</button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-outline btn-sm" @onclick="() => StartEdit(u)">Düzenle</button>
+                                <button class="btn btn-ghost-danger btn-sm" @onclick="() => _anonConfirmId = uid"
+                                        title="KVKK / unutulma hakkı — kişisel verileri anonimleştir">Anonimleştir</button>
+                            }
                         </td>
                     </tr>
                 }
@@ -244,6 +254,7 @@
     private bool _isNew;
     private string _newPassword = "", _resetLink = "";
     private string _error = "", _success = "";
+    private int? _anonConfirmId; // KVKK anonimleştirme için iki-adımlı onay
     private string _baseUrl = "";
 
     // Çoklu seçim state'leri
@@ -420,14 +431,21 @@
         _resetLink = $"{_baseUrl}/reset-password?token={Uri.EscapeDataString(token)}";
     }
 
-    async Task DeleteUser(int id)
+    // KVKK / GDPR "unutulma hakkı": hesabı anonimleştirir — kişisel veriler silinir,
+    // hesap pasifleşir, denetim izi sahipliği korunur. Son admin için engellenir.
+    async Task AnonymizeUser(int id)
     {
+        _error = ""; _success = ""; _anonConfirmId = null;
         if (_editUser?.Id == id) CloseEdit();
-        var u = Db.Users.Find(id);
-        if (u == null) return;
-        Db.Users.Remove(u);
-        await Db.SaveChangesAsync();
-        _success = "Kullanıcı silindi.";
+        try
+        {
+            await Auth.AnonymizeUserAsync(id);
+            _success = "Kullanıcı KVKK gereği anonimleştirildi (kişisel veriler silindi, denetim izi korundu).";
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
         await ReloadAsync();
     }
 }

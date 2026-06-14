@@ -27,7 +27,10 @@ cd RiskManagement.Tests && dotnet test
 
 - **.NET 8 C# 12** — language features kullanımı teşvik edilir (primary constructors, collection expressions vb.)
 - **Blazor Server** — `OnInitializedAsync` tercih edilir; `StateHasChanged` yalnızca gerektiğinde
-- **EF Core** — ham SQL yerine LINQ; migration'lar yalnızca MySQL ile test edilmeli
+- **EF Core** — ham SQL yerine LINQ; migration'lar **MySQL sağlayıcısıyla** üretilmeli
+  (`AppSettings__UseSqlite=false` ortamında `dotnet ef migrations add`). Model snapshot'ı
+  MySQL tiplerine hizalıdır; SQLite ile üretmek sahte tip-değişikliği kirliliğine yol açar.
+  Üretilen migration'ı uygulamadan önce yalnızca gerçek değişikliği içerdiğini doğrulayın.
 - **Yorum yok** — kod kendini açıklamalı; neden anlaşılmıyorsa kısa bir yorum eklenebilir
 - Yeni özellikler için servis katmanında test yazılması beklenir
 

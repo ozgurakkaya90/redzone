@@ -131,25 +131,9 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         return direct;
     }
 
-    private HashSet<int> GetUserOrganizationIds(int userId, HashSet<int>? deptIds = null)
-    {
-        deptIds ??= GetUserDepartmentIds(userId);
-        // Departmanlar üzerinden organizasyonlar
-        var fromDepts = db.Departments
-            .Where(d => deptIds.Contains(d.Id) && d.OrganizationId != null)
-            .Select(d => d.OrganizationId!.Value).ToHashSet();
-        // Doğrudan atanan
-        var direct = db.UserOrganizations.Where(uo => uo.UserId == userId).Select(uo => uo.OrganizationId).ToHashSet();
-        fromDepts.UnionWith(direct);
-        return fromDepts;
-    }
-
     // Liste metotları — hafif QueryList() kullanır (Controls/Reviews/Logs yüklenmez).
     public List<Risk> GetAll(string? category = null, string? status = null, string? search = null)
         => [.. BuildFilteredQuery(QueryList(), category, status, search).OrderByDescending(r => r.ProposedAt)];
-
-    public async Task<List<Risk>> GetAllAsync(string? category = null, string? status = null, string? search = null)
-        => await BuildFilteredQuery(QueryList(), category, status, search).OrderByDescending(r => r.ProposedAt).ToListAsync();
 
     public List<Risk> GetForUser(int userId, string role,
         string? category = null, string? status = null, string? search = null)

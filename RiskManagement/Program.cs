@@ -191,12 +191,6 @@ builder.Services.AddMcpServer()
     .WithHttpTransport()
     .WithTools<RiskManagementTools>();
 
-builder.Services.AddHttpClient<UpdateCheckService>(client =>
-{
-    client.Timeout = TimeSpan.FromMilliseconds(3000);
-    client.DefaultRequestHeaders.Add("User-Agent", "RedZone-UpdateCheck/1.0");
-});
-
 // HTTP context erişimi için (Blazor Server'da gerekli)
 builder.Services.AddHttpContextAccessor();
 

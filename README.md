@@ -129,7 +129,9 @@ RiskManagement/
 └── wwwroot/         # Statik dosyalar (CSS)
 ```
 
-**Teknoloji yığını:** ASP.NET Core 8 · Blazor Server · Entity Framework Core 8 · BCrypt · ClosedXML · QuestPDF
+**Teknoloji yığını:** ASP.NET Core 8 · Blazor Server · Entity Framework Core 8 · BCrypt · ClosedXML · MigraDocCore/PdfSharpCore (PDF)
+
+Tüm bağımlılıklar permissif lisanslıdır (MIT/Apache-2.0/OFL) — tam liste için [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
 
 ---
 

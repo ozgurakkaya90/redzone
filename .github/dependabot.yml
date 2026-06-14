@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # NuGet bağımlılıkları
+  - package-ecosystem: "nuget"
+    directory: "/RiskManagement"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+
+  # Test projesi bağımlılıkları
+  - package-ecosystem: "nuget"
+    directory: "/RiskManagement.Tests"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+
+  # GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+  # Docker temel imajları
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"

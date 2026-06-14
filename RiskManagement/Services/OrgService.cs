@@ -23,17 +23,6 @@ public class OrgService(AppDbContext db)
         return [.. q.Include(d => d.Organization).ThenInclude(o => o!.Company).OrderBy(d => d.Name)];
     }
 
-    public List<Department> GetDepartmentsForOrg(int orgId) =>
-        [.. db.Departments
-            .Where(d => d.OrganizationId == orgId)
-            .OrderBy(d => d.Name)];
-
-    public List<Department> GetDepartmentsForCompany(int companyId) =>
-        [.. db.Departments
-            .Include(d => d.Organization)
-            .Where(d => d.Organization != null && d.Organization.CompanyId == companyId)
-            .OrderBy(d => d.Name)];
-
     public List<User> GetActiveUsers() =>
         [.. db.Users
             .Include(u => u.UserRoles)

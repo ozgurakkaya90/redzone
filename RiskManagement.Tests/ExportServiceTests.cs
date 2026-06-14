@@ -188,4 +188,20 @@ public class ExportServiceTests
         var bytes = Svc().ExportFindingsToPdf([]);
         Assert.NotEmpty(bytes);
     }
+
+    // Gömülü Lato fontu + MigraDocCore render zincirinin GERÇEK PDF ürettiğini doğrular
+    // (QuestPDF → MigraDocCore geçişinin çalışma-zamanı kanıtı). Türkçe karakter içerir.
+    [Fact]
+    public void ExportRisksToPdf_ProducesValidPdf_WithTurkishGlyphs()
+    {
+        var risk = MakeRisk("R-2026-001");
+        risk.Title    = "Çalışan güvenliği — İŞ KAZASI riski (Şğıöü)";
+        risk.Category = "İş Sağlığı ve Güvenliği";
+        risk.Evaluations.Add(new Evaluation { EvalType = EvalType.Initial, Score = 270, RiskLevel = "Yüksek Risk" });
+
+        var bytes = Svc().ExportRisksToPdf([risk], "Örnek Şirket A.Ş.");
+
+        Assert.True(bytes.Length > 500, "PDF beklenenden küçük — render başarısız olabilir.");
+        Assert.Equal("%PDF", System.Text.Encoding.ASCII.GetString(bytes, 0, 4)); // geçerli PDF imzası
+    }
 }
