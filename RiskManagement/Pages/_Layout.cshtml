@@ -123,7 +123,28 @@
             // form-group sayısı düşük olduğundan maliyeti ihmal edilebilir.
             (function () {
                 let seq = 0;
+                function labelText(el) { return (el.textContent || '').replace(/[\s*]+$/, '').trim(); }
+                // <label> olmayan ama etiket görevi gören .fl div'ini bul (filtre bar deseni:
+                // <div class="fl">Kategori</div><select>). Kontrolün önceki kardeşi ya da
+                // sarmalayıcısının önceki kardeşi olabilir.
+                function findFlLabel(ctrl) {
+                    const p = ctrl.previousElementSibling;
+                    if (p && p.classList && p.classList.contains('fl')) return p;
+                    const par = ctrl.parentElement;
+                    if (par) {
+                        const pp = par.previousElementSibling;
+                        if (pp && pp.classList && pp.classList.contains('fl')) return pp;
+                    }
+                    return null;
+                }
+                function hasName(ctrl) {
+                    if (ctrl.getAttribute('aria-label') || ctrl.getAttribute('aria-labelledby')) return true;
+                    if (ctrl.id && document.querySelector('label[for="' + CSS.escape(ctrl.id) + '"]')) return true;
+                    if (ctrl.closest('label')) return true;
+                    return false;
+                }
                 function associate() {
+                    // 1) .form-group > .form-label → gerçek for/id bağı
                     document.querySelectorAll('.form-group').forEach(function (g) {
                         const label = g.querySelector(':scope > .form-label');
                         if (!label) return;
@@ -133,6 +154,14 @@
                         if (!ctrl) return;
                         if (!ctrl.id) ctrl.id = 'fld-' + (++seq);
                         label.setAttribute('for', ctrl.id);
+                    });
+                    // 2) <label> olmayan etiket div'leri (.fl — filtre bar) → aria-label.
+                    //    Yalnızca peşinden gerçek bir kontrol gelen .fl'ler eşleşir; salt-okunur
+                    //    detay görünümlerindeki .fl etiketleri (kontrol yok) etkilenmez.
+                    document.querySelectorAll('input:not([type=hidden]), select, textarea').forEach(function (ctrl) {
+                        if (hasName(ctrl)) return;
+                        const fl = findFlLabel(ctrl);
+                        if (fl) { const t = labelText(fl); if (t) ctrl.setAttribute('aria-label', t); }
                     });
                 }
                 associate();
