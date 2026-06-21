@@ -22,10 +22,10 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - name: CodeQL baslat
-        uses: github/codeql-action/init@v3
+        uses: github/codeql-action/init@v4
         with:
           languages: csharp
       - name: Derle
         run: dotnet build RiskManagement/RiskManagement.csproj --configuration Release
       - name: CodeQL analiz
-        uses: github/codeql-action/analyze@v3
+        uses: github/codeql-action/analyze@v4
