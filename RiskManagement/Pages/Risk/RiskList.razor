@@ -1,5 +1,5 @@
-@page "/risk"
-@attribute [Authorize]
+﻿@page "/risk"
+@attribute [Authorize(Policy = "risk.read")]
 @inject RiskService RiskSvc
 @inject ConfigService CfgSvc
 @inject IRiskCalculator RiskCalc
@@ -499,13 +499,13 @@ else
         get
         {
             var all = _risks;
-            yield return ("Toplam Risk",    all.Count,                                                   "#374151", "#f9fafb");
+            yield return ("Toplam Risk",    all.Count,                                                   "var(--gray-700)", "var(--gray-50)");
             yield return ("Açık",          all.Count(r => r.Status is "proposed" or "under_review" or "awaiting_approval"),    "#1d4ed8", "#eff6ff");
             yield return ("Çok Yüksek / Yüksek",
                 all.Count(r => r.Evaluations.FirstOrDefault(e=>e.EvalType=="initial")?.RiskLevel is "Çok Yüksek Risk" or "Yüksek Risk"),
                 "#dc2626", "#fef2f2");
             yield return ("Kontrollü",     all.Count(r => r.Status is "controlled" or "residual_evaluated" or "action_planned" or "risk_accepted"), "#16a34a", "#f0fdf4");
-            yield return ("Reddedildi",    all.Count(r => r.Status == "rejected"),                      "#6b7280", "#f3f4f6");
+            yield return ("Reddedildi",    all.Count(r => r.Status == "rejected"),                      "var(--text-3)", "#f3f4f6");
         }
     }
 

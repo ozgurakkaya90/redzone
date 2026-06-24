@@ -1,5 +1,5 @@
-@page "/audit/plan"
-@attribute [Authorize(Roles = "auditor,audit_manager,admin")]
+﻿@page "/audit/plan"
+@attribute [Authorize(Policy = "audit.write")]
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
 @inject OrgService OrgSvc
@@ -108,7 +108,7 @@
                 <span><span class="gantt-legend-dot" style="background:#22c55e"></span> Tamamlandı</span>
                 <span><span class="gantt-legend-dot" style="background:#3b82f6"></span> Devam Ediyor</span>
                 <span><span class="gantt-legend-dot" style="background:#f59e0b"></span> Gecikmeli Tamam</span>
-                <span><span class="gantt-legend-dot" style="background:#ef4444"></span> Gecikmiş</span>
+                <span><span class="gantt-legend-dot" style="background:var(--color-danger)"></span> Gecikmiş</span>
             </div>
         </div>
 
@@ -459,7 +459,7 @@
 {
     <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;
                 display:flex;align-items:center;justify-content:center">
-        <div class="card" style="padding:24px;max-width:460px;width:92%">
+        <div class="card" role="dialog" aria-modal="true" aria-label="İç denetim oluştur" style="padding:24px;max-width:460px;width:92%">
             <div style="font-size:15px;font-weight:700;margin-bottom:4px">İç Denetim Oluştur</div>
             <div style="font-size:12px;color:var(--text-3);margin-bottom:16px">
                 <strong>@_convertItem.Title</strong> plan maddesinden otomatik iç denetim oluşturulacak.
@@ -500,7 +500,7 @@
 {
     <div style="position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;
                 display:flex;align-items:center;justify-content:center">
-        <div class="card" style="padding:24px;max-width:380px;width:92%">
+        <div class="card" role="dialog" aria-modal="true" aria-label="Denetim silme onayı" style="padding:24px;max-width:380px;width:92%">
             <div style="font-size:14px;font-weight:700;margin-bottom:8px">Denetimi Sil</div>
             <div style="font-size:13px;color:var(--text-3);margin-bottom:16px">
                 Bu planlanan denetim kaydı silinecek. Bu işlem geri alınamaz.
@@ -830,7 +830,7 @@
         "completed"      => "#22c55e",
         "completed_late" => "#f59e0b",
         "in_progress"    => "#3b82f6",
-        "late"           => "#ef4444",
+        "late"           => "var(--color-danger)",
         _                => ""
     };
 
@@ -854,7 +854,7 @@
         yield return ("Tamamlandı",  comp,        "#22c55e", "");
         yield return ("Devam Ediyor",inProg,       "#3b82f6", "");
         yield return ("Planlandı",   planned,      "#8b5cf6", "");
-        yield return ("Gecikmiş",    late,         "#ef4444", "");
+        yield return ("Gecikmiş",    late,         "var(--color-danger)", "");
         if (compLate > 0)
             yield return ("Gecikmeli Tamam", compLate, "#f59e0b", "");
     }
@@ -864,7 +864,7 @@
         "completed"      => @<span style="color:#22c55e;font-size:10px">●</span>,
         "completed_late" => @<span style="color:#f59e0b;font-size:10px">●</span>,
         "in_progress"    => @<span style="color:#3b82f6;font-size:10px">●</span>,
-        "late"           => @<span style="color:#ef4444;font-size:10px">●</span>,
+        "late"           => @<span style="color:var(--color-danger);font-size:10px">●</span>,
         _                => @<span style="color:#cbd5e1;font-size:10px">●</span>,
     };
 

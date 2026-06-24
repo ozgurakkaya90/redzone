@@ -157,6 +157,9 @@ public class LoginModel(AuthService auth, AppDbContext db, ConfigService config,
         EthicsEnabled = config.IsModuleActive("ethics");
     }
 
+    // AD bağlantı (socket) timeout'u — intranet için makul; down sunucuda hızlı başarısızlık.
+    private const int LdapTimeoutMs = 10_000;
+
     private Models.User? PerformLdapLogin(LdapConfiguration cfg, string samAccount,
         string password, string searchFilter)
     {
@@ -168,6 +171,9 @@ public class LoginModel(AuthService auth, AppDbContext db, ConfigService config,
         // 1. Servis hesabıyla bağlan ve kullanıcıyı ara
         using (var conn = new LdapConnection { SecureSocketLayer = cfg.UseSsl })
         {
+            // KOBİ-intranet dayanıklılığı: AD sunucusu down/erişilemezse OS TCP timeout'una
+            // (~20-60sn) kadar asılı kalmasın — hızlı, dostça hatayla dön.
+            conn.ConnectionTimeout = LdapTimeoutMs;
             conn.Connect(cfg.Server!, cfg.Port);
             if (cfg.UseTls) conn.StartTls();
 
@@ -196,6 +202,7 @@ public class LoginModel(AuthService auth, AppDbContext db, ConfigService config,
         // 2. Kullanıcı DN'i ile şifreyi doğrula
         using (var userConn = new LdapConnection { SecureSocketLayer = cfg.UseSsl })
         {
+            userConn.ConnectionTimeout = LdapTimeoutMs;
             userConn.Connect(cfg.Server!, cfg.Port);
             if (cfg.UseTls) userConn.StartTls();
             userConn.Bind(userDn, password); // InvalidCredentials fırlatır

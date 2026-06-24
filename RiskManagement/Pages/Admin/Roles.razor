@@ -49,7 +49,7 @@
                     <td style="padding:12px 20px;text-align:center">
                         @if (role.IsSystem)
                         {
-                            <span style="display:inline-block;font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:#dbeafe;color:#1d4ed8">Yerleşik</span>
+                            <span style="display:inline-block;font-size:11px;font-weight:600;padding:2px 10px;border-radius:10px;background:var(--color-info-border);color:var(--color-info-fg)">Yerleşik</span>
                         }
                         else
                         {
@@ -61,7 +61,7 @@
                         @if (!role.IsSystem)
                         {
                             <button class="btn btn-outline btn-sm" style="margin-right:6px" @onclick="() => OpenEdit(role)">Düzenle</button>
-                            <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#fca5a5"
+                            <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:var(--color-danger-border)"
                                     @onclick="() => ConfirmDelete(role)"
                                     disabled="@(userCount > 0)">Sil</button>
                         }
@@ -80,7 +80,7 @@
 @if (_showForm)
 {
     <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center" @onclick="CloseForm">
-        <div style="background:var(--surface);border-radius:12px;padding:28px;width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3)" @onclick:stopPropagation>
+        <div role="dialog" aria-modal="true" aria-label="Rol formu" style="background:var(--surface);border-radius:12px;padding:28px;width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3)" @onclick:stopPropagation>
             <h3 style="margin:0 0 20px;font-size:16px;font-weight:700">@(_editId == 0 ? "Yeni Rol Oluştur" : "Rolü Düzenle")</h3>
 
             @if (_editId == 0)
@@ -103,7 +103,7 @@
 
             @if (!string.IsNullOrEmpty(_formError))
             {
-                <div style="padding:8px 12px;background:#fee2e2;border:1px solid #fca5a5;border-radius:6px;font-size:13px;color:#dc2626;margin-bottom:12px">
+                <div style="padding:8px 12px;background:#fee2e2;border:1px solid var(--color-danger-border);border-radius:6px;font-size:13px;color:#dc2626;margin-bottom:12px">
                     @_formError
                 </div>
             }
@@ -122,8 +122,8 @@
 @if (_deleteRole != null)
 {
     <div style="position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center">
-        <div style="background:var(--surface);border-radius:12px;padding:28px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
-            <h3 style="margin:0 0 12px;font-size:16px;font-weight:700;color:#dc2626">Rolü Sil</h3>
+        <div role="dialog" aria-modal="true" aria-label="Rol silme onayı" style="background:var(--surface);border-radius:12px;padding:28px;width:380px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+            <h3 style="margin:0 0 12px;font-size:16px;font-weight:700;color:var(--risk-high-color)">Rolü Sil</h3>
             <p style="font-size:14px;color:var(--text-2);margin:0 0 20px">
                 <strong>@_deleteRole.Label</strong> rolü silinecek. Bu işlem geri alınamaz.
             </p>
@@ -151,13 +151,17 @@
     private void Load()
     {
         _roles = Auth.GetAllRoles();
-        _userCounts = Db.UserRoles
-            .GroupBy(ur => ur.RoleName)
-            .ToDictionary(g => g.Key, g => g.Count());
-        // Primary role'dan da say
-        foreach (var u in Db.Users.Where(u => u.IsActive))
+        // Join tablosundaki rol atamaları — ToList ile materielize edip in-memory grupla
+        _userCounts = [];
+        foreach (var ur in Db.UserRoles.ToList())
+            _userCounts[ur.RoleName] = _userCounts.GetValueOrDefault(ur.RoleName, 0) + 1;
+
+        // Primary (User.Role) alanındaki atamalar
+        foreach (var u in Db.Users.Where(u => u.IsActive)
+                              .Select(u => u.Role).ToList())
         {
-            if (!_userCounts.ContainsKey(u.Role)) _userCounts[u.Role] = 0;
+            if (!string.IsNullOrEmpty(u))
+                _userCounts[u] = _userCounts.GetValueOrDefault(u, 0) + 1;
         }
     }
 

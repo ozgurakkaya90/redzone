@@ -78,7 +78,8 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
     // ─── Dosya yükleme sabitleri (tek kaynak) ────────────────────────────────
     public static readonly HashSet<string> AllowedAttachmentExtensions =
         [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".txt", ".zip"];
-    public const long MaxAttachmentSize = 10L * 1024 * 1024; // 10 MB
+    // Tek otoriter kaynak: UploadLimits (Program.cs'te AppSettings:MaxUploadSizeMb'den ayarlanır).
+    public static long MaxAttachmentSize => UploadLimits.MaxBytes;
 
     public string GenerateAuditCode()
     {
@@ -132,7 +133,8 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
                 a.LeadAuditorId == userId ||
                 a.Findings.Any(f => f.AuditorId == userId) ||
                 (a.DepartmentId != null && deptIds.Contains(a.DepartmentId.Value)))) ||
-            (allRoles.Contains("finding_owner") && a.Findings.Any(f => f.OwnerId == userId))
+            (allRoles.Contains("finding_owner") && a.Findings.Any(f => f.OwnerId == userId)) ||
+            (deptIds.Count > 0 && a.DepartmentId != null && deptIds.Contains(a.DepartmentId.Value))
         );
     }
 
@@ -294,6 +296,8 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
     /// </summary>
     public IQueryable<AuditFinding> FindingQuery() => db.AuditFindings
         .AsNoTracking()
+        // Çok-koleksiyonlu Include (ClosureRequests, Actions, Attachments, ActivityLogs,
+        // RiskLinks) — kartezyen patlama global SplitQuery ile önlenir (Program.cs).
         .Include(f => f.Auditor)
         .Include(f => f.Owner)
         .Include(f => f.Department)
@@ -357,6 +361,16 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
 
     public AuditFinding? GetFinding(int id) =>
         FindingQuery().FirstOrDefault(f => f.Id == id);
+
+    /// <summary>
+    /// Kullanıcının erişebildiği iç-denetim bulgu ID'leri — Include/tam entity yüklemeden hafif
+    /// "SELECT Id". Export/import kapsam kontrolünde GetFindingsForUser(...).Select(f=>f.Id)
+    /// yerine kullanılır; mevcut ScopeFindingsForUser ile aynı erişim kuralını paylaşır.
+    /// </summary>
+    public HashSet<int> GetAccessibleFindingIds(User user)
+        => ScopeFindingsForUser(
+               db.AuditFindings.AsNoTracking().Where(f => f.AuditSource == "internal"), user)
+           .Select(f => f.Id).ToHashSet();
 
     public AuditFinding? GetFindingForUser(int id, int userId, string role)
     {
@@ -510,6 +524,10 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
     internal async Task<ClosureRequest?> InternalSubmitClosureRequestAsync(int findingId, string description,
         string? evidence, int requestedById)
     {
+        var alreadyPending = await db.ClosureRequests
+            .AnyAsync(r => r.FindingId == findingId && r.ReviewedAt == null);
+        if (alreadyPending) return null;
+
         var req = new ClosureRequest
         {
             FindingId = findingId,
@@ -755,9 +773,19 @@ public class AuditService(AppDbContext db, INotificationService? notifications =
     {
         var att = await db.FindingAttachments.FindAsync(attachmentId);
         if (att == null) return false;
-        if (File.Exists(att.StoredPath)) File.Delete(att.StoredPath);
+
+        // DB kaydını önce sil; başarısız olursa dosyaya dokunma.
         db.FindingAttachments.Remove(att);
         await db.SaveChangesAsync();
+
+        if (File.Exists(att.StoredPath))
+        {
+            try { File.Delete(att.StoredPath); }
+            catch (Exception ex)
+            {
+                logger?.LogWarning(ex, "Ek dosyası silinemedi: {Path}", att.StoredPath);
+            }
+        }
         return true;
     }
 

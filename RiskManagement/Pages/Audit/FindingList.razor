@@ -1,5 +1,5 @@
-@page "/audit/findings"
-@attribute [Authorize]
+﻿@page "/audit/findings"
+@attribute [Authorize(Policy = "audit.read")]
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
 @inject AuthService Auth

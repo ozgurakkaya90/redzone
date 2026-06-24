@@ -1,5 +1,5 @@
-@page "/audit/findings/new"
-@attribute [Authorize]
+﻿@page "/audit/findings/new"
+@attribute [Authorize(Policy = "audit.write")]
 @inject AuditService AuditSvc
 @inject AuthService Auth
 @inject ConfigService CfgSvc
@@ -60,7 +60,7 @@
                 <div style="margin-top:6px">
                     @foreach (var f in _pendingFiles)
                     {
-                        <div style="font-size:12px;color:#374151;padding:2px 0">
+                        <div style="font-size:12px;color:var(--gray-700);padding:2px 0">
                              @f.Name <span style="color:#9ca3af">(@FormatSize(f.Size))</span>
                         </div>
                     }

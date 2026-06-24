@@ -105,7 +105,7 @@
 @* ── Gecikmiş İşler ─────────────────────────────────────────────────────── *@
 @if (_overdueActions > 0 || _overdueFindings > 0)
 {
-    <div class="card" style="border:1.5px solid #fca5a5;background:#fff5f5">
+    <div class="card" style="border:1.5px solid var(--color-danger-border);background:#fff5f5">
         <div style="font-weight:700;font-size:14px;margin-bottom:10px;color:#991b1b">Dikkat — Gecikmiş İşler</div>
         <div style="display:flex;gap:24px;flex-wrap:wrap;font-size:13px">
             @if (_overdueActions > 0)
@@ -141,7 +141,7 @@
             ("Öneri",         risks.Count(r => r.Status == "proposed"),           "#ca8a04"),
             ("Onaylı",        risks.Count(r => r.Status == "approved"),           "#2563eb"),
             ("Kontrol Altında", risks.Count(r => r.Status is "strategy_set" or "controlled" or "residual_evaluated" or "action_planned"), "#16a34a"),
-            ("Kabul Edildi",  risks.Count(r => r.Status == "risk_accepted"),      "#6b7280"),
+            ("Kabul Edildi",  risks.Count(r => r.Status == "risk_accepted"),      "var(--text-3)"),
         ];
 
         // ── Aksiyon Planları ─────────────────────────────────────────────────

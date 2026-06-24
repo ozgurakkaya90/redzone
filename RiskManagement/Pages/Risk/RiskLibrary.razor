@@ -1,5 +1,6 @@
-@page "/risk/library"
-@attribute [Authorize]
+﻿@page "/risk/library"
+@attribute [Authorize(Policy = "risk.read")]
+@implements IDisposable
 @inject RiskLibraryService LibSvc
 @inject RiskService RiskSvc
 @inject AiRiskDraftService AiSvc
@@ -247,20 +248,21 @@ else
     <div @onclick="CloseAiModal"
          style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000"></div>
 
-    <div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+    <div role="dialog" aria-modal="true" aria-label="AI ile risk taslağı oluştur"
+         style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
                 z-index:9001;background:#fff;border-radius:14px;width:min(600px,92vw);
                 box-shadow:0 24px 64px rgba(0,0,0,.22);display:flex;flex-direction:column;
                 max-height:88vh;overflow:hidden;font-family:inherit">
 
         
         <div style="display:flex;align-items:center;justify-content:space-between;
-                    padding:18px 20px 16px;border-bottom:1px solid #e5e7eb;flex-shrink:0">
-            <h3 style="margin:0;font-size:16px;font-weight:700;color:#111827;display:flex;align-items:center;gap:8px">
+                    padding:18px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">
+            <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px">
                 <Icon Name="sparkles" Size="16" /> AI ile Risk Taslağı Oluştur
             </h3>
             <button @onclick="CloseAiModal" @onclick:stopPropagation="true"
                     style="border:none;background:none;cursor:pointer;
-                           color:#6b7280;line-height:1;padding:4px 8px;border-radius:6px"
+                           color:var(--text-3);line-height:1;padding:4px 8px;border-radius:6px"
                     title="Kapat" aria-label="Kapat"><Icon Name="close" Size="18" /></button>
         </div>
 
@@ -268,16 +270,17 @@ else
         <div style="padding:20px;overflow-y:auto;flex:1">
             @if (_aiDraft == null && !_aiLoading)
             {
-                <p style="font-size:13px;color:#6b7280;margin:0 0 14px">
+                <p style="font-size:13px;color:var(--text-3);margin:0 0 14px">
                     Karşılaştığınız durumu veya endişeyi serbest metinle anlatın.
                     AI bunu bir risk kaydı taslağına dönüştürecek.
                 </p>
                 <textarea class="form-control" rows="5" style="resize:vertical;width:100%;box-sizing:border-box"
                           placeholder="Örn: Son depremde tedarikçimiz kapandı ve ham madde temin edemez hale geldik. Üretim durma riski var."
+                          maxlength="4000"
                           @bind="_aiInput" @bind:event="oninput"></textarea>
                 @if (!string.IsNullOrEmpty(_aiError))
                 {
-                    <div style="margin-top:12px;padding:12px 14px;background:#fef2f2;border:1px solid #fca5a5;
+                    <div style="margin-top:12px;padding:12px 14px;background:#fef2f2;border:1px solid var(--color-danger-border);
                                 border-radius:8px;font-size:13px;color:#991b1b;display:flex;align-items:center;gap:8px">
                         <Icon Name="warning" Size="15" /> @_aiError
                     </div>
@@ -286,43 +289,43 @@ else
             else if (_aiLoading)
             {
                 <div style="text-align:center;padding:48px 20px">
-                    <div style="margin-bottom:14px;color:#6b7280"><Icon Name="robot" Size="32" /></div>
-                    <div style="font-size:14px;color:#6b7280">Analiz ediliyor…</div>
+                    <div style="margin-bottom:14px;color:var(--text-3)"><Icon Name="robot" Size="32" /></div>
+                    <div style="font-size:14px;color:var(--text-3)">Analiz ediliyor…</div>
                 </div>
             }
             else if (_aiDraft != null)
             {
-                <p style="font-size:13px;color:#6b7280;margin:0 0 16px">
+                <p style="font-size:13px;color:var(--text-3);margin:0 0 16px">
                     AI aşağıdaki taslağı oluşturdu. Düzenleyip envanterinize önerebilirsiniz.
                 </p>
                 <div style="margin-bottom:12px">
-                    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">
-                        Risk Başlığı <span style="color:#ef4444">*</span>
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:4px">
+                        Risk Başlığı <span style="color:var(--color-danger)">*</span>
                     </label>
                     <input class="form-control" @bind="_draftTitle" maxlength="200" style="width:100%;box-sizing:border-box" />
                 </div>
                 <div style="margin-bottom:12px">
-                    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Kategori</label>
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:4px">Kategori</label>
                     <input class="form-control" @bind="_draftCategory" maxlength="100" style="width:100%;box-sizing:border-box" />
                 </div>
                 <div style="margin-bottom:12px">
-                    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Kaynak Türü</label>
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:4px">Kaynak Türü</label>
                     <select class="form-control" @bind="_draftSourceType" style="width:100%;box-sizing:border-box">
                         <option value="internal">İç</option>
                         <option value="external">Dış</option>
                     </select>
                 </div>
                 <div style="margin-bottom:12px">
-                    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Tehlike</label>
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:4px">Tehlike</label>
                     <textarea class="form-control" rows="2" @bind="_draftHazard" style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
                 </div>
                 <div style="margin-bottom:4px">
-                    <label style="display:block;font-size:12px;font-weight:600;color:#374151;margin-bottom:4px">Olası Etki</label>
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:4px">Olası Etki</label>
                     <textarea class="form-control" rows="2" @bind="_draftImpact" style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
                 </div>
                 @if (!string.IsNullOrEmpty(_aiError))
                 {
-                    <div style="margin-top:12px;padding:12px 14px;background:#fef2f2;border:1px solid #fca5a5;
+                    <div style="margin-top:12px;padding:12px 14px;background:#fef2f2;border:1px solid var(--color-danger-border);
                                 border-radius:8px;font-size:13px;color:#991b1b;display:flex;align-items:center;gap:8px">
                         <Icon Name="warning" Size="15" /> @_aiError
                     </div>
@@ -332,7 +335,7 @@ else
 
         
         <div style="display:flex;justify-content:flex-end;gap:8px;
-                    padding:14px 20px;border-top:1px solid #e5e7eb;flex-shrink:0">
+                    padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0">
             @if (_aiDraft == null && !_aiLoading)
             {
                 <button class="btn btn-outline" @onclick="CloseAiModal">İptal</button>
@@ -375,6 +378,7 @@ else
     private bool              _aiLoading;
     private bool              _aiProposing;
     private string            _aiInput  = "";
+    private CancellationTokenSource? _aiCts;
     private string            _aiError  = "";
     private AiRiskDraftResult? _aiDraft;
     private string _draftTitle      = "";
@@ -443,10 +447,12 @@ else
 
     private void CloseAiModal()
     {
+        _aiCts?.Cancel();
         _aiModalOpen = false;
         _aiInput     = "";
         _aiDraft     = null;
         _aiError     = "";
+        _aiLoading   = false;
         StateHasChanged();
     }
 
@@ -456,19 +462,26 @@ else
     {
         _aiError   = "";
         _aiLoading = true;
+        _aiCts?.Cancel();
+        _aiCts = new CancellationTokenSource();
         try
         {
-            _aiDraft = await AiSvc.DraftAsync(_aiInput);
+            _aiDraft = await AiSvc.DraftAsync(_aiInput, _aiCts.Token);
             _draftTitle      = _aiDraft.Title;
             _draftCategory   = _aiDraft.Category   ?? "";
             _draftSourceType = _aiDraft.SourceType  ?? "internal";
             _draftHazard     = _aiDraft.Hazard      ?? "";
             _draftImpact     = _aiDraft.PossibleImpact ?? "";
         }
+        catch (OperationCanceledException) when (_aiCts?.IsCancellationRequested == true) { /* kullanıcı modalı kapattı */ }
         catch (HttpRequestException ex) when (ex.Message.Contains("429") || ex.Message.Contains("TooManyRequests") || ex.Message.Contains("RESOURCE_EXHAUSTED") || ex.Message.Contains("quota"))
         {
             _aiError = "API kotası aşıldı veya ücretsiz plan sınırına ulaşıldı. " +
                        "Google AI Studio'da faturalandırmayı etkinleştirin ya da başka bir sağlayıcı (OpenAI/Anthropic) deneyin.";
+        }
+        catch (OperationCanceledException)
+        {
+            _aiError = "AI isteği zaman aşımına uğradı. Lütfen tekrar deneyin.";
         }
         catch (Exception ex)
         {
@@ -479,6 +492,8 @@ else
             _aiLoading = false;
         }
     }
+
+    public void Dispose() => _aiCts?.Cancel();
 
     private async Task ProposeFromDraft()
     {

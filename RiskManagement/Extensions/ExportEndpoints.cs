@@ -57,7 +57,7 @@ public static class ExportEndpoints
         {
             var userObj = authSvc.ActiveUserFromPrincipal(user);
             if (userObj is null) return Results.Unauthorized();
-            var accessibleRiskIds = riskSvc.GetForUser(userObj).Select(r => r.Id).ToHashSet();
+            var accessibleRiskIds = riskSvc.GetAccessibleRiskIds(userObj);
             var controls = db.Controls
                 .Include(c => c.Risk).Include(c => c.EnteredBy).Include(c => c.OwnerDept)
                 .Where(c => accessibleRiskIds.Contains(c.RiskId)).ToList();
@@ -70,7 +70,7 @@ public static class ExportEndpoints
         {
             var userObj = authSvc.ActiveUserFromPrincipal(user);
             if (userObj is null) return Results.Unauthorized();
-            var accessibleRiskIds = riskSvc.GetForUser(userObj).Select(r => r.Id).ToHashSet();
+            var accessibleRiskIds = riskSvc.GetAccessibleRiskIds(userObj);
             var controls = db.Controls
                 .Include(c => c.Risk).Include(c => c.EnteredBy).Include(c => c.OwnerDept)
                 .Where(c => accessibleRiskIds.Contains(c.RiskId)).ToList();
@@ -84,7 +84,7 @@ public static class ExportEndpoints
         {
             var userObj = authSvc.ActiveUserFromPrincipal(user);
             if (userObj is null) return Results.Unauthorized();
-            var accessibleRiskIds = riskSvc.GetForUser(userObj).Select(r => r.Id).ToHashSet();
+            var accessibleRiskIds = riskSvc.GetAccessibleRiskIds(userObj);
             var plans = db.ActionPlans
                 .Include(a => a.Risk).Include(a => a.CreatedBy).Include(a => a.OwnerDept)
                 .Where(a => accessibleRiskIds.Contains(a.RiskId)).ToList();
@@ -97,7 +97,7 @@ public static class ExportEndpoints
         {
             var userObj = authSvc.ActiveUserFromPrincipal(user);
             if (userObj is null) return Results.Unauthorized();
-            var accessibleRiskIds = riskSvc.GetForUser(userObj).Select(r => r.Id).ToHashSet();
+            var accessibleRiskIds = riskSvc.GetAccessibleRiskIds(userObj);
             var plans = db.ActionPlans
                 .Include(a => a.Risk).Include(a => a.CreatedBy).Include(a => a.OwnerDept)
                 .Where(a => accessibleRiskIds.Contains(a.RiskId)).ToList();
@@ -111,7 +111,7 @@ public static class ExportEndpoints
         {
             var userObj = authSvc.ActiveUserFromPrincipal(user);
             if (userObj is null) return Results.Unauthorized();
-            var accessibleFindingIds = auditSvc.GetFindingsForUser(userObj).Select(f => f.Id).ToHashSet();
+            var accessibleFindingIds = auditSvc.GetAccessibleFindingIds(userObj);
             var actions = db.AuditFindingActions
                 .Include(a => a.Finding).Include(a => a.CreatedBy)
                 .Where(a => accessibleFindingIds.Contains(a.FindingId)).ToList();
@@ -124,7 +124,7 @@ public static class ExportEndpoints
         {
             var userObj = authSvc.ActiveUserFromPrincipal(user);
             if (userObj is null) return Results.Unauthorized();
-            var accessibleFindingIds = auditSvc.GetFindingsForUser(userObj).Select(f => f.Id).ToHashSet();
+            var accessibleFindingIds = auditSvc.GetAccessibleFindingIds(userObj);
             var actions = db.AuditFindingActions
                 .Include(a => a.Finding).Include(a => a.CreatedBy)
                 .Where(a => accessibleFindingIds.Contains(a.FindingId)).ToList();

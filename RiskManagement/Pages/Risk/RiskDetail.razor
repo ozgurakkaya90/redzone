@@ -1,5 +1,5 @@
-@page "/risk/{Id:int}"
-@attribute [Authorize]
+﻿@page "/risk/{Id:int}"
+@attribute [Authorize(Policy = "risk.read")]
 @inject RiskService RiskSvc
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
@@ -42,7 +42,7 @@ else
                         <code style="font-size:11px;background:var(--gray-100);padding:2px 8px;border-radius:4px;color:var(--text-3)">@_risk.Code</code>
                         <span class="badge @StatusBadge(_risk.Status)">@StatusLabel(_risk.Status)</span>
                         @if (!_risk.IsActive)
-                        { <span class="badge" style="background:#6b7280;color:#fff">Pasif</span> }
+                        { <span class="badge" style="background:var(--text-3);color:#fff">Pasif</span> }
                         @if (_risk.Category != null) { <span class="tag">@_risk.Category</span> }
                     </div>
                     <h2 class="detail-header-title">@_risk.Title</h2>

@@ -1,5 +1,5 @@
-@page "/audit/findings/external"
-@attribute [Authorize]
+﻿@page "/audit/findings/external"
+@attribute [Authorize(Policy = "external_audit.read")]
 @inject ExternalAuditService ExtSvc
 @inject AuthService Auth
 @inject AppDbContext Db

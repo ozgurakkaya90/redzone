@@ -40,6 +40,25 @@ public sealed class ActionReminderWorker(
         var db       = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var notifier = scope.ServiceProvider.GetRequiredService<INotificationService>();
 
+        // İdempotency guard: ExecuteAsync'teki 24s döngüsü uygulama her yeniden başladığında
+        // sıfırlanır. IIS in-process altında (idle timeout/app pool recycle) uygulama gün
+        // içinde defalarca açılıp kapanabilir — tarih guard'ı olmadan aynı "vadesi yaklaşan"
+        // hatırlatmalar her başlangıçta tekrar gönderilir (mükerrer e-posta). Bugün zaten
+        // çalıştıysak atla; kalıcı sayaç (Counters) ile takip edilir, böylece restart'tan
+        // etkilenmez. Çok-günlük pencere nedeniyle bir gün atlansa bile ertesi gün yakalanır.
+        const string lastRunKey = "action_reminder_last_run_ymd";
+        var todayYmd = long.Parse(DateTime.Today.ToString("yyyyMMdd"));
+        var marker = await db.Counters.FirstOrDefaultAsync(c => c.Key == lastRunKey, ct);
+        if (marker != null && marker.Value == todayYmd)
+        {
+            logger.LogInformation("ActionReminderWorker: bugün zaten çalıştı, atlanıyor.");
+            return;
+        }
+        // Bugünü hemen işaretle (işten önce) — mid-run hata olsa bile aynı gün mükerrer gönderim olmaz.
+        if (marker == null) db.Counters.Add(new Counter { Key = lastRunKey, Value = todayYmd });
+        else                marker.Value = todayYmd;
+        await db.SaveChangesAsync(ct);
+
         var remindDays = cfg.GetActionDueRemindDays();
         var today      = DateOnly.FromDateTime(DateTime.Today);
         var deadline   = today.AddDays(remindDays);

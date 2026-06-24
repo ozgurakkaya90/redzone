@@ -1,5 +1,5 @@
-@page "/ethics/reports/new"
-@attribute [Authorize(Roles = "auditor,audit_manager,admin")]
+﻿@page "/ethics/reports/new"
+@attribute [Authorize(Policy = "ethics.write")]
 @inject EthicsService EthicsSvc
 @inject ConfigService CfgSvc
 @inject NavigationManager Nav

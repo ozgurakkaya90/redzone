@@ -1,5 +1,5 @@
-@page "/audit/internal/new"
-@attribute [Authorize]
+﻿@page "/audit/internal/new"
+@attribute [Authorize(Policy = "audit.write")]
 @inject AuditService AuditSvc
 @inject AuthService Auth
 @inject ConfigService CfgSvc
@@ -189,6 +189,8 @@
     {
         if (string.IsNullOrWhiteSpace(_title))  { _error = "Başlık zorunludur."; return; }
         if (string.IsNullOrWhiteSpace(_period)) { _error = "Dönem zorunludur."; return; }
+        if (_startDate.HasValue && _endDate.HasValue && _endDate.Value < _startDate.Value)
+        { _error = "Bitiş tarihi başlangıç tarihinden önce olamaz."; return; }
         _loading = true;
         var start = _startDate.HasValue ? DateOnly.FromDateTime(_startDate.Value) : (DateOnly?)null;
         var end   = _endDate.HasValue   ? DateOnly.FromDateTime(_endDate.Value)   : (DateOnly?)null;

@@ -1,5 +1,5 @@
-@page "/risk/dashboard"
-@attribute [Authorize]
+﻿@page "/risk/dashboard"
+@attribute [Authorize(Policy = "risk.read")]
 @inject RiskService RiskSvc
 @inject AuthService Auth
 @inject ConfigService CfgSvc
@@ -392,7 +392,7 @@ else
         {
             var rpts = RingPoints(CX, CY, R, rings[ri], N);
             var fill = ri % 2 == 0 ? "#f8fafc" : "#fff";
-            sb.Append($"<path d=\"{ToPath(rpts)}\" fill=\"{fill}\" stroke=\"#e5e7eb\" stroke-width=\"0.8\"/>");
+            sb.Append($"<path d=\"{ToPath(rpts)}\" fill=\"{fill}\" stroke=\"var(--border)\" stroke-width=\"0.8\"/>");
             sb.Append($"<text x=\"{F(CX+3)}\" y=\"{F(CY-R*rings[ri]-2)}\" font-size=\"8\" fill=\"#c4c9d4\" text-anchor=\"start\" font-family=\"Inter,sans-serif\">{ringVals[ri]}</text>");
         }
 
@@ -437,9 +437,9 @@ else
             var l1    = string.Join(" ", words.Take(mid));
             var l2    = string.Join(" ", words.Skip(mid));
             var yOff  = l2.Length > 0 ? -5 : 0;
-            sb.Append($"<text x=\"{F(lx)}\" y=\"{F(ly+yOff)}\" text-anchor=\"{anchor}\" font-size=\"10\" font-weight=\"500\" fill=\"#374151\" font-family=\"Inter,sans-serif\">{l1}</text>");
+            sb.Append($"<text x=\"{F(lx)}\" y=\"{F(ly+yOff)}\" text-anchor=\"{anchor}\" font-size=\"10\" font-weight=\"500\" fill=\"var(--gray-700)\" font-family=\"Inter,sans-serif\">{l1}</text>");
             if (l2.Length > 0)
-                sb.Append($"<text x=\"{F(lx)}\" y=\"{F(ly+7)}\" text-anchor=\"{anchor}\" font-size=\"10\" font-weight=\"500\" fill=\"#374151\" font-family=\"Inter,sans-serif\">{l2}</text>");
+                sb.Append($"<text x=\"{F(lx)}\" y=\"{F(ly+7)}\" text-anchor=\"{anchor}\" font-size=\"10\" font-weight=\"500\" fill=\"var(--gray-700)\" font-family=\"Inter,sans-serif\">{l2}</text>");
             sb.Append($"<text x=\"{F(lx)}\" y=\"{F(ly+(l2.Length>0?18:11))}\" text-anchor=\"{anchor}\" font-size=\"8.5\" fill=\"#b0b7c3\" font-family=\"Inter,sans-serif\">{_radar[i].Count} risk</text>");
         }
 

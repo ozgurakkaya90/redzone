@@ -51,7 +51,7 @@ public sealed class OpenAiCompatibleCompletionService(AiSettings settings, IHttp
             }
         };
 
-        using var client = httpFactory.CreateClient();
+        using var client = httpFactory.CreateClient("ai");
         if (!string.IsNullOrWhiteSpace(settings.ApiKey))
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", settings.ApiKey);
 

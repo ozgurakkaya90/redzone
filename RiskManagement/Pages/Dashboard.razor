@@ -189,10 +189,10 @@
                 <span class="module-card-title">Risk Yönetimi</span>
                 <span class="module-card-value">@_riskTotal</span>
             </div>
-            <MiniBarRow Label="Öneri / İnceleme" Value="_riskProposedReview" Max="_riskTotal" Color="#6d28d9" />
-            <MiniBarRow Label="Envanterde"        Value="_riskApproved"       Max="_riskTotal" Color="#16a34a" />
-            <MiniBarRow Label="Kontrol / Aksiyon" Value="_riskControlled"     Max="_riskTotal" Color="#0284c7" />
-            <MiniBarRow Label="Reddedilen"         Value="_riskRejected"       Max="_riskTotal" Color="#dc2626" />
+            <MiniBarRow Label="Öneri / İnceleme" Value="_riskProposedReview" Max="_riskTotal" Color="var(--chart-violet)" />
+            <MiniBarRow Label="Envanterde"        Value="_riskApproved"       Max="_riskTotal" Color="var(--chart-green)" />
+            <MiniBarRow Label="Kontrol / Aksiyon" Value="_riskControlled"     Max="_riskTotal" Color="var(--chart-blue)" />
+            <MiniBarRow Label="Reddedilen"         Value="_riskRejected"       Max="_riskTotal" Color="var(--chart-red)" />
             <a href="/risk/dashboard" class="module-card-link">Risk Paneline Git →</a>
         </div>
     }
@@ -203,9 +203,9 @@
                 <span class="module-card-title">Etik Yönetimi</span>
                 <span class="module-card-value">@_ethicsTotal</span>
             </div>
-            <MiniBarRow Label="Beklemede"    Value="_ethicsPending" Max="_ethicsTotal" Color="#6d28d9" />
-            <MiniBarRow Label="Etik Kurulda" Value="_ethicsBoard"   Max="_ethicsTotal" Color="#ca8a04" />
-            <MiniBarRow Label="Sonuçlanan"   Value="_ethicsClosed"  Max="_ethicsTotal" Color="#16a34a" />
+            <MiniBarRow Label="Beklemede"    Value="_ethicsPending" Max="_ethicsTotal" Color="var(--chart-violet)" />
+            <MiniBarRow Label="Etik Kurulda" Value="_ethicsBoard"   Max="_ethicsTotal" Color="var(--chart-gold)" />
+            <MiniBarRow Label="Sonuçlanan"   Value="_ethicsClosed"  Max="_ethicsTotal" Color="var(--chart-green)" />
             <a href="/ethics" class="module-card-link">Etik Paneline Git →</a>
         </div>
     }
@@ -216,10 +216,10 @@
                 <span class="module-card-title">İç Denetim</span>
                 <span class="module-card-value">@_auditOpen</span>
             </div>
-            <MiniBarRow Label="Açık Bulgular"    Value="_auditOpen"             Max="@Math.Max(_auditTotal,1)" Color="#dc2626" />
-            <MiniBarRow Label="Kapanış Bekleyen" Value="_auditClosureRequested" Max="@Math.Max(_auditTotal,1)" Color="#ca8a04" />
-            <MiniBarRow Label="Kapalı"           Value="_auditClosed"           Max="@Math.Max(_auditTotal,1)" Color="#16a34a" />
-            <MiniBarRow Label="Vadesi Geçmiş"    Value="_auditOverdue"          Max="@Math.Max(_auditTotal,1)" Color="#7f1d1d" />
+            <MiniBarRow Label="Açık Bulgular"    Value="_auditOpen"             Max="@Math.Max(_auditTotal,1)" Color="var(--chart-red)" />
+            <MiniBarRow Label="Kapanış Bekleyen" Value="_auditClosureRequested" Max="@Math.Max(_auditTotal,1)" Color="var(--chart-gold)" />
+            <MiniBarRow Label="Kapalı"           Value="_auditClosed"           Max="@Math.Max(_auditTotal,1)" Color="var(--chart-green)" />
+            <MiniBarRow Label="Vadesi Geçmiş"    Value="_auditOverdue"          Max="@Math.Max(_auditTotal,1)" Color="var(--chart-maroon)" />
             <a href="/audit" class="module-card-link">Denetim Paneline Git →</a>
         </div>
     }
@@ -230,10 +230,10 @@
                 <span class="module-card-title">Dış Denetim</span>
                 <span class="module-card-value">@_extTotal</span>
             </div>
-            <MiniBarRow Label="Planlandı"    Value="_extPlanned"    Max="@Math.Max(_extTotal,1)" Color="#3b82f6" />
-            <MiniBarRow Label="Devam Ediyor" Value="_extInProgress" Max="@Math.Max(_extTotal,1)" Color="#f59e0b" />
-            <MiniBarRow Label="Tamamlandı"   Value="_extCompleted"  Max="@Math.Max(_extTotal,1)" Color="#16a34a" />
-            <MiniBarRow Label="Yaklaşan"     Value="_extUpcoming"   Max="@Math.Max(_extTotal,1)" Color="#0369a1" />
+            <MiniBarRow Label="Planlandı"    Value="_extPlanned"    Max="@Math.Max(_extTotal,1)" Color="var(--chart-azure)" />
+            <MiniBarRow Label="Devam Ediyor" Value="_extInProgress" Max="@Math.Max(_extTotal,1)" Color="var(--chart-amber)" />
+            <MiniBarRow Label="Tamamlandı"   Value="_extCompleted"  Max="@Math.Max(_extTotal,1)" Color="var(--chart-green)" />
+            <MiniBarRow Label="Yaklaşan"     Value="_extUpcoming"   Max="@Math.Max(_extTotal,1)" Color="var(--chart-sky)" />
             <a href="/audit/external" class="module-card-link">Dış Denetimlere Git →</a>
         </div>
     }
@@ -348,7 +348,7 @@
 
         var cards = new List<(string Label, int Value, string Color, string Bg, string Href)>
         {
-            ("Toplam Risk",       _riskTotal,          "#374151", "#f9fafb", "/risk"),
+            ("Toplam Risk",       _riskTotal,          "var(--gray-700)", "var(--gray-50)", "/risk"),
             ("İncelemede",        _riskProposedReview, "#1d4ed8", "#eff6ff", "/risk?status=under_review"),
             ("Yüksek / Kritik",   highRisk,            "#dc2626", "#fef2f2", "/risk?level=Yüksek Risk"),
             ("Açık Bulgular",     _auditOpen,          "#b45309", "#fffbeb", "/audit/findings"),

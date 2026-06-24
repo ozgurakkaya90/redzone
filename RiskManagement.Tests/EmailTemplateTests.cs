@@ -83,17 +83,39 @@ public class EmailTemplateTests
         Assert.Contains("<!DOCTYPE html>", body);
     }
 
-    // ── XSS koruması — çıktı <script> içermemeli ────────────────────────────
+    // ── HTML injection — kullanıcı girdisi gövdeye ENCODE edilmeli ───────────
+    // Regresyon: ApplyVars değerleri ham gömüyordu. Risk başlığı/öneren adı gibi
+    // kullanıcı-kontrollü serbest metin (anonim risk önerisinde kimliksiz kullanıcı
+    // dahil) IsBodyHtml=true bildirim e-postasına HTML/phishing enjekte edebiliyordu.
+
+    [Fact]
+    public void RiskProposed_EncodesHtmlInUserFields()
+    {
+        var (_, body) = EmailTemplates.RiskProposed(
+            "R-001", "<script>alert(1)</script>", "<b>Sahte Öneren</b>", BaseUrl);
+        Assert.DoesNotContain("<script>alert(1)</script>", body); // ham enjeksiyon yok
+        Assert.Contains("&lt;script&gt;", body);                  // encode edildi (strip değil)
+        Assert.DoesNotContain("<b>Sahte Öneren</b>", body);
+    }
+
+    [Fact]
+    public void EthicsSubmitted_EncodesHtmlInSubject()
+    {
+        // Anonim ihbar konusu kullanıcı-kontrollü; iç personele giden e-postaya enjekte olmamalı.
+        var (_, body) = EmailTemplates.EthicsSubmitted(
+            "EB-001", "<img src=x onerror=alert(1)>", BaseUrl);
+        Assert.DoesNotContain("<img src=x", body);
+        Assert.Contains("&lt;img", body);
+    }
 
     [Theory]
     [InlineData("<script>alert(1)</script>")]
-    [InlineData("javascript:void(0)")]
-    public void Templates_DoNotIncludeScriptTags_InDefaultOutput(string payload)
+    [InlineData("<a href=\"http://phish\">tıkla</a>")]
+    public void ActionDueSoon_EncodesHtmlInDescription(string payload)
     {
-        // Default şablonlar payload almaz — çıktıda script içermemeli
-        var (_, body) = EmailTemplates.RiskProposed("R-001", "Başlık", "Kullanıcı", BaseUrl);
-        Assert.DoesNotContain("<script>", body, StringComparison.OrdinalIgnoreCase);
-        _ = payload; // kullanılmayan parametre uyarısını engelle
+        var (_, body) = EmailTemplates.ActionDueSoon("R-001", payload, "01.06.2026", 5, BaseUrl);
+        Assert.DoesNotContain(payload, body);
+        Assert.Contains("&lt;", body);
     }
 
     // ── null/boş baseUrl edge-case ───────────────────────────────────────────

@@ -1,5 +1,5 @@
-@page "/audit/external/actions"
-@attribute [Authorize]
+﻿@page "/audit/external/actions"
+@attribute [Authorize(Policy = "external_audit.read")]
 @inject ExternalAuditService ExtSvc
 @inject ConfigService CfgSvc
 @inject AuthService Auth
@@ -238,7 +238,7 @@ else
             <div class="stat-label">Tamamlandı</div>
             <div style="font-size:28px;font-weight:700;color:#16a34a">@Filtered.Count(a => a.Action.Status == "completed")</div>
         </div>
-        <div class="card" style="padding:14px;text-align:center;border-top:3px solid #ef4444">
+        <div class="card" style="padding:14px;text-align:center;border-top:3px solid var(--color-danger)">
             <div class="stat-label">Geciken</div>
             <div style="font-size:28px;font-weight:700;color:#dc2626">
                 @Filtered.Count(a => a.Action.DueDate.HasValue && a.Action.DueDate.Value < _today && a.Action.Status is "planned" or "in_progress")

@@ -75,6 +75,28 @@ public class ExportServiceTests
     }
 
     [Fact]
+    public void ExportRisksToExcel_TitleWithControlChars_DoesNotThrowAndStrips()
+    {
+        // Word/PDF'den kopyalanan metin XML'de geçersiz kontrol karakterleri (0x0B dikey tab,
+        // 0x0C form-feed, 0x07 bell) içerebilir. SafeCell bunları temizlemezse ClosedXML
+        // SaveAs sırasında çöker veya bozuk dosya üretir.
+        var risk = MakeRisk();
+        risk.Title       = "RiskliBaşlık";
+        risk.Description = "Açıklamasatırı";
+
+        byte[] bytes = null!;
+        var ex = Record.Exception(() => bytes = Svc().ExportRisksToExcel([risk]));
+        Assert.Null(ex);                                  // export çökmemeli
+        Assert.NotNull(bytes);
+
+        using var wb = new XLWorkbook(new MemoryStream(bytes));
+        var cell = wb.Worksheets.First().Cell(2, 2).GetString();
+        Assert.DoesNotContain('', cell);            // kontrol karakteri kalmamalı
+        Assert.DoesNotContain('', cell);
+        Assert.Contains("Başlık", cell);                  // gerçek içerik korunmalı
+    }
+
+    [Fact]
     public void ExportRisksToExcel_MultipleRisks_RowCountMatches()
     {
         var risks = Enumerable.Range(1, 5).Select(i => MakeRisk($"R-{i:D3}")).ToList();

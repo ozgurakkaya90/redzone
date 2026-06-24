@@ -19,7 +19,11 @@ public class RiskLibraryService(AppDbContext db)
         if (!string.IsNullOrWhiteSpace(sourceType))  q = q.Where(r => r.SourceType == sourceType);
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.Trim().ToLower();
+            // Kültür-bağımsız küçük harf: Türkçe kültürde ToLower() büyük 'I'yı noktasız 'ı'ya
+            // çevirir ("Item" → "ıtem") ve MySQL'in noktalı LOWER()'ıyla eşleşmez → arama sessizce
+            // boş döner. ToLowerInvariant istemci tarafında çalıştığından çeviri sorunu yaratmaz;
+            // sütun tarafı r.Title.ToLower() ise SQL LOWER()'a çevrilir (MySQL'de zaten invariant).
+            var s = search.Trim().ToLowerInvariant();
             q = q.Where(r =>
                 r.Title.ToLower().Contains(s) ||
                 (r.Description != null && r.Description.ToLower().Contains(s)) ||
@@ -241,16 +245,16 @@ public class RiskLibraryService(AppDbContext db)
         foreach (var item in items)
         {
             ws.Cell(row, 1).Value  = item.Id;
-            ws.Cell(row, 2).Value  = item.Title;
-            ws.Cell(row, 3).Value  = item.Description ?? "";
-            ws.Cell(row, 4).Value  = item.Category ?? "";
-            ws.Cell(row, 5).Value  = item.SubCategory ?? "";
+            ws.Cell(row, 2).Value  = ExportService.SafeCell(item.Title);
+            ws.Cell(row, 3).Value  = ExportService.SafeCell(item.Description);
+            ws.Cell(row, 4).Value  = ExportService.SafeCell(item.Category);
+            ws.Cell(row, 5).Value  = ExportService.SafeCell(item.SubCategory);
             ws.Cell(row, 6).Value  = item.SourceType == "internal" ? "İç" : "Dış";
-            ws.Cell(row, 7).Value  = item.Hazard ?? "";
-            ws.Cell(row, 8).Value  = item.PossibleImpact ?? "";
-            ws.Cell(row, 9).Value  = item.RiskStrategy ?? "";
-            ws.Cell(row, 10).Value = item.Tags ?? "";
-            ws.Cell(row, 11).Value = item.ReferenceStandard ?? "";
+            ws.Cell(row, 7).Value  = ExportService.SafeCell(item.Hazard);
+            ws.Cell(row, 8).Value  = ExportService.SafeCell(item.PossibleImpact);
+            ws.Cell(row, 9).Value  = ExportService.SafeCell(item.RiskStrategy);
+            ws.Cell(row, 10).Value = ExportService.SafeCell(item.Tags);
+            ws.Cell(row, 11).Value = ExportService.SafeCell(item.ReferenceStandard);
             ws.Cell(row, 12).Value = item.UsageCount;
             ws.Cell(row, 13).Value = item.IsActive ? "Aktif" : "Pasif";
             row++;

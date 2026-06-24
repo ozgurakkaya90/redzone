@@ -1,18 +1,30 @@
 @page "/risk/new"
-@attribute [Authorize]
+@attribute [Authorize(Policy = "risk.write")]
+@implements IDisposable
 @inject RiskService RiskSvc
 @inject ConfigService CfgSvc
 @inject NavigationManager Nav
 @inject IHttpContextAccessor HttpCtx
 @inject AppDbContext Db
 @inject ToastService ToastSvc
+@inject AiRiskDraftService AiSvc
 @using System.Security.Claims
 @using RiskManagement.Models
+@using RiskManagement.Services.Ai
 @using Microsoft.EntityFrameworkCore
 
 <PageTitle>Risk Öner</PageTitle>
 
-<div class="page-header"><h1>Risk Öner</h1></div>
+<div class="page-header">
+    <h1>Risk Öner</h1>
+    @if (AiSvc.IsAvailable)
+    {
+        <button class="btn btn-primary btn-sm" @onclick="OpenAiModal">
+            <Icon Name="sparkles" Size="14" /> AI ile Taslak Oluştur
+        </button>
+    }
+</div>
+
 <div style="max-width:680px">
     <div class="card">
         <div class="alert alert-info" style="margin-bottom:16px">
@@ -56,11 +68,134 @@
     </div>
 </div>
 
+@* ── AI Risk Taslağı Modalı ──────────────────────────────────────────────── *@
+@if (_aiModalOpen)
+{
+    <div @onclick="CloseAiModal"
+         style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9000"></div>
+
+    <div role="dialog" aria-modal="true" aria-label="AI ile risk taslağı oluştur"
+         style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+                z-index:9001;background:#fff;border-radius:14px;width:min(600px,92vw);
+                box-shadow:0 24px 64px rgba(0,0,0,.22);display:flex;flex-direction:column;
+                max-height:88vh;overflow:hidden;font-family:inherit">
+
+        <div style="display:flex;align-items:center;justify-content:space-between;
+                    padding:18px 20px 16px;border-bottom:1px solid var(--border);flex-shrink:0">
+            <h3 style="margin:0;font-size:16px;font-weight:700;color:var(--text);display:flex;align-items:center;gap:8px">
+                <Icon Name="sparkles" Size="16" /> AI ile Risk Taslağı Oluştur
+            </h3>
+            <button @onclick="CloseAiModal" @onclick:stopPropagation="true"
+                    style="border:none;background:none;cursor:pointer;color:var(--text-3);line-height:1;padding:4px 8px;border-radius:6px"
+                    aria-label="Kapat"><Icon Name="close" Size="18" /></button>
+        </div>
+
+        <div style="padding:20px;overflow-y:auto;flex:1">
+            @if (_aiDraft == null && !_aiLoading)
+            {
+                <p style="font-size:13px;color:var(--text-3);margin:0 0 14px">
+                    Karşılaştığınız durumu veya endişeyi serbest metinle anlatın.
+                    AI bunu bir risk kaydı taslağına dönüştürecek.
+                </p>
+                <textarea class="form-control" rows="5" style="resize:vertical;width:100%;box-sizing:border-box"
+                          placeholder="Örn: Son depremde tedarikçimiz kapandı ve ham madde temin edemez hale geldik. Üretim durma riski var."
+                          maxlength="4000"
+                          @bind="_aiInput" @bind:event="oninput"></textarea>
+                @if (!string.IsNullOrEmpty(_aiError))
+                {
+                    <div style="margin-top:12px;padding:12px 14px;background:#fef2f2;border:1px solid var(--color-danger-border);
+                                border-radius:8px;font-size:13px;color:#991b1b;display:flex;align-items:center;gap:8px">
+                        <Icon Name="warning" Size="15" /> @_aiError
+                    </div>
+                }
+            }
+            else if (_aiLoading)
+            {
+                <div style="text-align:center;padding:48px 20px">
+                    <div style="margin-bottom:14px;color:var(--text-3)"><Icon Name="robot" Size="32" /></div>
+                    <div style="font-size:14px;color:var(--text-3)">Analiz ediliyor…</div>
+                </div>
+            }
+            else if (_aiDraft != null)
+            {
+                <p style="font-size:13px;color:var(--text-3);margin:0 0 16px">
+                    AI aşağıdaki taslağı oluşturdu. İnceleyip formu doldurmak için kullanabilirsiniz.
+                </p>
+                <div style="margin-bottom:12px">
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:4px">
+                        Risk Başlığı <span style="color:var(--color-danger)">*</span>
+                    </label>
+                    <input class="form-control" @bind="_draftTitle" maxlength="200" style="width:100%;box-sizing:border-box" />
+                </div>
+                <div style="margin-bottom:12px">
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:4px">Kategori</label>
+                    <input class="form-control" @bind="_draftCategory" maxlength="100" style="width:100%;box-sizing:border-box" />
+                </div>
+                <div style="margin-bottom:12px">
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:4px">Kaynak Türü</label>
+                    <select class="form-control" @bind="_draftSourceType" style="width:100%;box-sizing:border-box">
+                        <option value="internal">İç</option>
+                        <option value="external">Dış</option>
+                    </select>
+                </div>
+                <div style="margin-bottom:12px">
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:4px">Tehlike</label>
+                    <textarea class="form-control" rows="2" @bind="_draftHazard" style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
+                </div>
+                <div style="margin-bottom:4px">
+                    <label style="display:block;font-size:12px;font-weight:600;color:var(--gray-700);margin-bottom:4px">Olası Etki</label>
+                    <textarea class="form-control" rows="2" @bind="_draftImpact" style="width:100%;box-sizing:border-box;resize:vertical"></textarea>
+                </div>
+                @if (!string.IsNullOrEmpty(_aiError))
+                {
+                    <div style="margin-top:12px;padding:12px 14px;background:#fef2f2;border:1px solid var(--color-danger-border);
+                                border-radius:8px;font-size:13px;color:#991b1b;display:flex;align-items:center;gap:8px">
+                        <Icon Name="warning" Size="15" /> @_aiError
+                    </div>
+                }
+            }
+        </div>
+
+        <div style="display:flex;justify-content:flex-end;gap:8px;
+                    padding:14px 20px;border-top:1px solid var(--border);flex-shrink:0">
+            @if (_aiDraft == null && !_aiLoading)
+            {
+                <button class="btn btn-outline" @onclick="CloseAiModal">İptal</button>
+                <button class="btn btn-primary" @onclick="RunAiDraft"
+                        disabled="@(string.IsNullOrWhiteSpace(_aiInput))">
+                    Taslak Oluştur
+                </button>
+            }
+            else if (_aiDraft != null)
+            {
+                <button class="btn btn-outline" @onclick="ResetAiDraft">← Geri</button>
+                <button class="btn btn-primary" @onclick="ApplyDraftToForm"
+                        disabled="@string.IsNullOrWhiteSpace(_draftTitle)">
+                    Forma Aktar
+                </button>
+            }
+        </div>
+    </div>
+}
+
 @code {
     private string _title = "", _description = "";
     private bool _loading, _errTitle;
     private int? _fDepartmentId;
     private List<Department> _departments = [];
+
+    // ── AI ──────────────────────────────────────────────────────────────────────
+    private bool               _aiModalOpen;
+    private bool               _aiLoading;
+    private string             _aiInput        = "";
+    private CancellationTokenSource? _aiCts;
+    private string             _aiError        = "";
+    private AiRiskDraftResult? _aiDraft;
+    private string _draftTitle      = "";
+    private string _draftCategory   = "";
+    private string _draftSourceType = "internal";
+    private string _draftHazard     = "";
+    private string _draftImpact     = "";
 
     private int UserId => int.TryParse(
         HttpCtx.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
@@ -69,7 +204,6 @@
     {
         _departments = [.. Db.Departments.OrderBy(d => d.Name)];
 
-        // Varsayılan departman: oturum açan kullanıcının departmanı
         if (_fDepartmentId == null && UserId > 0)
         {
             var userDept = Db.Users
@@ -89,11 +223,76 @@
         var userId = UserId > 0 ? (int?)UserId : null;
         var risk = await RiskSvc.CreateAsync(_title.Trim(), _description.Trim(), null, null, null, userId, null);
 
-        // Departman seçildiyse metadata güncelle
         if (_fDepartmentId.HasValue)
             await RiskSvc.UpdateMetadataAsync(risk.Id, null, _fDepartmentId, null, userId);
 
         ToastSvc.Success("Risk önerisi başarıyla gönderildi. İnceleme ekibi bilgilendirildi.");
         Nav.NavigateTo($"/risk/{risk.Id}");
+    }
+
+    // ── AI metodları ────────────────────────────────────────────────────────────
+    private void OpenAiModal()  { _aiModalOpen = true; }
+
+    private void CloseAiModal()
+    {
+        _aiCts?.Cancel();
+        _aiModalOpen = false;
+        _aiInput     = "";
+        _aiDraft     = null;
+        _aiError     = "";
+        _aiLoading   = false;
+    }
+
+    private void ResetAiDraft() { _aiDraft = null; _aiError = ""; }
+
+    private async Task RunAiDraft()
+    {
+        _aiError   = "";
+        _aiLoading = true;
+        _aiCts?.Cancel();
+        _aiCts = new CancellationTokenSource();
+        try
+        {
+            _aiDraft         = await AiSvc.DraftAsync(_aiInput, _aiCts.Token);
+            _draftTitle      = _aiDraft.Title;
+            _draftCategory   = _aiDraft.Category        ?? "";
+            _draftSourceType = _aiDraft.SourceType      ?? "internal";
+            _draftHazard     = _aiDraft.Hazard          ?? "";
+            _draftImpact     = _aiDraft.PossibleImpact  ?? "";
+        }
+        catch (OperationCanceledException) when (_aiCts?.IsCancellationRequested == true) { /* kullanıcı modalı kapattı */ }
+        catch (HttpRequestException ex) when (
+            ex.Message.Contains("429") || ex.Message.Contains("TooManyRequests") ||
+            ex.Message.Contains("RESOURCE_EXHAUSTED") || ex.Message.Contains("quota"))
+        {
+            _aiError = "API kotası aşıldı. Yöneticinizle iletişime geçin veya daha sonra tekrar deneyin.";
+        }
+        catch (OperationCanceledException)
+        {
+            _aiError = "AI isteği zaman aşımına uğradı. Lütfen tekrar deneyin.";
+        }
+        catch (Exception ex)
+        {
+            _aiError = $"AI hatası: {ex.Message}";
+        }
+        finally
+        {
+            _aiLoading = false;
+        }
+    }
+
+    public void Dispose() => _aiCts?.Cancel();
+
+    // Taslağı modal'dan ana forma aktarır ve modal'ı kapatır.
+    private void ApplyDraftToForm()
+    {
+        _title       = _draftTitle;
+        _description = string.Join("\n\n",
+            new[] {
+                string.IsNullOrWhiteSpace(_draftHazard) ? null : $"Tehlike: {_draftHazard}",
+                string.IsNullOrWhiteSpace(_draftImpact) ? null : $"Olası Etki: {_draftImpact}",
+            }.Where(s => s != null));
+        CloseAiModal();
+        ToastSvc.Info("AI taslağı forma aktarıldı. İnceleyip gönderebilirsiniz.");
     }
 }

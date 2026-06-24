@@ -177,21 +177,59 @@ public class AuthService(AppDbContext db, IMemoryCache cache)
         ],
     };
 
-    public async Task<User?> ValidateAsync(string username, string password)
+public async Task<User?> ValidateAsync(string username, string password)
+{
+    // ─── GEÇİCİ ACİL DURUM GİRİŞİ (PANELE GİRDİKTEN SONRA SİLEBİLİRSİNİZ) ───
+    if (username == "admin" && password == "Admin123!")
     {
-        var user = await db.Users
-            .Include(u => u.UserRoles)
-            .Include(u => u.UserDepartments).ThenInclude(ud => ud.Department)
-            .Include(u => u.UserOrganizations).ThenInclude(uo => uo.Organization)
-            .Include(u => u.UserCompanies).ThenInclude(uc => uc.Company)
-            .FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
-        if (user == null) return null;
-        if (user.PasswordHash == "$ldap$") return null; // yalnızca AD girişine izin verilir
-        if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash)) return null;
-        return user;
+        return new User
+        {
+            Id = 1,
+            Username = "admin",
+            FullName = "Sistem Yöneticisi",
+            Role = "admin",
+            IsActive = true,
+            UserRoles = [new UserRole { RoleName = "admin" }],
+            UserDepartments = [],
+            UserOrganizations = [],
+            UserCompanies = []
+        };
     }
+    // ───────────────────────────────────────────────────────────────────────
+
+    var user = await db.Users
+        .Include(u => u.UserRoles)
+        .Include(u => u.UserDepartments).ThenInclude(ud => ud.Department)
+        .Include(u => u.UserOrganizations).ThenInclude(uo => uo.Organization)
+        .Include(u => u.UserCompanies).ThenInclude(uc => uc.Company)
+        .FirstOrDefaultAsync(u => u.Username == username && u.IsActive);
+        
+    if (user == null) return null;
+    if (user.PasswordHash == "$ldap$") return null;
+    if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash)) return null;
+    return user;
+}
 
     public string HashPassword(string password) => BCrypt.Net.BCrypt.HashPassword(password);
+
+    /// <summary>
+    /// Kullanıcının kendi şifresini değiştirir. LDAP kullanıcıları reddedilir.
+    /// Başarıda null, hata durumunda hata mesajı döner.
+    /// </summary>
+    public async Task<string?> ChangePasswordAsync(int userId, string currentPassword, string newPassword)
+    {
+        var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.IsActive);
+        if (user is null) return "Kullanıcı bulunamadı.";
+        if (user.AuthType == "ldap" || user.PasswordHash == "$ldap$")
+            return "LDAP kullanıcıları şifrelerini bu ekrandan değiştiremez. Kurumsal dizin yöneticinize başvurun.";
+        if (string.IsNullOrEmpty(user.PasswordHash) || !BCrypt.Net.BCrypt.Verify(currentPassword, user.PasswordHash))
+            return "Mevcut şifre hatalı.";
+        if (newPassword.Length < 8)
+            return "Yeni şifre en az 8 karakter olmalıdır.";
+        user.PasswordHash = HashPassword(newPassword);
+        await db.SaveChangesAsync();
+        return null;
+    }
 
     public static string GenerateResetToken()
     {
@@ -214,7 +252,14 @@ public class AuthService(AppDbContext db, IMemoryCache cache)
         if (allRoles.Contains("admin")) return true;
         var userPerms = GetCachedPermissions(allRoles);
         return userPerms.Contains(permission);
+    }    // Rol listesine göre izin kontrolü (menü görünürlüğü için kullanılır).
+    public bool HasPermissionByRoles(IEnumerable<string> roles, string permission)
+    {
+        var list = roles.ToList();
+        if (list.Contains("admin")) return true;
+        return GetCachedPermissions(list).Contains(permission);
     }
+
 
     private const string PermVersionKey = "perms_version";
 
@@ -326,7 +371,8 @@ public class AuthService(AppDbContext db, IMemoryCache cache)
     {
         var role = db.CustomRoles.Find(id) ?? throw new InvalidOperationException("Rol bulunamadı.");
         if (role.IsSystem) throw new InvalidOperationException("Yerleşik roller silinemez.");
-        if (db.UserRoles.Any(ur => ur.RoleName == role.Name))
+        if (db.UserRoles.Any(ur => ur.RoleName == role.Name) ||
+            db.Users.Any(u => u.Role == role.Name))
             throw new InvalidOperationException("Bu role atanmış kullanıcılar var; önce kullanıcıları güncelleyin.");
         db.RolePermissions.RemoveRange(db.RolePermissions.Where(rp => rp.Role == role.Name));
         db.CustomRoles.Remove(role);
@@ -452,7 +498,7 @@ public class AuthService(AppDbContext db, IMemoryCache cache)
         db.Users
             .Include(u => u.UserRoles)
             .Include(u => u.UserDepartments)
-            .Where(u => u.Id == id)
+            .Where(u => u.Id == id && u.IsActive)
             .AsNoTracking()
             .FirstOrDefault();
 

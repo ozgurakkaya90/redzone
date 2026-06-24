@@ -1,0 +1,115 @@
+@page "/profile"
+@attribute [Authorize]
+@inject AuthService Auth
+@inject ToastService Toast
+@using System.Security.Claims
+
+<PageTitle>Profilim</PageTitle>
+
+<div class="page-header">
+    <h1>Profilim</h1>
+</div>
+
+<div style="max-width:480px">
+    <div class="card">
+        <div style="margin-bottom:20px">
+            <div style="font-size:15px;font-weight:600">@_fullName</div>
+            <div style="font-size:12px;color:var(--text-3)">@_username</div>
+            @if (_isLdap)
+            {
+                <div style="margin-top:8px">
+                    <span class="badge badge-blue">LDAP / Kurumsal Dizin</span>
+                </div>
+            }
+        </div>
+
+        @if (_isLdap)
+        {
+            <div class="alert alert-info">
+                Hesabınız kurumsal dizin (LDAP/AD) üzerinden yönetilmektedir.
+                Şifrenizi değiştirmek için BT departmanınıza veya sistem yöneticinize başvurun.
+            </div>
+        }
+        else
+        {
+            <h3 style="margin-bottom:16px;font-size:14px">Şifre Değiştir</h3>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <div class="alert alert-error" style="margin-bottom:12px">@_error</div>
+            }
+
+            <div class="form-group">
+                <label>Mevcut Şifre</label>
+                <input type="password" class="form-control" @bind="_currentPassword" />
+            </div>
+            <div class="form-group">
+                <label>Yeni Şifre</label>
+                <input type="password" class="form-control" @bind="_newPassword" />
+                <div style="font-size:11px;color:var(--text-3);margin-top:4px">En az 8 karakter</div>
+            </div>
+            <div class="form-group">
+                <label>Yeni Şifre (Tekrar)</label>
+                <input type="password" class="form-control" @bind="_confirmPassword" />
+            </div>
+
+            <button class="btn btn-primary" @onclick="SaveAsync" disabled="@_saving">
+                @(_saving ? "Kaydediliyor…" : "Şifreyi Değiştir")
+            </button>
+        }
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private string _fullName        = "";
+    private string _username        = "";
+    private bool   _isLdap          = false;
+    private int    _userId          = 0;
+
+    private string _currentPassword = "";
+    private string _newPassword     = "";
+    private string _confirmPassword = "";
+    private string _error           = "";
+    private bool   _saving          = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (AuthState is null) return;
+        var principal = (await AuthState).User;
+        _userId    = int.TryParse(principal.FindFirst(ClaimTypes.NameIdentifier)?.Value, out var id) ? id : 0;
+        _username  = principal.FindFirst(ClaimTypes.Name)?.Value ?? "";
+        _fullName  = principal.FindFirst("full_name")?.Value ?? _username;
+
+        if (_userId > 0)
+        {
+            var user = Auth.GetUserById(_userId);
+            _isLdap = user?.AuthType == "ldap" || user?.PasswordHash == "$ldap$";
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        _error = "";
+        if (_newPassword != _confirmPassword)
+        {
+            _error = "Yeni şifreler eşleşmiyor.";
+            return;
+        }
+        _saving = true;
+        var result = await Auth.ChangePasswordAsync(_userId, _currentPassword, _newPassword);
+        _saving = false;
+        if (result is not null)
+        {
+            _error = result;
+        }
+        else
+        {
+            _currentPassword = "";
+            _newPassword     = "";
+            _confirmPassword = "";
+            Toast.Success("Şifreniz başarıyla değiştirildi.");
+        }
+    }
+}

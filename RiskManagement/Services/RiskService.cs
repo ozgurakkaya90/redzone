@@ -40,6 +40,8 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
     /// </summary>
     public IQueryable<Risk> Query() => db.Risks
         .AsNoTracking()
+        // Çok-koleksiyonlu Include zinciri (Evaluations, Controls, ActionPlans, Reviews,
+        // AuditLogs, FindingLinks) — kartezyen patlama global SplitQuery ile önlenir (Program.cs).
         .Include(r => r.ProposedBy)
         .Include(r => r.Owner)
         .Include(r => r.Organization).ThenInclude(o => o!.Company)
@@ -107,8 +109,10 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
         if (IsRiskManager(userId, role)) return true;
         if (risk.ProposedById == userId || risk.OwnerId == userId) return true;
 
-        var userDeptIds = GetUserDepartmentIds(userId);
+        // DepartmentId atanmamış riskler proposer/owner dışında görülemez
         if (!risk.DepartmentId.HasValue) return false;
+
+        var userDeptIds = GetUserDepartmentIds(userId);
         return userDeptIds.Contains(risk.DepartmentId.Value);
     }
 
@@ -116,7 +120,10 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
     {
         if (authSvc.HasPermission(user, "risk.manage")) return true;
         if (risk.ProposedById == user.Id || risk.OwnerId == user.Id) return true;
+
+        // DepartmentId atanmamış riskler proposer/owner dışında görülemez
         if (!risk.DepartmentId.HasValue) return false;
+
         return user.AllDepartmentIds.Contains(risk.DepartmentId.Value);
     }
 
@@ -178,21 +185,29 @@ public class RiskService(AppDbContext db, IRiskCalculator riskCalculator, AuthSe
 
     private IQueryable<Risk> BuildUserQueryForUser(User user,
         string? category, string? status, string? search)
+        => ScopeRisksForUser(BuildFilteredQuery(QueryList(), category, status, search), user);
+
+    // Kullanıcının erişebildiği risklere filtreler (risk.manage → tümü). Liste/detay sorgusu ile
+    // hafif ID-projeksiyonu (GetAccessibleRiskIds) aynı erişim kuralını paylaşsın diye ayrıştırıldı —
+    // böylece kural değişirse iki yer arasında sapma (güvenlik riski) oluşmaz.
+    // risk.manage = tüm risklere erişim (admin, committee, risk_manager, audit_manager). Yalnızca
+    // bu yetki; audit.read kasıtlı dışarıda (liste ≠ detay tutarsızlığını önlemek için).
+    private IQueryable<Risk> ScopeRisksForUser(IQueryable<Risk> q, User user)
     {
-        var q = BuildFilteredQuery(QueryList(), category, status, search);
-        // risk.manage = tüm risklere erişim (admin, committee, risk_manager, audit_manager).
-        // Önceden audit.read da eklenmişti; bu denetçiye tüm riskleri açıyor ama
-        // CanAccessRisk/CanAccessRiskForUser bunu onaylamıyor ve detay sayfası erişimi
-        // reddediyordu — liste ≠ detay tutarsızlığı. Yalnızca risk.manage kalıyor.
-        if (!authSvc.HasPermission(user, "risk.manage"))
-        {
-            var deptIds = user.AllDepartmentIds.ToHashSet();
-            q = q.Where(r =>
-                r.ProposedById == user.Id || r.OwnerId == user.Id ||
-                (r.DepartmentId != null && deptIds.Contains(r.DepartmentId.Value)));
-        }
-        return q;
+        if (authSvc.HasPermission(user, "risk.manage")) return q;
+        var deptIds = user.AllDepartmentIds.ToHashSet();
+        return q.Where(r =>
+            r.ProposedById == user.Id || r.OwnerId == user.Id ||
+            (r.DepartmentId != null && deptIds.Contains(r.DepartmentId.Value)));
     }
+
+    /// <summary>
+    /// Kullanıcının erişebildiği risk ID'leri — tam entity + Include yüklemeden hafif "SELECT Id".
+    /// Export/import kapsam kontrolünde, eskiden GetForUser(...).Select(r=>r.Id) tüm riskleri
+    /// 5 Include ile belleğe yükleyip sadece ID alıyordu; bu metot bunu tek hafif sorguya indirir.
+    /// </summary>
+    public HashSet<int> GetAccessibleRiskIds(User user)
+        => ScopeRisksForUser(db.Risks.AsNoTracking(), user).Select(r => r.Id).ToHashSet();
 
     // ── CRUD ────────────────────────────────────────────────────────────────
     public async Task<Risk> CreateAsync(string title, string? description, string? category,

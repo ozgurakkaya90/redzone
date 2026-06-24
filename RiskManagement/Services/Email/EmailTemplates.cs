@@ -48,10 +48,29 @@ public static class EmailTemplates
 
     private static string ApplyVars(string template, Dictionary<string, string> vars)
     {
+        // Güvenlik: değişken DEĞERLERİ HTML-encode edilir. Gövdeler IsBodyHtml=true ile
+        // gönderildiğinden, kullanıcı kontrollü serbest metin (risk başlığı, açıklama, öneren
+        // adı, etik konu, bulgu başlığı) ham gömülürse bildirim e-postasına HTML/phishing
+        // enjekte edilebilir — anonim risk önerisinde kimliksiz kullanıcı bile bunu yapabilir.
+        // Yalnızca değerler encode edilir; şablon literal HTML'i (<div>, <b>, href) korunur.
+        // Sistem ürünü kodlar/tarihler/renkler kendilerine encode olur (no-op); konu satırları
+        // yalnızca kod değişkeni kullandığından bu encode'dan etkilenmez.
         foreach (var (k, v) in vars)
-            template = template.Replace("{" + k + "}", v);
+            template = template.Replace("{" + k + "}", EscapeHtml(v));
         return template;
     }
+
+    /// <summary>
+    /// Minimal HTML escape — yalnızca tehlikeli 5 karakteri kaçırır. WebUtility.HtmlEncode
+    /// tüm ASCII-dışı karakterleri (Türkçe ö/ı/ş/İ…) sayısal entity'ye çevirip metni şişirirdi;
+    /// gövde charset=utf-8 olduğundan Türkçe karakterler ham bırakılır. '&' ilk sırada olmalı.
+    /// </summary>
+    private static string EscapeHtml(string? s) => (s ?? "")
+        .Replace("&", "&amp;")
+        .Replace("<", "&lt;")
+        .Replace(">", "&gt;")
+        .Replace("\"", "&quot;")
+        .Replace("'", "&#39;");
 
     // ── Varsayılan şablon metinleri (raw, değişken yer tutucuları içerir) ────
     public const string DefaultTpl_RiskProposed =

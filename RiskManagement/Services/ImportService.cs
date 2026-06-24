@@ -39,6 +39,8 @@ public class ImportService(AppDbContext db, ConfigService? config = null)
         {
             using var wb = new XLWorkbook(stream);
             var ws = wb.Worksheets.First();
+            if (!ValidateHeaders(ws, [(1, "kod"), (2, "baslik")], result))
+                return result;
             var year = DateTime.UtcNow.Year;
 
             var existingByCode = db.Risks.ToDictionary(r => r.Code, r => r, StringComparer.OrdinalIgnoreCase);
@@ -152,6 +154,38 @@ public class ImportService(AppDbContext db, ConfigService? config = null)
         return result;
     }
 
+    // ── Başlık Doğrulama ──────────────────────────────────────────────────────
+    // İçe aktarma, hücreleri sütun KONUMUNA göre okur. Sütunları yer değişmiş ya da
+    // tamamen yanlış (ör. dışa aktarma çıktısı) bir dosya yüklenirse veriler sessizce
+    // yanlış alanlara yazılır. Şablonun ayırt edici başlıklarını doğrular, uyumsuzlukta
+    // import'u durdururuz.
+    private static bool ValidateHeaders(IXLWorksheet ws, (int col, string keyword)[] anchors, ImportResult result)
+    {
+        foreach (var (col, keyword) in anchors)
+        {
+            var actual = ws.Cell(1, col).GetString();
+            if (!NormalizeHeader(actual).Contains(NormalizeHeader(keyword)))
+            {
+                result.Errors.Add(
+                    $"Sütun düzeni uyuşmuyor: {col}. sütunda '{keyword}' içeren başlık bekleniyordu, " +
+                    $"'{actual.Trim()}' bulundu. Lütfen güncel şablonu indirip sütun sırasını bozmadan doldurun.");
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static string NormalizeHeader(string s)
+    {
+        var sb = new System.Text.StringBuilder(s.Length);
+        foreach (var ch in s.Trim().ToLowerInvariant())
+        {
+            var c = ch switch { 'ı' => 'i', 'ğ' => 'g', 'ü' => 'u', 'ş' => 's', 'ö' => 'o', 'ç' => 'c', 'İ' => 'i', _ => ch };
+            if (char.IsLetterOrDigit(c)) sb.Append(c);
+        }
+        return sb.ToString();
+    }
+
     private static string ParseSourceType(string raw)
     {
         var v = raw.Trim().ToLowerInvariant();
@@ -178,6 +212,8 @@ public class ImportService(AppDbContext db, ConfigService? config = null)
         {
             using var wb = new XLWorkbook(stream);
             var ws = wb.Worksheets.First();
+            if (!ValidateHeaders(ws, [(1, "risk"), (2, "aciklama")], result))
+                return result;
 
             var riskQuery = db.Risks.AsQueryable();
             if (allowedRiskIds is not null) riskQuery = riskQuery.Where(r => allowedRiskIds.Contains(r.Id));
@@ -243,6 +279,8 @@ public class ImportService(AppDbContext db, ConfigService? config = null)
         {
             using var wb = new XLWorkbook(stream);
             var ws = wb.Worksheets.First();
+            if (!ValidateHeaders(ws, [(1, "risk"), (2, "aciklama")], result))
+                return result;
 
             var riskQuery = db.Risks.AsQueryable();
             if (allowedRiskIds is not null) riskQuery = riskQuery.Where(r => allowedRiskIds.Contains(r.Id));
@@ -316,6 +354,8 @@ public class ImportService(AppDbContext db, ConfigService? config = null)
         {
             using var wb = new XLWorkbook(stream);
             var ws = wb.Worksheets.First();
+            if (!ValidateHeaders(ws, [(1, "baslik"), (2, "aciklama")], result))
+                return result;
             var year = DateTime.UtcNow.Year;
 
             var toAdd = new List<AuditFinding>();
@@ -376,6 +416,8 @@ public class ImportService(AppDbContext db, ConfigService? config = null)
         {
             using var wb = new XLWorkbook(stream);
             var ws = wb.Worksheets.First();
+            if (!ValidateHeaders(ws, [(1, "bulgu"), (2, "aciklama")], result))
+                return result;
 
             var findingQuery = db.AuditFindings.AsQueryable();
             if (allowedFindingIds is not null) findingQuery = findingQuery.Where(f => allowedFindingIds.Contains(f.Id));
@@ -678,6 +720,8 @@ public class ImportService(AppDbContext db, ConfigService? config = null)
         {
             using var wb = new XLWorkbook(stream);
             var ws = wb.Worksheets.First();
+            if (!ValidateHeaders(ws, [(1, "konu"), (2, "aciklama")], result))
+                return result;
             var year = DateTime.UtcNow.Year;
 
             var toAdd = new List<EthicsReport>();

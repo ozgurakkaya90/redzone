@@ -1,5 +1,5 @@
-@page "/audit"
-@attribute [Authorize]
+﻿@page "/audit"
+@attribute [Authorize(Policy = "audit.read")]
 @inject AuditService AuditSvc
 @inject ExternalAuditService ExtSvc
 @inject AuthService Auth

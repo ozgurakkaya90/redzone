@@ -715,14 +715,25 @@ public class RiskLibraryServiceTests
     [Fact]
     public void Search_TextSearch_IsCaseInsensitive()
     {
-        var (db, svc) = Build();
-        AddItem(db, "Fire Risk Item", "Operasyonel");  // ASCII — SQLite ToLower() güvenli
+        // InMemory provider, sütun ToLower()'ını ORTAM kültürüyle .NET'te değerlendirir;
+        // production'da arama SQL'e (MySQL invariant LOWER) çevrilir. Türkçe kültürde InMemory
+        // "Item" → "ıtem" (noktasız) yapıp testi yanıltıcı kırardı. Production davranışını
+        // yansıtmak için invariant kültürde çalıştır. (Servis tarafı arama terimini zaten
+        // ToLowerInvariant ile küçültür — bkz. RiskLibraryService.Search Türkçe-I notu.)
+        var prev = System.Globalization.CultureInfo.CurrentCulture;
+        System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+        try
+        {
+            var (db, svc) = Build();
+            AddItem(db, "Fire Risk Item", "Operasyonel");
 
-        var lower  = svc.Search("fire risk item", null, null, null);
-        var upper  = svc.Search("FIRE RISK", null, null, null);
+            var lower = svc.Search("fire risk item", null, null, null);
+            var upper = svc.Search("FIRE RISK", null, null, null);
 
-        Assert.Single(lower);
-        Assert.Single(upper);
+            Assert.Single(lower);
+            Assert.Single(upper);
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = prev; }
     }
 
     [Fact]

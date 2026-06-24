@@ -1,5 +1,5 @@
-@page "/audit/internal/{Id:int}"
-@attribute [Authorize]
+﻿@page "/audit/internal/{Id:int}"
+@attribute [Authorize(Policy = "audit.read")]
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
 @inject AuthService Auth
@@ -298,6 +298,8 @@ else
     {
         if (string.IsNullOrWhiteSpace(_editTitle)) { _error = "Başlık zorunludur."; return; }
         if (string.IsNullOrWhiteSpace(_editPeriod)) { _error = "Dönem zorunludur."; return; }
+        if (_editStart.HasValue && _editEnd.HasValue && _editEnd.Value < _editStart.Value)
+        { _error = "Bitiş tarihi başlangıç tarihinden önce olamaz."; return; }
         var start = _editStart.HasValue ? DateOnly.FromDateTime(_editStart.Value) : (DateOnly?)null;
         var end   = _editEnd.HasValue   ? DateOnly.FromDateTime(_editEnd.Value)   : (DateOnly?)null;
         await AuditSvc.UpdateAuditAsync(Id, _editTitle, _editType,

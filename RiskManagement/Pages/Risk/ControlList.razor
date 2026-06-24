@@ -1,5 +1,5 @@
-@page "/risk/controls"
-@attribute [Authorize]
+﻿@page "/risk/controls"
+@attribute [Authorize(Policy = "control.read")]
 @inject AppDbContext Db
 @inject RiskService RiskSvc
 @inject AuthService Auth
@@ -136,7 +136,7 @@
                         <a href="/risk/@c.RiskId" style="color:#1e40af;font-weight:600;text-decoration:none;font-size:12px">
                             @c.Risk.Code
                         </a>
-                        <div style="font-size:11px;color:#6b7280;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                        <div style="font-size:11px;color:var(--text-3);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                             @c.Risk.Title
                         </div>
                         @if (c.Risk.Organization != null)
@@ -163,7 +163,7 @@
                         { <span class="badge badge-orange" style="font-size:10px">@c.OwnerDept.Name</span> }
                         else { <span style="color:#9ca3af">—</span> }
                     </td>
-                    <td style="font-size:12px;color:#6b7280">@c.EnteredBy?.FullName</td>
+                    <td style="font-size:12px;color:var(--text-3)">@c.EnteredBy?.FullName</td>
                     <td style="font-size:12px;color:#9ca3af;white-space:nowrap">@c.EnteredAt.ToLocalTime().ToString("dd.MM.yyyy")</td>
                     <td style="display:flex;gap:4px;white-space:nowrap">
                         <a href="/risk/@c.RiskId" class="btn btn-outline btn-sm">Risk →</a>

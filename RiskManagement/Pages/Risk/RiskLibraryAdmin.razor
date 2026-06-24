@@ -1,5 +1,5 @@
-@page "/risk/library/admin"
-@attribute [Authorize(Roles = "admin,committee,risk_manager")]
+﻿@page "/risk/library/admin"
+@attribute [Authorize(Policy = "risk.manage")]
 @inject RiskLibraryService LibSvc
 @inject IHttpContextAccessor HttpCtx
 @using System.Security.Claims

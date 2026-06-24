@@ -1,5 +1,5 @@
-@page "/audit/external/new"
-@attribute [Authorize]
+﻿@page "/audit/external/new"
+@attribute [Authorize(Policy = "external_audit.write")]
 @inject ExternalAuditService ExtSvc
 @inject AuthService Auth
 @inject AppDbContext Db
@@ -255,6 +255,8 @@ else
         if (string.IsNullOrWhiteSpace(body))    { _error = "Denetleyen kurum seçiniz/giriniz."; return; }
         if (string.IsNullOrWhiteSpace(_subject)) { _error = "Konu zorunludur."; return; }
         if (!_auditDate.HasValue)               { _error = "Denetim tarihi zorunludur."; return; }
+        if (_endDate.HasValue && _endDate.Value < _auditDate.Value)
+        { _error = "Bitiş tarihi denetim tarihinden önce olamaz."; return; }
 
         if (_useFreeText && !_isAdmin)
         {

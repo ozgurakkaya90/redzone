@@ -10,7 +10,8 @@ public class EthicsService(AppDbContext db, IWebHostEnvironment env, INotificati
 {
     private static readonly HashSet<string> AllowedExtensions =
         [".pdf", ".doc", ".docx", ".xls", ".xlsx", ".png", ".jpg", ".jpeg", ".txt", ".zip"];
-    private const long MaxFileSize = 10 * 1024 * 1024;
+    // Tek otoriter kaynak: UploadLimits (Program.cs'te AppSettings:MaxUploadSizeMb'den ayarlanır).
+    private static long MaxFileSize => UploadLimits.MaxBytes;
 
     private string UploadsDir => Path.Combine(env.ContentRootPath, "uploads", "ethics");
 

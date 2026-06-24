@@ -1,5 +1,5 @@
-@page "/risk/matrix"
-@attribute [Authorize]
+﻿@page "/risk/matrix"
+@attribute [Authorize(Policy = "risk.read")]
 @inject RiskService RiskSvc
 @inject AuthService Auth
 @inject ConfigService CfgSvc
@@ -11,7 +11,7 @@
 
 <div class="page-header" style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px">
     <h1>Risk Kontrol Matrisi</h1>
-    <div style="font-size:13px;color:#6b7280">@Filtered.Count() risk gösteriliyor</div>
+    <div style="font-size:13px;color:var(--text-3)">@Filtered.Count() risk gösteriliyor</div>
 </div>
 
 <!-- Filtre Paneli -->
@@ -129,7 +129,7 @@
 <div class="card" style="padding:0;overflow-x:auto">
     <table class="table" style="font-size:13px;min-width:1100px">
         <thead>
-            <tr style="background:#f9fafb">
+            <tr style="background:var(--gray-50)">
                 <th style="width:90px;cursor:pointer" @onclick='() => SetSort("code")'>
                     Kod @SortIcon("code")
                 </th>
@@ -277,7 +277,7 @@
                         @if (initial != null && residual != null)
                         {
                             var pct = initial.Score > 0 ? (reduction / initial.Score * 100) : 0;
-                            var col = reduction > 0 ? "#16a34a" : reduction < 0 ? "#dc2626" : "#6b7280";
+                            var col = reduction > 0 ? "#16a34a" : reduction < 0 ? "#dc2626" : "var(--text-3)";
                             <div style="font-weight:700;font-size:15px;color:@col">
                                 @(reduction > 0 ? "▼" : reduction < 0 ? "▲" : "=") @Math.Abs(reduction).ToString("0.##")
                             </div>

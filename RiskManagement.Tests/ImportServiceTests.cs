@@ -72,6 +72,48 @@ public class ImportServiceTests
     }
 
     [Fact]
+    public void ImportRisks_WrongColumnLayout_RejectedWithoutWritingData()
+    {
+        var db  = TestDb.Create();
+        var svc = new ImportService(db);
+
+        // Yanlış dosya: 1. sütun "Başlık" (risk değil; bulgu/başka düzen gibi).
+        // Risk import'u 1. sütunda "Kod" bekler — sessiz veri bozulması yerine reddetmeli.
+        var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("Yanlis");
+        ws.Cell(1, 1).Value = "Başlık";
+        ws.Cell(1, 2).Value = "Açıklama";
+        ws.Cell(2, 1).Value = "Bir başlık";
+        var ms = new MemoryStream(); wb.SaveAs(ms); ms.Position = 0;
+
+        var result = svc.ImportRisksFromExcel(ms, importedById: 1);
+
+        Assert.Equal(0, result.Imported);
+        Assert.Equal(0, db.Risks.Count());                          // asıl güvence: hiç veri yazılmadı
+        Assert.Contains(result.Errors, e => e.Contains("Sütun düzeni"));
+    }
+
+    [Fact]
+    public void ImportRisks_TemplateHeaders_Accepted()
+    {
+        // Gerçek şablon başlıkları (yıldız/parantez varyasyonları dahil) reddedilmemeli.
+        var db  = TestDb.Create();
+        var svc = new ImportService(db);
+
+        var wb = new XLWorkbook();
+        var ws = wb.AddWorksheet("Riskler");
+        ws.Cell(1, 1).Value = "Kod (boşsa yeni kayıt)";
+        ws.Cell(1, 2).Value = "Başlık*";
+        ws.Cell(2, 2).Value = "Şablon başlıklı risk";
+        var ms = new MemoryStream(); wb.SaveAs(ms); ms.Position = 0;
+
+        var result = svc.ImportRisksFromExcel(ms, importedById: 1);
+
+        Assert.Empty(result.Errors);
+        Assert.Equal(1, result.Imported);
+    }
+
+    [Fact]
     public void ImportRisks_MultipleNewRows_AllPersisted_NoSilentDataLoss()
     {
         var db  = TestDb.Create();

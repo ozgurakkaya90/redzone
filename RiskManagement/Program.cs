@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -10,10 +11,31 @@ using RiskManagement.Models;
 using RiskManagement.Services;
 using RiskManagement.Services.Ai;
 using RiskManagement.Services.Email;
+using Serilog;
 using System.Security.Claims;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ─── Serilog: kalıcı dosya logu ──────────────────────────────────────────────
+// Önceden yalnızca bellek-içi RecentLogBuffer + (web.config'de kapalı) stdout vardı;
+// çökme/restart'ta tüm log geçmişi kayboluyordu. Disk-tabanlı günlük log kök-neden
+// teşhisini kolaylaştırır. logs dizini app pool'un yazabildiği content root altında
+// (C:\Publish\RedZone\logs) — ayrı izin gerektirmez. UTF-8 ile Türkçe mojibake giderilir.
+var logDir = Path.Combine(builder.Environment.ContentRootPath, "logs");
+builder.Host.UseSerilog((ctx, cfg) => cfg
+    .MinimumLevel.Information()
+    .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.EntityFrameworkCore", Serilog.Events.LogEventLevel.Warning)
+    .MinimumLevel.Override("Microsoft.AspNetCore", Serilog.Events.LogEventLevel.Warning)
+    .Enrich.FromLogContext()
+    .WriteTo.File(
+        path: Path.Combine(logDir, "redzone-.log"),
+        rollingInterval: RollingInterval.Day,
+        retainedFileCountLimit: 14,
+        encoding: System.Text.Encoding.UTF8,
+        outputTemplate: "{Timestamp:yyyy-MM-dd HH:mm:ss.fff} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"),
+    writeToProviders: true); // RecentLogBufferProvider (admin "son loglar" UI) çalışmaya devam etsin
 
 // Windows Service olarak çalışmayı destekle (intranet kurulumu için)
 builder.Host.UseWindowsService(opts => opts.ServiceName = "RedZone");
@@ -57,7 +79,11 @@ else
     var connStr = builder.Configuration.GetConnectionString("DefaultConnection")
         ?? Environment.GetEnvironmentVariable("ConnectionStrings__DefaultConnection")
         ?? throw new InvalidOperationException("Connection string bulunamadı.");
-    configureDb = opt => opt.UseMySql(connStr, new MySqlServerVersion(new Version(8, 0, 36)));
+    // Global SplitQuery: çok-koleksiyonlu Include sorguları (Risk/Finding detayı, tam User
+    // yüklemesi — her kimlikli istekte) tek SQL'de kartezyen satır patlamasına yol açıyordu.
+    // Her koleksiyonu ayrı sorguda çekerek bunu önler (EF, PK'ya göre otomatik sıralar).
+    configureDb = opt => opt.UseMySql(connStr, new MySqlServerVersion(new Version(8, 0, 36)),
+        o => o.UseQuerySplittingBehavior(QuerySplittingBehavior.SplitQuery));
 }
 // Blazor Server'da scoped context = circuit ömrü (tüm oturum). Tek paylaşımlı context,
 // eşzamanlı işlemlerde "second operation started" hatasına ve bayat change-tracker'a yol açar.
@@ -83,7 +109,14 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
             : CookieSecurePolicy.Always;
         opt.Cookie.SameSite = SameSiteMode.Lax;
     });
-builder.Services.AddAuthorization();
+builder.Services.AddAuthorization(options =>
+{
+    foreach (var perm in RiskManagement.Services.AuthService.Permissions.Keys)
+        options.AddPolicy(perm, p => p.Requirements.Add(
+            new RiskManagement.Services.PermissionRequirement(perm)));
+});
+builder.Services.AddScoped<Microsoft.AspNetCore.Authorization.IAuthorizationHandler,
+    RiskManagement.Services.PermissionHandler>();
 
 // Oturum süresi DB'deki security_session_timeout_hours değerinden okunur.
 // IOptionsMonitor sayesinde uygulama yeniden başlatıldığında güncel değeri alır.
@@ -126,6 +159,19 @@ builder.Services.AddRateLimiter(opts =>
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<RiskManagement.Services.AnonymousRateLimiter>();
 
+// ─── Data Protection ────────────────────────────────────────────────────────────
+// IIS altında (app pool kullanıcısının profili yüklü değil) varsayılan anahtar deposu
+// EPHEMERAL/in-memory'ye düşüyordu: her app pool recycle/restart'ta tüm anahtarlar
+// kayboluyor → auth çerezleri ve antiforgery token'ları geçersiz oluyor ("The key {..}
+// was not found in the key ring" → login formu antiforgery hatası, kullanıcılar düşüyor).
+// Anahtarları deploy klasörü DIŞINDA kalıcı bir dizine yaz (publish klasörü her deploy'da
+// ezildiğinden anahtarlar dışarıda tutulmalı) ve sabit uygulama adı ile key ring'i koru.
+var keysDir = builder.Configuration["DataProtection:KeysPath"] ?? @"C:\Publish\RedZone-Keys";
+Directory.CreateDirectory(keysDir);
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keysDir))
+    .SetApplicationName("RedZone");
+
 // ─── Antiforgery ──────────────────────────────────────────────────────────────
 builder.Services.AddAntiforgery();
 
@@ -133,9 +179,21 @@ builder.Services.AddAntiforgery();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<AppDbContext>("database");
 
+// ─── Dosya yükleme limiti ─────────────────────────────────────────────────────
+// "AppSettings:MaxUploadSizeMb" tek otoriter kaynak. Önceden bu config kullanılmıyor,
+// limitler Audit/Ethics/Import'ta 10MB hardcoded'du. UploadLimits ile merkezîleştirildi.
+var maxUploadMb = builder.Configuration.GetValue<int>("AppSettings:MaxUploadSizeMb");
+if (maxUploadMb < 1) maxUploadMb = 10;
+RiskManagement.Services.UploadLimits.MaxBytes = maxUploadMb * 1024L * 1024L;
+
 // ─── Blazor Server ───────────────────────────────────────────────────────────
 builder.Services.AddRazorPages();
-builder.Services.AddServerSideBlazor();
+// Blazor InputFile dosyaları parçalayarak (chunked) aktardığından küçük varsayılan
+// mesaj boyutu uploadları engellemez; yine de limiti yapılandırılmış değerle hizalı
+// tutuyoruz ki büyük tek-mesaj senaryolarında da tutarlı bir tavan olsun.
+builder.Services.AddServerSideBlazor()
+    .AddHubOptions(o => o.MaximumReceiveMessageSize = RiskManagement.Services.UploadLimits.MaxBytes);
+builder.Services.AddScoped<Microsoft.AspNetCore.Components.Server.Circuits.CircuitHandler, RiskManagement.Services.UserCircuitHandler>();
 
 // ─── Services ─────────────────────────────────────────────────────────────────
 // ─── E-posta Servisi ─────────────────────────────────────────────────────────
@@ -149,6 +207,8 @@ builder.Logging.AddProvider(new RecentLogBufferProvider(logBuffer));
 builder.Services.AddSingleton<EmailQueue>();
 builder.Services.AddHostedService<EmailWorker>();
 builder.Services.AddHostedService<ActionReminderWorker>();
+builder.Services.AddHostedService<DbBackupWorker>();
+builder.Services.AddScoped<DbBackupService>();
 builder.Services.AddScoped<INotificationService, SmtpNotificationService>();
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<ConfigService>();
@@ -169,6 +229,8 @@ builder.Services.AddScoped<McpRequestContext>();
 // ─── AI Servisleri ────────────────────────────────────────────────────────────
 // Provider seçimi ConfigService'ten okunur — her şirket kendi ayarını girer.
 builder.Services.AddHttpClient();
+// AI çağrıları için ayrı named client: 30 sn timeout (harici API takılırsa devreyi bloklamasın).
+builder.Services.AddHttpClient("ai", c => c.Timeout = TimeSpan.FromSeconds(30));
 builder.Services.AddScoped<IAiCompletionService>(sp =>
 {
     var cfg      = sp.GetRequiredService<ConfigService>();
@@ -202,30 +264,48 @@ using (var scope = app.Services.CreateScope())
     var db     = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
 
-    // Migration 30 saniyede tamamlanmazsa uyarı ver; production'da kritik hata uygulamayı durdurur.
+    // Intranet KOBİ senaryosu: DB ayrı sunucuda ve app pool otomatik recycle oluyor. Startup'ta
+    // GEÇİCİ bir DB/ağ kesintisi (blip) recycle ile çakışırsa, uygulamayı komple çökertip site'yi
+    // crash-loop'a sokmak yerine düşük-modda başlat — DB dönünce kendiliğinden iyileşir, o ana dek
+    // DB'ye dokunan sayfalar dostça hata sınırı (ErrorBoundary) gösterir. Fail-fast YALNIZCA DB
+    // erişilebilir olup migration/şema hatası varsa yapılır (bozuk şemayla çalışmak tehlikeli).
     using var cts = new System.Threading.CancellationTokenSource(TimeSpan.FromSeconds(30));
-    Exception? migrationError = null;
-    try
+    bool canConnect;
+    try { canConnect = await db.Database.CanConnectAsync(cts.Token); }
+    catch { canConnect = false; }
+
+    if (!canConnect)
     {
-        await db.Database.MigrateAsync(cts.Token);
-        logger.LogInformation("Migration tamamlandı.");
+        logger.LogWarning("Veritabanına başlangıçta ulaşılamadı — uygulama düşük-modda başlıyor. "
+            + "DB erişilebilir olunca iyileşir; şema geride ise /admin/db-migrate ile migration çalıştırın.");
     }
-    catch (OperationCanceledException)
+    else
     {
-        logger.LogWarning("Migration 30 saniyede tamamlanamadı. /admin/db-migrate ile manuel çalıştırın.");
-    }
-    catch (Exception ex)
-    {
-        migrationError = ex;
-        logger.LogError(ex, "Migration hatası: {Message}", ex.Message);
+        Exception? migrationError = null;
+        try
+        {
+            await db.Database.MigrateAsync(cts.Token);
+            logger.LogInformation("Migration tamamlandı.");
+        }
+        catch (OperationCanceledException)
+        {
+            logger.LogWarning("Migration 30 saniyede tamamlanamadı. /admin/db-migrate ile manuel çalıştırın.");
+        }
+        catch (Exception ex)
+        {
+            migrationError = ex;
+            logger.LogError(ex, "Migration hatası: {Message}", ex.Message);
+        }
+
+        // DB erişilebilir AMA migration başarısız (gerçek şema sorunu) → production'da fail-fast.
+        if (migrationError != null && app.Environment.IsProduction())
+            throw new InvalidOperationException(
+                "Production ortamında migration başarısız. Veritabanını kontrol edin ve yeniden başlatın.",
+                migrationError);
     }
 
-    // Production'da migration hatası uygulamayı durdurur — şema uyumsuzluğuyla çalışmak tehlikeli.
-    if (migrationError != null && app.Environment.IsProduction())
-        throw new InvalidOperationException(
-            "Production ortamında migration başarısız. Veritabanını kontrol edin ve yeniden başlatın.",
-            migrationError);
-
+    // Seed/sync yalnızca DB erişilebilirse — aksi halde düşük-modda sessizce atlanır.
+    if (canConnect)
     try
     {
         if (app.Configuration.GetValue<bool>("AppSettings:DemoMode"))
@@ -302,9 +382,9 @@ app.Use(async (context, next) =>
     context.Response.Headers["Content-Security-Policy"] =
         "default-src 'self'; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
-        "style-src 'self' 'unsafe-inline'; " +
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
         "img-src 'self' data:; " +
-        "font-src 'self'; " +
+        "font-src 'self' https://fonts.gstatic.com; " +
         "connect-src 'self' ws: wss:; " +  // Blazor SignalR WebSocket
         "frame-ancestors 'self'; " +
         "object-src 'none'; " +

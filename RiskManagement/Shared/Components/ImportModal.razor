@@ -229,7 +229,7 @@
         try
         {
             using var ms = new MemoryStream();
-            await using var s = _file.OpenReadStream(maxAllowedSize: 10 * 1024 * 1024);
+            await using var s = _file.OpenReadStream(maxAllowedSize: UploadLimits.MaxBytes);
             await s.CopyToAsync(ms);
             ms.Position = 0;
             _result = RunImport(ms);

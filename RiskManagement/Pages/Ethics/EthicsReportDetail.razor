@@ -1,5 +1,5 @@
-@page "/ethics/reports/{Id:int}"
-@attribute [Authorize(Roles = "audit_manager,ethics_board,admin")]
+﻿@page "/ethics/reports/{Id:int}"
+@attribute [Authorize(Policy = "ethics.read")]
 @inject EthicsService EthicsSvc
 @inject AuthService Auth
 @inject AppDbContext Db
@@ -102,7 +102,7 @@ else
                         </span>
                         @if (!string.IsNullOrEmpty(_report.AuditNotes))
                         {
-                            <p style="margin-top:8px;font-size:13px;color:#374151">@_report.AuditNotes</p>
+                            <p style="margin-top:8px;font-size:13px;color:var(--gray-700)">@_report.AuditNotes</p>
                         }
                     </div>
                     <div class="text-muted" style="white-space:nowrap">
@@ -125,7 +125,7 @@ else
                         </span>
                         @if (!string.IsNullOrEmpty(_report.EthicsNotes))
                         {
-                            <p style="margin-top:8px;font-size:13px;color:#374151">@_report.EthicsNotes</p>
+                            <p style="margin-top:8px;font-size:13px;color:var(--gray-700)">@_report.EthicsNotes</p>
                         }
                     </div>
                     <div class="text-muted" style="white-space:nowrap">

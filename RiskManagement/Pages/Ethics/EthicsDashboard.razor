@@ -1,5 +1,5 @@
-@page "/ethics"
-@attribute [Authorize(Roles = "audit_manager,ethics_board,admin")]
+﻿@page "/ethics"
+@attribute [Authorize(Policy = "ethics.read")]
 @inject EthicsService EthicsSvc
 @inject ConfigService CfgSvc
 
@@ -65,7 +65,7 @@
             <div style="padding:8px 0;border-bottom:1px solid #f3f4f6;display:flex;justify-content:space-between;align-items:center">
                 <div>
                     <div style="font-size:13px;font-weight:500">@r.Subject</div>
-                    <div style="font-size:11px;color:#6b7280">@r.SubmittedAt.ToString("dd.MM.yyyy") — @(r.ReportCategory ?? "Kategori yok")</div>
+                    <div style="font-size:11px;color:var(--text-3)">@r.SubmittedAt.ToString("dd.MM.yyyy") — @(r.ReportCategory ?? "Kategori yok")</div>
                 </div>
                 <a href="/ethics/reports/@r.Id" class="btn btn-outline btn-sm">Detay</a>
             </div>

@@ -1,5 +1,5 @@
-@page "/audit/actions"
-@attribute [Authorize]
+﻿@page "/audit/actions"
+@attribute [Authorize(Policy = "audit.read")]
 @inject AuditService AuditSvc
 @inject ConfigService CfgSvc
 @inject AuthService Auth
@@ -89,7 +89,7 @@
                         <a href="/audit/findings/@a.FindingId" style="color:#1e40af;font-weight:600;font-size:12px;text-decoration:none">
                             @a.Finding.Code
                         </a>
-                        <div style="font-size:11px;color:#6b7280;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                        <div style="font-size:11px;color:var(--text-3);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                             @a.Finding.Title
                         </div>
                         @if (a.Finding.InternalAudit != null)
@@ -136,7 +136,7 @@
                         }
                         else { <span style="color:#9ca3af">—</span> }
                     </td>
-                    <td style="font-size:12px;color:#6b7280">@a.CreatedBy?.FullName</td>
+                    <td style="font-size:12px;color:var(--text-3)">@a.CreatedBy?.FullName</td>
                     <td>
                         <a href="/audit/findings/@a.FindingId" class="btn btn-outline btn-sm">Bulgu Detayı</a>
                     </td>

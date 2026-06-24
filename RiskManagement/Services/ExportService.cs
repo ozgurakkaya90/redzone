@@ -730,9 +730,17 @@ public class ExportService
 
     // Excel formula injection: '=' ile başlayan değerler formül olarak yorumlanır.
     // Kullanıcıdan gelen string'ler buradan geçirilmeli.
-    private static string SafeCell(string? value)
+    // internal: RiskLibraryService kendi Excel export'unda da bu güvenli-hücre mantığını paylaşır.
+    internal static string SafeCell(string? value)
     {
         if (string.IsNullOrEmpty(value)) return "";
+        // XLSX değerleri XML olarak saklanır; XML 1.0 geçersiz kontrol karakterlerini (tab/LF/CR
+        // dışındaki 0x00-0x1F) temizle — aksi halde dosya bozulur ya da Excel "onarım" uyarısı
+        // verir. Word/PDF kopyala-yapıştır metni bu karakterleri sık içerir.
+        if (value.Any(c => c < ' ' && c is not ('\t' or '\n' or '\r')))
+            value = new string(value.Where(c => c >= ' ' || c is '\t' or '\n' or '\r').ToArray());
+        if (value.Length == 0) return "";
+        // Formül enjeksiyonu koruması (Excel/CSV): =,+,-,@ veya tab/CR ile başlayanı tırnakla.
         return value[0] is '=' or '+' or '-' or '@' or '\t' or '\r' ? "'" + value : value;
     }
 

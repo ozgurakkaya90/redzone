@@ -1,5 +1,5 @@
-@page "/risk/actions"
-@attribute [Authorize]
+﻿@page "/risk/actions"
+@attribute [Authorize(Policy = "action.read")]
 @inject AppDbContext Db
 @inject ConfigService CfgSvc
 @inject IHttpContextAccessor HttpCtx
@@ -118,7 +118,7 @@
                         <a href="/risk/@a.RiskId" style="color:#1e40af;font-weight:600;font-size:12px;text-decoration:none">
                             @a.Risk.Code
                         </a>
-                        <div style="font-size:11px;color:#6b7280;max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+                        <div style="font-size:11px;color:var(--text-3);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
                             @a.Risk.Title
                         </div>
                     </td>
@@ -127,7 +127,7 @@
                         @if (a.OwnerDept != null)
                         { <span class="badge badge-orange" style="font-size:10px">@a.OwnerDept.Name</span> }
                         else if (!string.IsNullOrEmpty(a.Responsible))
-                        { <span style="font-size:12px;color:#374151">@a.Responsible</span> }
+                        { <span style="font-size:12px;color:var(--gray-700)">@a.Responsible</span> }
                         else { <span style="color:#9ca3af">—</span> }
                     </td>
                     <td style="white-space:nowrap">
@@ -149,7 +149,7 @@
                         else { <span style="color:#9ca3af">—</span> }
                     </td>
                     <td><span class="badge @StatusBadge(a.Status)">@StatusLabel(a.Status)</span></td>
-                    <td style="font-size:12px;color:#6b7280">@a.CreatedBy?.FullName</td>
+                    <td style="font-size:12px;color:var(--text-3)">@a.CreatedBy?.FullName</td>
                     <td>
                         <a href="/risk/@a.RiskId" class="btn btn-outline btn-sm">Risk Detayı</a>
                     </td>

@@ -248,7 +248,7 @@
                 "RedZone — SMTP Test E-postası",
                 "<h2>SMTP Bağlantısı Başarılı</h2>" +
                 "<p>Bu mesajı alıyorsanız SMTP yapılandırmanız doğru çalışıyor.</p>" +
-                $"<p style='color:#6b7280;font-size:12px'>Gönderim zamanı: {DateTime.Now:dd.MM.yyyy HH:mm:ss}</p>"
+                $"<p style='color:var(--text-3);font-size:12px'>Gönderim zamanı: {DateTime.Now:dd.MM.yyyy HH:mm:ss}</p>"
             );
 
             await EmailWorker.SendAsync(msg, testSettings);

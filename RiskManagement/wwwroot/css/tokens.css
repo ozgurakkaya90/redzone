@@ -144,4 +144,19 @@
   --status-approved-color: #065f46;
   --status-rejected-color: #991b1b;
   --status-active-color:   #0f766e;
+
+  /* ── Domain: Data-viz / grafik paleti ───────────────────────
+     Grafik/bar renkleri domain-durum token'larından ayrı tutulur:
+     bar'lar veri görselleştirmedir, iş-akışı durumu değil. Değerler
+     mevcut kullanımla birebir (görünüm değişmez). */
+  --chart-violet: #6d28d9;
+  --chart-green:  #16a34a;
+  --chart-blue:   #0284c7;
+  --chart-red:    #dc2626;
+  --chart-gold:   #ca8a04;
+  --chart-maroon: #7f1d1d;
+  --chart-azure:  #3b82f6;
+  --chart-amber:  #f59e0b;
+  --chart-sky:    #0369a1;
+  --chart-track:  #e5e7eb;
 }

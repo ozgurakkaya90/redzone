@@ -1,0 +1,169 @@
+@page "/admin/db-backup"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "admin")]
+@inject ConfigService CfgSvc
+@inject DbBackupService BackupSvc
+@inject ToastService ToastSvc
+@using RiskManagement.Services
+
+<PageTitle>Veritabanı Yedekleme</PageTitle>
+
+<div class="page-toolbar">
+    <div class="page-toolbar-left">
+        <h1 class="page-toolbar-title">Veritabanı Yedekleme</h1>
+        <div class="page-toolbar-sub">Otomatik günlük MySQL yedeği — mysqldump → zip → saklama</div>
+    </div>
+    <div class="page-toolbar-actions">
+        <button class="btn btn-primary btn-sm" @onclick="BackupNow" disabled="@_busy">
+            @(_busy ? "Yedekleniyor…" : "Şimdi Yedekle")
+        </button>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;max-width:680px">
+    <div style="display:grid;gap:14px">
+        <label style="display:flex;align-items:center;gap:10px;font-size:14px;font-weight:600">
+            <input type="checkbox" @bind="_enabled" />
+            Otomatik günlük yedeklemeyi etkinleştir
+        </label>
+
+        <div>
+            <label class="form-label">Yedek klasörü <span style="color:var(--text-3);font-weight:400">(yerel `D:\…` veya ağ payı `\\sunucu\pay`)</span></label>
+            <input class="form-control" @bind="_path" placeholder="@DbBackupService.DefaultPath" />
+            <div style="font-size:11px;color:var(--text-3);margin-top:4px">
+                Off-box koruma için bir ağ payı (UNC) girin; uygulama doğrudan oraya yazar.
+                (App pool kimliğinin o yola yazma izni olmalı.)
+            </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+            <div>
+                <label class="form-label">Yedek saati (SS:DD)</label>
+                <input class="form-control" @bind="_time" placeholder="02:00" />
+            </div>
+            <div>
+                <label class="form-label">Saklanacak yedek sayısı</label>
+                <input class="form-control" type="number" min="1" max="365" @bind="_retention" />
+            </div>
+        </div>
+
+        <div>
+            <label class="form-label">mysqldump.exe yolu <span style="color:var(--text-3);font-weight:400">(boşsa otomatik bulunur)</span></label>
+            <input class="form-control" @bind="_dumpPath" placeholder="C:\Program Files\MySQL\MySQL Server 8.0\bin\mysqldump.exe" />
+        </div>
+
+        <div style="display:flex;gap:10px">
+            <button class="btn btn-primary btn-sm" @onclick="Save">Kaydet</button>
+        </div>
+    </div>
+</div>
+
+<div class="card" style="margin-bottom:16px;max-width:680px">
+    <div style="font-weight:700;font-size:14px;margin-bottom:10px">Durum</div>
+    <table style="width:100%;font-size:13px">
+        <tr><td style="padding:4px 0;color:var(--text-2);width:160px">Son çalışma</td><td>@(_lastAt is { Length: > 0 } ? _lastAt : "—")</td></tr>
+        <tr><td style="padding:4px 0;color:var(--text-2)">Son sonuç</td><td>@(_lastStatus is { Length: > 0 } ? _lastStatus : "—")</td></tr>
+        <tr><td style="padding:4px 0;color:var(--text-2)">Hedef</td><td><code style="font-size:12px">@BackupSvc.ResolvedPath</code></td></tr>
+    </table>
+</div>
+
+<div class="card" style="max-width:680px">
+    <div style="font-weight:700;font-size:14px;margin-bottom:10px">Mevcut Yedekler (@_files.Count)</div>
+    @if (_files.Count == 0)
+    {
+        <div style="font-size:13px;color:var(--text-3)">Henüz yedek yok. "Şimdi Yedekle" ile ilkini alıp doğrulayın.</div>
+    }
+    else
+    {
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+            <thead><tr style="border-bottom:1px solid var(--border);color:var(--text-3);text-align:left">
+                <th style="padding:6px 0">Dosya</th><th style="padding:6px 0;text-align:right">Boyut</th><th style="padding:6px 0;text-align:right">Tarih</th>
+            </tr></thead>
+            <tbody>
+            @foreach (var f in _files)
+            {
+                <tr style="border-bottom:1px solid var(--gray-100)">
+                    <td style="padding:6px 0;font-family:monospace;font-size:12px">@f.Name</td>
+                    <td style="padding:6px 0;text-align:right">@f.SizeMb MB</td>
+                    <td style="padding:6px 0;text-align:right;color:var(--text-2)">@f.Date</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    }
+</div>
+
+@code {
+    private bool   _enabled;
+    private string _path = "";
+    private string _time = "02:00";
+    private int    _retention = 14;
+    private string _dumpPath = "";
+    private string _lastAt = "", _lastStatus = "";
+    private bool   _busy;
+
+    private record BackupFile(string Name, double SizeMb, string Date);
+    private List<BackupFile> _files = [];
+
+    protected override void OnInitialized()
+    {
+        _enabled   = CfgSvc.Get<bool>("backup_enabled");
+        _path      = CfgSvc.Get<string>("backup_path") is { Length: > 0 } p ? p : DbBackupService.DefaultPath;
+        _time      = CfgSvc.Get<string>("backup_time") is { Length: > 0 } t ? t : "02:00";
+        _retention = CfgSvc.Get<int>("backup_retention_days") is var r && r > 0 ? r : 14;
+        _dumpPath  = CfgSvc.Get<string>("backup_mysqldump_path") ?? "";
+        RefreshStatus();
+        RefreshFiles();
+    }
+
+    private void RefreshStatus()
+    {
+        _lastAt     = CfgSvc.Get<string>("backup_last_at") ?? "";
+        _lastStatus = CfgSvc.Get<string>("backup_last_status") ?? "";
+    }
+
+    private void RefreshFiles()
+    {
+        try
+        {
+            var dir = BackupSvc.ResolvedPath;
+            _files = Directory.Exists(dir)
+                ? Directory.GetFiles(dir, "*.zip")
+                    .Select(f => new FileInfo(f))
+                    .OrderByDescending(fi => fi.LastWriteTime)
+                    .Take(30)
+                    .Select(fi => new BackupFile(fi.Name, Math.Round(fi.Length / 1024.0 / 1024.0, 2),
+                        fi.LastWriteTime.ToString("dd.MM.yyyy HH:mm")))
+                    .ToList()
+                : [];
+        }
+        catch { _files = []; }
+    }
+
+    private void Save()
+    {
+        CfgSvc.Set("backup_enabled", _enabled);
+        CfgSvc.Set("backup_path", _path.Trim());
+        CfgSvc.Set("backup_time", string.IsNullOrWhiteSpace(_time) ? "02:00" : _time.Trim());
+        CfgSvc.Set("backup_retention_days", _retention < 1 ? 14 : _retention);
+        CfgSvc.Set("backup_mysqldump_path", _dumpPath.Trim());
+        RefreshFiles();
+        ToastSvc.Success("Yedekleme ayarları kaydedildi.");
+    }
+
+    private async Task BackupNow()
+    {
+        _busy = true;
+        // Ayarları önce kaydet ki test edilen yol/konum geçerli olsun.
+        Save();
+        var result = await Task.Run(() => BackupSvc.Run());
+        CfgSvc.Set("backup_last_at", DateTime.Now.ToString("dd.MM.yyyy HH:mm"));
+        CfgSvc.Set("backup_last_status", result.Success
+            ? $"OK — {System.IO.Path.GetFileName(result.FilePath)} ({Math.Round(result.SizeBytes / 1024.0 / 1024.0, 2)} MB)"
+            : $"HATA — {result.Error}");
+        RefreshStatus();
+        RefreshFiles();
+        _busy = false;
+        if (result.Success) ToastSvc.Success("Yedek alındı.");
+        else                ToastSvc.Error("Yedekleme başarısız: " + result.Error);
+    }
+}

@@ -23,7 +23,7 @@ public sealed class AnthropicCompletionService(AiSettings settings, IHttpClientF
             messages = new[] { new { role = "user", content = userMessage } }
         };
 
-        using var client = httpFactory.CreateClient();
+        using var client = httpFactory.CreateClient("ai");
         client.DefaultRequestHeaders.Add("x-api-key", settings.ApiKey);
         client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
 

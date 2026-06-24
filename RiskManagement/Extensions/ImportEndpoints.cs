@@ -69,7 +69,7 @@ public static class ImportEndpoints
             if (module is "controls" or "action-plans")
             {
                 if (!authSvc.HasPermission(userObj, "risk.manage"))
-                    allowedRiskIds = riskSvc.GetForUser(userObj).Select(r => r.Id).ToHashSet();
+                    allowedRiskIds = riskSvc.GetAccessibleRiskIds(userObj);
             }
 
             // audit-actions: audit.admin izni olmayanlar yalnızca kendi erişebildiği bulgulara aksiyon ekleyebilir
@@ -77,7 +77,7 @@ public static class ImportEndpoints
             if (module is "audit-actions")
             {
                 if (!authSvc.HasPermission(userObj, "audit.close_approve"))
-                    allowedFindingIds = auditSvc.GetFindingsForUser(userObj).Select(f => f.Id).ToHashSet();
+                    allowedFindingIds = auditSvc.GetAccessibleFindingIds(userObj);
             }
 
             ImportResult result = module switch

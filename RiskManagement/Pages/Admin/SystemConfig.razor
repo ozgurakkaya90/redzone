@@ -1152,7 +1152,7 @@
         <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">
             @foreach (var mod in new[]
             {
-                (Icon:"", Name:"Risk Yönetimi",    Desc:"Risk envanteri, kontrol, aksiyon",  Bg:"#fff5f5", Border:"#fca5a5", Active:_riskActive,     Toggle:(Action)ToggleRisk),
+                (Icon:"", Name:"Risk Yönetimi",    Desc:"Risk envanteri, kontrol, aksiyon",  Bg:"#fff5f5", Border:"var(--color-danger-border)", Active:_riskActive,     Toggle:(Action)ToggleRisk),
                 (Icon:"", Name:"İç Denetim",        Desc:"Denetim planları, bulgular",         Bg:"#f0fdf4", Border:"#86efac", Active:_auditActive,    Toggle:(Action)ToggleAudit),
                 (Icon:"", Name:"Dış Denetim",       Desc:"BRC, JCI, müşteri denetimleri",      Bg:"#fffbeb", Border:"#fde68a", Active:_externalActive, Toggle:(Action)ToggleExternal),
                 (Icon:"", Name:"Etik Yönetimi",     Desc:"Etik bildirimler, kurul incelemeleri",Bg:"#faf5ff", Border:"#c4b5fd", Active:_ethicsActive,   Toggle:(Action)ToggleEthics),
@@ -1472,7 +1472,7 @@
 
             @if (_migrLoadError != null)
             {
-                <div style="padding:10px;background:#fef2f2;border:1px solid #fca5a5;border-radius:8px;font-size:12px;color:#991b1b;margin-bottom:10px">@_migrLoadError</div>
+                <div style="padding:10px;background:#fef2f2;border:1px solid var(--color-danger-border);border-radius:8px;font-size:12px;color:#991b1b;margin-bottom:10px">@_migrLoadError</div>
             }
             @if (_migrPending.Count == 0 && _migrApplied.Count > 0)
             {
@@ -1492,7 +1492,7 @@
             {
                 var ok = !_migrResult.StartsWith("Hata");
                 <div style="padding:10px 14px;border-radius:8px;margin-bottom:10px;font-size:12px;
-                            background:@(ok?"#f0fdf4":"#fef2f2");border:1px solid @(ok?"#86efac":"#fca5a5");color:@(ok?"#166534":"#991b1b")">
+                            background:@(ok?"#f0fdf4":"#fef2f2");border:1px solid @(ok?"#86efac":"var(--color-danger-border)");color:@(ok?"#166534":"#991b1b")">
                     @(ok ? "" : "[HATA] ") @_migrResult
                 </div>
             }
@@ -1500,7 +1500,7 @@
                 <button class="btn btn-primary btn-sm" @onclick="MigrRunWithConfirm" disabled="@(_migrRunning || _migrPending.Count == 0)">
                     @(_migrRunning ? "Çalışıyor…" : "Migration Çalıştır")
                 </button>
-                <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:#fca5a5" @onclick="MigrRestartApp" disabled="@_migrRestarting">
+                <button class="btn btn-outline btn-sm" style="color:#dc2626;border-color:var(--color-danger-border)" @onclick="MigrRestartApp" disabled="@_migrRestarting">
                     @(_migrRestarting ? "Yeniden başlatılıyor…" : "Uygulamayı Yeniden Başlat")
                 </button>
             </div>
@@ -1635,7 +1635,7 @@
             @* Veritabanı *@
             <div class="cfg-card" style="margin:0">
                 <div class="cfg-card-hdr" style="margin-bottom:8px">
-                    <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:@(_appDbTestResult==null?"#d1d5db":_appDbTestOk?"#22c55e":"#ef4444")"></div>
+                    <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:@(_appDbTestResult==null?"#d1d5db":_appDbTestOk?"#22c55e":"var(--color-danger)")"></div>
                     <div>
                         <div class="cfg-card-title">Veritabanı</div>
                         <div class="cfg-card-desc">@_appDbInfo.Host / @_appDbInfo.DatabaseName</div>
@@ -1669,7 +1669,7 @@
             <div class="cfg-card" style="margin:0">
                 <div class="cfg-card-hdr" style="margin-bottom:8px">
                     <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
-                                background:@(_migrLoadError!=null?"#ef4444":_migrPending.Count>0?"#f59e0b":"#22c55e")"></div>
+                                background:@(_migrLoadError!=null?"var(--color-danger)":_migrPending.Count>0?"#f59e0b":"#22c55e")"></div>
                     <div>
                         <div class="cfg-card-title">Veritabanı Migration</div>
                         <div class="cfg-card-desc">@_migrApplied.Count uygulanan · @_migrPending.Count bekleyen</div>
@@ -1714,14 +1714,14 @@
             <div class="cfg-card" style="margin:0">
                 <div class="cfg-card-hdr" style="margin-bottom:8px">
                     <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
-                                background:@(_smtpCheckMsg==null?"#d1d5db":_smtpCheckOk?"#22c55e":"#ef4444")"></div>
+                                background:@(_smtpCheckMsg==null?"#d1d5db":_smtpCheckOk?"#22c55e":"var(--color-danger)")"></div>
                     <div>
                         <div class="cfg-card-title">E-posta (SMTP)</div>
                         <div class="cfg-card-desc">
                             @if (_emailSettings.Enabled)
                             { <span>@_emailSettings.Host:@_emailSettings.Port</span> }
                             else
-                            { <span style="color:#ef4444">Devre dışı</span> }
+                            { <span style="color:var(--color-danger)">Devre dışı</span> }
                         </div>
                     </div>
                     <button class="btn btn-outline btn-sm" style="margin-left:auto;padding:2px 10px;font-size:11px"
@@ -1758,7 +1758,7 @@
             <div class="cfg-card" style="margin:0">
                 <div class="cfg-card-hdr" style="margin-bottom:8px">
                     <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;
-                                background:@(_uploadsDirChecked?(_uploadsDirOk?"#22c55e":"#ef4444"):"#d1d5db")"></div>
+                                background:@(_uploadsDirChecked?(_uploadsDirOk?"#22c55e":"var(--color-danger)"):"#d1d5db")"></div>
                     <div>
                         <div class="cfg-card-title">Dosya Yükleme Klasörü</div>
                         <div class="cfg-card-desc">wwwroot/uploads</div>
@@ -1836,7 +1836,7 @@
                         <div style="display:flex;align-items:center;justify-content:space-between;font-size:13px">
                             <span>@name</span>
                             <span style="font-size:11px;padding:2px 10px;border-radius:20px;font-weight:600;
-                                         background:@(active?"#dcfce7":"#f1f5f9");color:@(active?"#166534":"#6b7280")">
+                                         background:@(active?"#dcfce7":"#f1f5f9");color:@(active?"#166534":"var(--text-3)")">
                                 @(active ? "Etkin" : "Kapalı")
                             </span>
                         </div>
@@ -2039,7 +2039,7 @@
                         <span style="opacity:.8"> · İsteğe bağlı entegrasyon: @optDone/@optTotal</span>
                     </div>
                 </div>
-                <div style="flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+                <div style="flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden">
                     <div style="height:100%;width:@(doneCount * 100 / totalCount)%;background:@(doneCount == totalCount ? "#16a34a" : "#0369a1");border-radius:4px;transition:width .3s"></div>
                 </div>
             </div>
@@ -2050,7 +2050,7 @@
                     <div style="display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border-radius:8px;
                                 background:@(done?"#f0fdf4":"#fafafa");border:1px solid @(done?"#bbf7d0":"var(--border)")">
                         <div style="width:22px;height:22px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center;
-                                    background:@(done?"#dcfce7":"#e5e7eb");color:@(done?"#16a34a":"#9ca3af");font-size:13px;font-weight:700;margin-top:1px">
+                                    background:@(done?"#dcfce7":"var(--border)");color:@(done?"#16a34a":"#9ca3af");font-size:13px;font-weight:700;margin-top:1px">
                             @if (done) { <Icon Name="check" Size="13" /> } else { <span class="status-dot" style="width:6px;height:6px;background:currentColor"></span> }
                         </div>
                         <div style="flex:1;min-width:0">
@@ -3408,12 +3408,14 @@
         if (!s.Enabled) { _smtpCheckOk = false; _smtpCheckMsg = "E-posta gönderimi devre dışı (Ayarlar → E-posta SMTP)"; _smtpChecking = false; return; }
         try
         {
-            using var client = new System.Net.Mail.SmtpClient(s.Host, s.Port);
-            client.EnableSsl    = s.UseSsl;
-            client.Timeout      = 5000;
+            // MailKit ile gerçek bağlantı + kimlik doğrulama testi (junk e-posta göndermeden).
+            // TLS modu EmailWorker ile aynı mantıktan gelir (465 implicit / 587 STARTTLS).
+            using var client = new MailKit.Net.Smtp.SmtpClient { Timeout = 5000 };
+            await client.ConnectAsync(s.Host, s.Port,
+                RiskManagement.Services.Email.EmailWorker.ResolveSocketOptions(s));
             if (!string.IsNullOrEmpty(s.Username))
-                client.Credentials = new System.Net.NetworkCredential(s.Username, s.Password);
-            await Task.Run(() => client.Send(new System.Net.Mail.MailMessage("noreply@test.local", "noreply@test.local", "ping", "ping")));
+                await client.AuthenticateAsync(s.Username, s.Password);
+            await client.DisconnectAsync(true);
             _smtpCheckOk  = true;
             _smtpCheckMsg = $"Bağlantı başarılı — {s.Host}:{s.Port}";
         }
