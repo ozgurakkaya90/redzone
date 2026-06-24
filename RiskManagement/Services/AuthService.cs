@@ -8,7 +8,7 @@ using RiskManagement.Models;
 
 namespace RiskManagement.Services;
 
-public class AuthService(AppDbContext db, IMemoryCache cache)
+public class AuthService(AppDbContext db, IMemoryCache cache, IConfiguration configuration)
 {
     // Yerleşik rol listesi (statik) — özel roller için GetAllRoles() kullanın
     public static readonly string[] AllRoles = Roles.All;
@@ -179,8 +179,9 @@ public class AuthService(AppDbContext db, IMemoryCache cache)
 
 public async Task<User?> ValidateAsync(string username, string password)
 {
-    // ─── GEÇİCİ ACİL DURUM GİRİŞİ (PANELE GİRDİKTEN SONRA SİLEBİLİRSİNİZ) ───
-    if (username == "admin" && password == "Admin123!")
+    // ─── ACİL DURUM GİRİŞİ — şifre appsettings'ten okunur, kaynak kodda saklanmaz ───
+    var emergencyPwd = configuration["AppSettings:EmergencyAdminPassword"];
+    if (!string.IsNullOrWhiteSpace(emergencyPwd) && username == "admin" && password == emergencyPwd)
     {
         return new User
         {
@@ -195,7 +196,7 @@ public async Task<User?> ValidateAsync(string username, string password)
             UserCompanies = []
         };
     }
-    // ───────────────────────────────────────────────────────────────────────
+    // ────────────────────────────────────────────────────────────────────────────────
 
     var user = await db.Users
         .Include(u => u.UserRoles)
